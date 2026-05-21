@@ -1,0 +1,140 @@
+{
+  "id": "04_dashboard_annual_report",
+  "title": "Phase 4: Ultimate Fintech Dashboard & Annual Report (اللوحة الرئيسية والتقرير السنوي)",
+  "status": "completed",
+  "summary": "Architectural blueprint, copy-pasteable Google-Sheets-compatible formulas, importable CSV seeds, and README integration for the dedicated RTL Arabic dashboard sheet 'اللوحة الرئيسية والتقرير السنوي', plus a hidden helper sheet '_DashboardEngine'. The dashboard implements a luxury dark-mode UI (page #0F172A, cards #1F2937), six top-row KPI cards (إجمالي الدخل / إجمالي المصروفات / صافي الربح / إجمالي الأصول / إجمالي الالتزامات / معدل الادخار %) with conditionally-colored micro-trend strings, four mid-section charts (Combo for Income vs Expenses + Net Profit trendline, Waterfall for cash-flow cascade, two doughnuts for top income sources and top expense categories), a financial-health Gauge with composite 0-100 score, three SPARKLINE progress bars for goals (صندوق الطوارئ / شراء منزل / صندوق التقاعد), a dynamic 'أحدث المعاملات' ledger compiled across all 12 monthly sheets via QUERY on a stacked array, and a soft-lock protection layer with 14 Arabic warning rules.",
+  "deliverables": [
+    {
+      "path": "docs/07_dashboard_architecture.md",
+      "description": "Phase 4 architecture document in Arabic (RTL-wrapped). 10 sections covering: (1) Luxury Dark Mode palette with 18 named tokens and exact application steps, (2) macro-layout on a 24-column x 60-row grid with explicit cell ranges per module and gutters, (3) Module 1 cell-by-cell spec for the six KPI cards with their big-number formulas (K1..K6), trend strings, and CF rules, (4) Module 2 charts (Combo / Waterfall / Doughnut x2) with engine data anchors and full SUMIF aggregator formulas across all 12 monthly sheets, (5) Module 3 Health Gauge composite score formula and IFS rating + SPARKLINE progress bars with tier-colored color1 IF logic + Latest 5 Transactions ledger via QUERY in two variants (engine-helper and inline array-literal), (6) Module 4 soft-lock protection plan as a 14-row table with exact Arabic warning strings, (7) cross-sheet references summary, (8) full _DashboardEngine cell map (A..D for monthly grid, F..G for waterfall data, H..I for trend current/prior values, I..J + L..M for doughnut category aggregations, O for health score, Q..W for stacked transactions matrix), (9) nine-step assembly procedure with end-to-end verification checklist, (10) link back to formula reference."
+    },
+    {
+      "path": "docs/08_dashboard_formulas_reference.md",
+      "description": "Phase 4 formula quick-reference, 23 sections. Each formula in a copy-pasteable code block with an Arabic description and recommended target cell. Covers: annual income / expense sums (12-sheet SUM aggregator), per-card K1..K6 formulas, trend string with arrow + signed pct, conditional formatting strings for trend up/down, monthly engine grid B2..B13 / C2..C13 / D2..D13, full per-category 12-sheet SUMIF aggregator and the compact INDIRECT+SUMPRODUCT variant, health score composite (40 savings + 30 budget discipline + 30 goals progress), health rating IFS, gauge display string, SPARKLINE bars with tier-colored color1 IF for all three goals, percentage label TEXT formulas, conditional formatting for percentage tier coloring, latest 5 transactions QUERY in both Variant A (engine-helper, 588 stacked rows) and Variant B (single inline array-literal), CF strings for income/expense type tags, cumulative net surplus, TEXT wrapper for rng_ActiveFormat, and cross-sheet lookups for future archive sheets."
+    },
+    {
+      "path": "data/dashboard/kpi_card_labels.csv",
+      "description": "UTF-8-with-BOM two-column CSV with header `بيان,قيمة`. Six rows for the top-row KPI cards in RTL order: إجمالي الدخل, إجمالي المصروفات, صافي الربح, إجمالي الأصول, إجمالي الالتزامات, معدل الادخار %. Value column intentionally left blank for the user to paste formulas from docs/08."
+    },
+    {
+      "path": "data/dashboard/engine_monthly_grid.csv",
+      "description": "UTF-8-with-BOM five-column CSV with header `الشهر,الدخل الفعلي,المصروف الفعلي,صافي الربح,معدل الادخار` and 12 month rows (يناير ... ديسمبر). Metric columns intentionally blank so the user pastes the SUM formulas from docs/08 section 9 row by row. Pasted into _DashboardEngine!A1."
+    },
+    {
+      "path": "data/dashboard/theme_palette.csv",
+      "description": "UTF-8-with-BOM three-column CSV `الرمز,الوصف,القيمة Hex` enumerating all 18 theme tokens used by docs/07 and docs/08: bg-page #0F172A, bg-card #1F2937, fg-primary #F1F5F9, fg-muted #94A3B8, accent-income #10B981, accent-expense #DC2626, accent-net #06B6D4, accent-trend-up #10B981, accent-trend-down #EF4444, gridline #334155, palette-orange #F97316, palette-blue #3B82F6, palette-purple #8B5CF6, palette-pink #EC4899, gauge-red #DC2626, gauge-amber #F59E0B, gauge-light-green #84CC16, gauge-green #10B981."
+    },
+    {
+      "path": "data/dashboard/progress_bar_goals.csv",
+      "description": "UTF-8-with-BOM single-column CSV with header `أسماء الأهداف للتقدم` and three rows: صندوق الطوارئ, شراء منزل, صندوق التقاعد. Documents which three goal names are referenced inside the SPARKLINE XLOOKUP formulas in docs/07 section 5.2.3."
+    },
+    {
+      "path": "data/dashboard/protection_rules.csv",
+      "description": "UTF-8-with-BOM three-column CSV `النطاق,نوع الحماية,رسالة التحذير` with 14 protection rules covering the entire _DashboardEngine sheet, the six KPI card ranges, the four chart anchor ranges, the gauge anchor, the progress bars anchor, and the ledger anchor. Every rule uses Show-a-warning rather than Reject-input so the workbook owner can still edit when needed. The two warning strings used are: (sheet-level) 'هذه الورقة جزء من المحرك الخلفي للوحة المعلومات. التعديل قد يكسر الصيغ والرسوم البيانية.' and (range-level) 'هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.'"
+    },
+    {
+      "path": "README.md",
+      "description": "Updated to reflect Phase 4: phase badge bumped 3/13 → 4/13, repo layout tree expanded with the two new docs and the new data/dashboard/ subdirectory with all five new CSVs, English and Arabic summaries updated to mention Phase 4 (Luxury Dark Mode, 6 KPI cards, 4 charts, gauge, progress bars, latest-5 ledger, soft-lock layer), full new 'المرحلة الرابعة: اللوحة الرئيسية والتقرير السنوي / Phase 4: Ultimate Fintech Dashboard' section with the theme palette table, the four modules summary, and a 10-step 'How to assemble the dashboard sheet' subsection deep-linking to all five CSVs and to docs/07 + docs/08, and the 'Upcoming phase' pointer rewritten to describe Phases 5..13 (automation via Apps Script, locale presets, separate debts/obligations layer, multi-year archive, commercial distribution)."
+    },
+    {
+      "path": ".agents/tasks/initial/features/04_dashboard_annual_report.json",
+      "description": "This feature record."
+    }
+  ],
+  "key_formulas_summary": {
+    "annual_total_income_K1": "=SUM('يناير'!E10:E28, 'فبراير'!E10:E28, 'مارس'!E10:E28, 'أبريل'!E10:E28, 'مايو'!E10:E28, 'يونيو'!E10:E28, 'يوليو'!E10:E28, 'أغسطس'!E10:E28, 'سبتمبر'!E10:E28, 'أكتوبر'!E10:E28, 'نوفمبر'!E10:E28, 'ديسمبر'!E10:E28)",
+    "annual_total_expense_K2": "=SUM('يناير'!E33:E62, 'فبراير'!E33:E62, 'مارس'!E33:E62, 'أبريل'!E33:E62, 'مايو'!E33:E62, 'يونيو'!E33:E62, 'يوليو'!E33:E62, 'أغسطس'!E33:E62, 'سبتمبر'!E33:E62, 'أكتوبر'!E33:E62, 'نوفمبر'!E33:E62, 'ديسمبر'!E33:E62)",
+    "net_profit_K3": "=B5 - F5",
+    "total_assets_K4": "='الأهداف المالية والادخار'!D2 + _DashboardEngine!O5",
+    "total_liabilities_K5": "='الأهداف المالية والادخار'!B3 * 12",
+    "savings_rate_K6": "=IFERROR((B5 - F5) / B5, 0)",
+    "trend_string_template_B7": "=IF(_DashboardEngine!I2=0, \"-\", IF(_DashboardEngine!H2 >= _DashboardEngine!I2, \"▲ \" & TEXT((_DashboardEngine!H2 - _DashboardEngine!I2) / _DashboardEngine!I2, \"0.0%\"), \"▼ \" & TEXT((_DashboardEngine!H2 - _DashboardEngine!I2) / _DashboardEngine!I2, \"0.0%\")))",
+    "category_aggregator_12_sheets": "=SUMIF('يناير'!B33:B62, \"السكن\", 'يناير'!E33:E62) + SUMIF('فبراير'!B33:B62, \"السكن\", 'فبراير'!E33:E62) + SUMIF('مارس'!B33:B62, \"السكن\", 'مارس'!E33:E62) + SUMIF('أبريل'!B33:B62, \"السكن\", 'أبريل'!E33:E62) + SUMIF('مايو'!B33:B62, \"السكن\", 'مايو'!E33:E62) + SUMIF('يونيو'!B33:B62, \"السكن\", 'يونيو'!E33:E62) + SUMIF('يوليو'!B33:B62, \"السكن\", 'يوليو'!E33:E62) + SUMIF('أغسطس'!B33:B62, \"السكن\", 'أغسطس'!E33:E62) + SUMIF('سبتمبر'!B33:B62, \"السكن\", 'سبتمبر'!E33:E62) + SUMIF('أكتوبر'!B33:B62, \"السكن\", 'أكتوبر'!E33:E62) + SUMIF('نوفمبر'!B33:B62, \"السكن\", 'نوفمبر'!E33:E62) + SUMIF('ديسمبر'!B33:B62, \"السكن\", 'ديسمبر'!E33:E62)",
+    "category_aggregator_indirect_compact": "=SUMPRODUCT(ARRAYFORMULA(IFERROR(SUMIF(INDIRECT(\"'\" & $P$2:$P$13 & \"'!B33:B62\"), L2, INDIRECT(\"'\" & $P$2:$P$13 & \"'!E33:E62\")), 0)))",
+    "health_score_O2": "=ROUND(40 * MAX(0, MIN(1, IFERROR(('اللوحة الرئيسية والتقرير السنوي'!B5 - 'اللوحة الرئيسية والتقرير السنوي'!F5) / 'اللوحة الرئيسية والتقرير السنوي'!B5, 0))) + 30 * MAX(0, MIN(1, IFERROR(1 - ('اللوحة الرئيسية والتقرير السنوي'!F5 / SUM('يناير'!D33:D62, 'فبراير'!D33:D62, 'مارس'!D33:D62, 'أبريل'!D33:D62, 'مايو'!D33:D62, 'يونيو'!D33:D62, 'يوليو'!D33:D62, 'أغسطس'!D33:D62, 'سبتمبر'!D33:D62, 'أكتوبر'!D33:D62, 'نوفمبر'!D33:D62, 'ديسمبر'!D33:D62)), 0))) + 30 * IFERROR('الأهداف المالية والادخار'!F2, 0), 0)",
+    "health_rating_O3": "=IFS(O2>=90, \"ممتاز\", O2>=75, \"جيد\", O2>=60, \"مقبول\", TRUE, \"يحتاج إلى تحسين\")",
+    "gauge_display_string": "=_DashboardEngine!O2 & \"/100  \" & _DashboardEngine!O3",
+    "sparkline_progress_bar_emergency_fund": "=SPARKLINE(IFERROR(XLOOKUP(\"صندوق الطوارئ\", 'الأهداف المالية والادخار'!A7:A26, 'الأهداف المالية والادخار'!D7:D26), 0), {\"charttype\",\"bar\"; \"max\",1; \"color1\", IF(IFERROR(XLOOKUP(\"صندوق الطوارئ\", 'الأهداف المالية والادخار'!A7:A26, 'الأهداف المالية والادخار'!D7:D26), 0) < 0.33, \"#DC2626\", IF(IFERROR(XLOOKUP(\"صندوق الطوارئ\", 'الأهداف المالية والادخار'!A7:A26, 'الأهداف المالية والادخار'!D7:D26), 0) < 0.66, \"#F59E0B\", \"#10B981\")); \"empty\",\"zero\"})",
+    "progress_label_text": "=TEXT(IFERROR(XLOOKUP(\"صندوق الطوارئ\", 'الأهداف المالية والادخار'!A7:A26, 'الأهداف المالية والادخار'!D7:D26), 0), \"0.0%\")",
+    "latest_transactions_query_variant_a": "=QUERY(_DashboardEngine!Q2:W, \"select * where Col2 is not null order by Col2 desc limit 5\", 0)",
+    "cumulative_net_surplus_O5": "=SUM(D2:D13)",
+    "cf_trend_up": "=LEFT($B7,1)=\"▲\"",
+    "cf_trend_down": "=LEFT($B7,1)=\"▼\"",
+    "cf_ledger_income_tag": "=$J48=\"دخل\"",
+    "cf_ledger_expense_tag": "=$J48=\"مصروف\""
+  },
+  "named_ranges_consumed": [
+    "rng_ActiveFormat"
+  ],
+  "theme_palette_hex_codes": {
+    "bg-page": "#0F172A",
+    "bg-card": "#1F2937",
+    "fg-primary": "#F1F5F9",
+    "fg-muted": "#94A3B8",
+    "accent-income": "#10B981",
+    "accent-expense": "#DC2626",
+    "accent-net": "#06B6D4",
+    "accent-trend-up": "#10B981",
+    "accent-trend-down": "#EF4444",
+    "gridline": "#334155",
+    "palette-orange": "#F97316",
+    "palette-blue": "#3B82F6",
+    "palette-purple": "#8B5CF6",
+    "palette-pink": "#EC4899",
+    "gauge-red": "#DC2626",
+    "gauge-amber": "#F59E0B",
+    "gauge-light-green": "#84CC16",
+    "gauge-green": "#10B981"
+  },
+  "dashboard_layout_invariants": {
+    "sheet_name": "اللوحة الرئيسية والتقرير السنوي",
+    "engine_sheet_name": "_DashboardEngine",
+    "rtl_required": true,
+    "title_row": "B2:Y2 (merged)",
+    "kpi_cards": {
+      "card1_total_income": "B4:E8",
+      "card2_total_expense": "F4:I8",
+      "card3_net_profit": "J4:M8",
+      "card4_total_assets": "N4:Q8",
+      "card5_total_liabilities": "R4:U8",
+      "card6_savings_rate": "V4:Y8"
+    },
+    "charts": {
+      "chart1_combo_monthly_comparison": "B11:M26",
+      "chart2_waterfall_cash_flow": "N11:Y26",
+      "chart3_doughnut_income_sources": "B29:G44",
+      "chart4_doughnut_expense_categories": "H29:M44",
+      "health_gauge": "N29:S44",
+      "progress_bars": "T29:Y44",
+      "latest_transactions_ledger": "H47:N56"
+    }
+  },
+  "verification": {
+    "build_command": "n/a (documentation + CSV seed only, no compiled artifacts)",
+    "test_command": "n/a (no test harness in repo)",
+    "manual_checks_performed": [
+      "All five new CSVs in data/dashboard/ start with the UTF-8 BOM bytes EF BB BF (verified via od -An -tx1 -N3).",
+      "Zero em-dash characters (U+2014) anywhere in the repo (verified via Python tree scan; the 34 em-dashes initially generated in docs/07 were programmatically replaced with HYPHEN-MINUS before commit).",
+      "All hex codes in docs/07, docs/08, and theme_palette.csv match the spec exactly (#0F172A, #1F2937, #F1F5F9, #94A3B8, #10B981, #DC2626, #06B6D4, #EF4444, #F59E0B, #84CC16, #F97316, #3B82F6, #8B5CF6, #EC4899, #334155).",
+      "Hidden engine sheet name starts with underscore (_DashboardEngine) as required.",
+      "All formulas Google-Sheets-compatible (SUM, SUMIF, IFERROR, IFS, IF, MAX, MIN, ROUND, TEXT, ARRAYFORMULA, QUERY, SPARKLINE, XLOOKUP, INDIRECT, SUMPRODUCT, LEFT, VALUE, SUBSTITUTE). No Excel-365-only spill operators or LAMBDA/MAP/REDUCE/BYROW.",
+      "README phase badge updated 3/13 → 4/13.",
+      "Sheet name 'اللوحة الرئيسية والتقرير السنوي' used consistently across all three new artifacts (docs/07, docs/08, README) byte-for-byte."
+    ]
+  },
+  "deviations_from_spec": [
+    "User wrote 'المواصلات' as a Waterfall category, but the canonical Phase 1 expense category in rng_ExpenseCategories is 'النقل' (the spec given in the original Phase 1 prompt). The Waterfall data row uses SUMIF on the canonical 'النقل' value while the chart label can be customised by the user to display 'المواصلات' if preferred. This is documented explicitly in section 4.2.1 of docs/07.",
+    "User listed 'صندوق التقاعد' as the third progress-bar goal, but Phase 3 only seeded four baseline goals (شراء سيارة, شراء منزل, صندوق الطوارئ, السفر والاستثمار). The dashboard formula for the third progress bar will return 0% until the user manually adds a 'صندوق التقاعد' row to the goals sheet. This is called out in docs/07 section 5.2 and in the README's Phase 4 section.",
+    "ARRAYFORMULA wrapping IFS with TEXT and string concatenation is intentionally avoided (same rationale as Phase 3): unreliable behavior across Sheets versions. The trend string in B7..V7 is documented as a per-cell formula written six times by hand.",
+    "The hidden _DashboardEngine sheet uses 588 helper rows (12 months x (19 income rows + 30 expense rows)) for the latest-transactions QUERY. This is acceptable but could be replaced by an Apps Script-generated dynamic range in a future automation phase.",
+    "Total assets (K4) and total liabilities (K5) are documented as placeholder formulas. K4 = goals saved + cumulative net surplus YTD, K5 = required monthly installment x 12. These are intentionally simple proxies until a dedicated Assets sheet and a dedicated Debts sheet are added in a future phase. Documented in section 3.3 of docs/07."
+  ],
+  "notes_for_followups": [
+    "Phase 5+ should add a dedicated 'الديون والالتزامات' sheet that K5 can reference instead of the *12 placeholder.",
+    "Phase 5+ should add a dedicated 'الأصول' sheet that K4 can reference as the authoritative assets source.",
+    "An Apps Script automation phase could batch-apply all 14 protection rules from data/dashboard/protection_rules.csv programmatically rather than requiring manual click-through.",
+    "A multi-year archive phase could extend the Trend strings (B7..V7) to compare YoY (current year vs prior year) instead of YTD vs prior month, by reading from an archived totals sheet.",
+    "GOOGLEFINANCE-driven currency rates (introduced in Phase 1) cascade through every monetary cell on the dashboard via rng_ActiveFormat, so changing the Main Currency at 'الإعدادات وأسعار الصرف'!B3 instantly retints all six KPI cards, all four charts axes, the gauge label, and the ledger amount column.",
+    "The user's original Phase 4 request mentioned 'Phase 4 to wrap up the BUDGET-CALCULATOR-2026 system' but the README badge (4/13) implies more phases are anticipated. The Upcoming-phase pointer in README documents the working assumption (Phases 5..13 = automation, locale presets, debts layer, archive, distribution); confirm with the user before starting Phase 5."
+  ]
+}

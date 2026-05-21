@@ -1,0 +1,15 @@
+﻿النطاق,نوع الحماية,رسالة التحذير
+ورقة _DashboardEngine بأكملها,Protect sheet (Show a warning),هذه الورقة جزء من المحرك الخلفي للوحة المعلومات. التعديل قد يكسر الصيغ والرسوم البيانية.
+B4:E8 (بطاقة 1 - إجمالي الدخل),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+F4:I8 (بطاقة 2 - إجمالي المصروفات),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+J4:M8 (بطاقة 3 - صافي الربح),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+N4:Q8 (بطاقة 4 - إجمالي الأصول),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+R4:U8 (بطاقة 5 - إجمالي الالتزامات),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+V4:Y8 (بطاقة 6 - معدل الادخار),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+B11:M26 (Chart 1 - المقارنة الشهرية),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+N11:Y26 (Chart 2 - Waterfall),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+B29:G44 (Chart 3 - دونات الدخل),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+H29:M44 (Chart 4 - دونات المصاريف),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+N29:S44 (Health Gauge),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+T29:Y44 (Progress Bars),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
+H47:N56 (Latest Transactions Ledger),Protect range (Show a warning),هذه الخلية تحوي صيغة محسوبة آلياً، لا تُعدَّل يدوياً.
