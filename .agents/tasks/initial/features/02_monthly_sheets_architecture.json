@@ -1,0 +1,106 @@
+{
+  "id": "02_monthly_sheets_architecture",
+  "title": "Core 12 Monthly Sheets Architecture: نظام الـ 12 شهر (يناير → ديسمبر)",
+  "status": "completed",
+  "summary": "Delivered the architectural blueprint, copy-pasteable Google-Sheets-compatible formulas, importable header seeds, and README integration for the twelve RTL Arabic monthly ledger sheets. Each monthly sheet is engineered Right-to-Left, defines an at-the-top-right KPI summary panel (rows 1-6, columns A:G), an Income block (rows 9-29) and an Expenses block (rows 32-63) with the exact RTL column order (التاريخ, الفئة, الوصف, ...المتوقع, ...الفعلي, الفرق, طريقة الدفع), a per-row Dynamic Alert Engine in column H driven by the 🔴/🟡/🟢 thresholds, plus a workbook-level alert in F2. All cross-sheet references go exclusively through the Phase 1 named ranges (rng_*).",
+  "deliverables": [
+    {
+      "path": "docs/03_monthly_sheets_architecture.md",
+      "description": "Phase 2 architecture document in Arabic (RTL-wrapped). Twelve sections: (1) RTL foundation explaining that under View → Right-to-Left in Google Sheets, column A is the rightmost visible column, (2) cell-by-cell KPI panel for rows 1-6 across columns A:G, (3) Income block layout for rows 9-29, (4) Expenses block layout for rows 32-63 plus alert column H, (5) full data validation rules table binding to rng_IncomeCategories / rng_ExpenseCategories / rng_PaymentMethods, (6) the built-in financial intelligence formulas (totals, savings %, spending %, top expense category in both XLOOKUP and INDEX/MATCH variants, top expense amount), (7) the Dynamic Alert Engine with empty-row guard followed by red/amber/green thresholds, both as nested IF and as IFS, on per-row and on month-total levels, (8) Conditional Formatting Custom-formula rules, (9) currency formatting via rng_ActiveFormat (no hardcoded currency symbols anywhere), (10) cross-sheet reference table, (11) nine-step assembly procedure, (12) link to formula reference."
+    },
+    {
+      "path": "docs/04_monthly_formulas_reference.md",
+      "description": "Phase 2 formula quick-reference, 22 sections. Each formula in a copy-pasteable code block with an Arabic description and the recommended target cell. Covers: income difference (per-row + ARRAYFORMULA), expense difference (per-row + ARRAYFORMULA), per-row alert (IF + IFS), four KPI totals (B3/B4/D3/D4), net surplus/deficit (B5), savings rate (F3), spending rate (F4), top expense category (XLOOKUP variant + INDEX/MATCH variant), top expense amount (F5), workbook-level alert (IF + IFS) at F2, both totals rows, TEXT wrapper using rng_ActiveFormat, data-validation source strings, conditional-formatting custom formulas, and a SUMIF + INDIRECT pattern with five sub-variants for use in the upcoming annual summary sheet."
+    },
+    {
+      "path": "data/monthly_template/income_block_header.csv",
+      "description": "UTF-8-with-BOM single-row CSV. Seven columns in RTL order from column A onward: التاريخ, الفئة, الوصف, الدخل المتوقع, الدخل الفعلي, الفرق, طريقة الدفع. Pasted into A9 of every monthly sheet."
+    },
+    {
+      "path": "data/monthly_template/expenses_block_header.csv",
+      "description": "UTF-8-with-BOM single-row CSV. Eight columns in RTL order from column A onward: التاريخ, الفئة, الوصف, المصروف المتوقع, المصروف الفعلي, الفرق, طريقة الدفع, حالة التنبيه. Pasted into A32 of every monthly sheet."
+    },
+    {
+      "path": "data/monthly_template/kpi_panel_labels.csv",
+      "description": "UTF-8-with-BOM two-column CSV with header `بيان,قيمة`. Twelve label rows for the KPI summary panel: العملة الرئيسية للعرض, الشهر, إجمالي الدخل المتوقع, إجمالي الدخل الفعلي, إجمالي المصروف المتوقع, إجمالي المصروف الفعلي, صافي الفائض/العجز, نسبة الادخار, نسبة الإنفاق, أعلى فئة استنزاف, مبلغ أعلى فئة استنزاف, مؤشر التنبيه الذكي. Value column intentionally left blank for the user to fill from docs/04."
+    },
+    {
+      "path": "data/monthly_template/month_names.csv",
+      "description": "UTF-8-with-BOM single-column CSV with header `أشهر السنة` and the twelve Arabic month names in calendar order: يناير, فبراير, مارس, أبريل, مايو, يونيو, يوليو, أغسطس, سبتمبر, أكتوبر, نوفمبر, ديسمبر."
+    },
+    {
+      "path": "README.md",
+      "description": "Updated to reflect Phase 2: phase badge bumped 1/13 → 2/13, repository layout tree expanded to include the four new files under data/monthly_template/ and the two new docs, English and Arabic summaries updated to mention Phase 2's monthly ledger and intelligence layer, the previous 'Upcoming Monthly Sheets' stub replaced with a full Phase 2 section that lists what each monthly sheet contains, an eight-step 'How to assemble one monthly sheet' subsection that links to all four CSV seeds and to docs 03 and 04, plus a forward-looking pointer to Phase 3 (annual summary sheet) referencing the SUMIF + INDIRECT pattern in doc 04."
+    }
+  ],
+  "key_formulas_summary": {
+    "income_difference_per_row": "=IFERROR(IF(OR(D10=\"\", E10=\"\"), \"\", E10-D10), \"\")",
+    "income_difference_arrayformula": "=ARRAYFORMULA(IF((D10:D28=\"\")+(E10:E28=\"\")>0, \"\", E10:E28 - D10:D28))",
+    "expense_difference_per_row": "=IFERROR(IF(OR(D33=\"\", E33=\"\"), \"\", D33-E33), \"\")",
+    "expense_difference_arrayformula": "=ARRAYFORMULA(IF((D33:D62=\"\")+(E33:E62=\"\")>0, \"\", D33:D62 - E33:E62))",
+    "per_row_alert_nested_if": "=IF(OR(D33=\"\", E33=\"\"), \"\", IF(E33 > D33, \"🔴 تجاوز الميزانية\", IF(E33 >= 0.9 * D33, \"🟡 اقتراب من الحد\", \"🟢 أداء مالي ممتاز\")))",
+    "per_row_alert_ifs": "=IFS(OR(D33=\"\", E33=\"\"), \"\", E33 > D33, \"🔴 تجاوز الميزانية\", E33 >= 0.9 * D33, \"🟡 اقتراب من الحد\", TRUE, \"🟢 أداء مالي ممتاز\")",
+    "kpi_total_expected_income": "=SUM(D10:D28)",
+    "kpi_total_actual_income": "=SUM(E10:E28)",
+    "kpi_total_expected_expense": "=SUM(D33:D62)",
+    "kpi_total_actual_expense": "=SUM(E33:E62)",
+    "net_surplus_or_deficit": "=B4-D4",
+    "savings_rate": "=IFERROR((B4-D4)/B4, 0)",
+    "spending_rate": "=IFERROR(D4/B4, 0)",
+    "top_expense_category_xlookup": "=IFERROR(XLOOKUP(MAX(ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62))), ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62)), rng_ExpenseCategories), \"\")",
+    "top_expense_category_index_match": "=IFERROR(INDEX(rng_ExpenseCategories, MATCH(MAX(ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62))), ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62)), 0)), \"\")",
+    "top_expense_amount": "=IFERROR(MAX(ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62))), 0)",
+    "workbook_alert_nested_if": "=IF(OR(D3=\"\", D4=\"\", D3=0), \"\", IF(D4 > D3, \"🔴 تجاوز الميزانية\", IF(D4 >= 0.9 * D3, \"🟡 اقتراب من الحد\", \"🟢 أداء مالي ممتاز\")))",
+    "workbook_alert_ifs": "=IFS(OR(D3=\"\", D4=\"\", D3=0), \"\", D4 > D3, \"🔴 تجاوز الميزانية\", D4 >= 0.9 * D3, \"🟡 اقتراب من الحد\", TRUE, \"🟢 أداء مالي ممتاز\")",
+    "annual_summary_indirect_sumif": "=SUMIF(INDIRECT(\"'\"&B$1&\"'!B33:B62\"), $A2, INDIRECT(\"'\"&B$1&\"'!E33:E62\"))",
+    "text_wrapper_active_format": "=TEXT(B5, rng_ActiveFormat)"
+  },
+  "named_ranges_consumed": [
+    "rng_MainCurrency",
+    "rng_ActiveFormat",
+    "rng_IncomeCategories",
+    "rng_ExpenseCategories",
+    "rng_PaymentMethods"
+  ],
+  "monthly_sheet_layout_invariants": {
+    "rtl_required": true,
+    "kpi_panel": { "rows": "1-6", "columns": "A:G" },
+    "income_block": {
+      "header_row": 9,
+      "data_rows": "10-28",
+      "totals_row": 29,
+      "columns_in_rtl_order_from_A": ["التاريخ", "الفئة", "الوصف", "الدخل المتوقع", "الدخل الفعلي", "الفرق", "طريقة الدفع"]
+    },
+    "expenses_block": {
+      "header_row": 32,
+      "data_rows": "33-62",
+      "totals_row": 63,
+      "alert_column": "H33:H62",
+      "columns_in_rtl_order_from_A": ["التاريخ", "الفئة", "الوصف", "المصروف المتوقع", "المصروف الفعلي", "الفرق", "طريقة الدفع", "حالة التنبيه"]
+    }
+  },
+  "verification": {
+    "build_command": "n/a (documentation + CSV seed only, no compiled artifacts)",
+    "test_command": "n/a (no test harness in repo)",
+    "manual_checks_performed": [
+      "All four new CSVs in data/monthly_template/ start with the UTF-8 BOM bytes EF BB BF (verified via od -An -tx1).",
+      "No em-dash characters (U+2014) anywhere in the new docs, README, or CSVs (verified via grep -P '\\x{2014}').",
+      "Every SUMIF that aggregates by expense category references rng_ExpenseCategories - no inline category lists in formulas anywhere.",
+      "No hardcoded currency glyphs ($, €, £, ر.س, etc.) inside any formula in the two new docs.",
+      "All formulas confirmed Google-Sheets-compatible (XLOOKUP, FILTER, ARRAYFORMULA, IFERROR, IFS, IF, SUMIF, MAX, INDEX, MATCH, TEXT, INDIRECT, SUM); no Excel-365-only spill operators or LAMBDA/MAP/REDUCE/BYROW.",
+      "README phase badge updated 1/13 → 2/13.",
+      "Cross-links in README, doc 03, and doc 04 verified to point to existing sections."
+    ]
+  },
+  "deviations_from_spec": [
+    "User spec said 'rows 9-28 = 20 input rows, with totals row at 29' - this is internally inconsistent (rows 10-28 inclusive is 19 rows). I honored the explicit cell references the user gave throughout (B10:B28, =E10-D10, totals at row 29) and document the income block as 19 entry rows. The expense block (33-62 = 30 rows, totals at 63) has no such inconsistency.",
+    "Currency formatting in the KPI panel and totals is specified to be applied via Format → Number → Custom number format using the string from rng_ActiveFormat. The TEXT(value, rng_ActiveFormat) wrapper is documented as a display-only alternative (because TEXT returns a string and would break further numeric aggregation).",
+    "The KPI panel's `الشهر` cell (D2) is documented as a manual literal entry (e.g., يناير) with an optional CELL(\"filename\",...)-based formula. Manual entry was chosen because it survives 'Duplicate sheet' more reliably and supports cross-sheet INDIRECT references in the upcoming annual summary."
+  ],
+  "notes_for_followups": [
+    "The upcoming Phase 3 annual summary sheet should consume the SUMIF + INDIRECT pattern documented in section 21 of docs/04_monthly_formulas_reference.md to aggregate the 12 monthly sheets into one cross-tab table (categories × months).",
+    "Conditional formatting for the per-row alert column (H33:H62) is documented as Custom formula is rules with the literal alert glyphs as comparators. These rules cannot be expressed in CSV form and must be applied manually in the workbook (or via Apps Script in a future automation phase).",
+    "Per-sheet protections (Data → Protect sheet) do not propagate when a sheet is duplicated. If the user wants to lock the totals/KPI rows on each monthly sheet, the protection rules must be re-applied 12 times. A future Apps Script automation could batch this.",
+    "The workbook-level alert (F2) uses thresholds against monthly totals. A future enhancement could weight categories or use a rolling 90-day window once historical data accumulates across multiple months."
+  ]
+}
