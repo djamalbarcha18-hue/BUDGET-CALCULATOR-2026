@@ -1,0 +1,84 @@
+{
+  "id": "05_onboarding_welcome_sheet",
+  "title": "Phase 5: Branded Onboarding & Welcome Sheet (📖 دليل الاستخدام والترحيب)",
+  "status": "completed",
+  "summary": "Architectural blueprint, assembly checklist, and importable CSV seeds for the dedicated RTL Arabic onboarding sheet '📖 دليل الاستخدام والترحيب', positioned as the first tab so it opens by default. The sheet carries a luxury dark-mode (#0F172A / #1F2937) Hero Header with the dual-line title 'نظام ميزان المالي الذكي - BUDGET CALCULATOR 2026', a developer-signature card RESTRICTED exclusively to this sheet ('💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس' and '📩 للتواصل والدعم الفني: boulahdiddjamaleddine'), three accent-bordered Quick Start cards (cyan/green/orange) hyperlinked to the settings, the current month, and the dashboard, and a footer with version + disclaimer + technical note. Phase 5 also extends the soft-lock policy across the entire workbook: every sensitive range now uses 'Show a warning' with one of four standardized Arabic warning strings.",
+  "deliverables": [
+    {
+      "path": "docs/09_onboarding_welcome_architecture.md",
+      "description": "Phase 5 architecture document in Arabic (RTL-wrapped). 10 sections: (1) the policy rationale for a single onboarding sheet and the iron rule that the developer signature appears ONLY here, (2) the 16-column x 34-row cell-by-cell layout, (3) Hero Header on B2:O4 with Alt+Enter dual-line technique, (4) tagline narrative on B6:O9, (5) the three Quick Start cards (B11:F23 / G11:K23 / L11:P23) with internal structure (number badge / title / body / hyperlink) and the three accent border colors, (6) developer signature card on B26:O29 with the protect-range warning, (7) footer block on rows 32-34, (8) workbook-wide soft-lock policy table (7 protection rules across all sheets with 4 standardized Arabic warning messages), (9) nine-step assembly procedure with Ctrl+F verification on 'Boulahdid', (10) link to the assembly checklist."
+    },
+    {
+      "path": "docs/10_onboarding_assembly_checklist.md",
+      "description": "Phase 5 assembly checklist. 5 sections: (1) bullet checklist of 13 build steps, (2) HYPERLINK formula templates for the 3 quick-start cards, (3) paste-ready text blocks for every cell range (Hero Header, tagline, 3 cards, signature, footer), (4) the 4 standardized Arabic warning messages, (5) quick palette reference table mapping the 5 used theme tokens to their hex codes."
+    },
+    {
+      "path": "data/onboarding/welcome_sheet_layout.csv",
+      "description": "UTF-8-with-BOM 6-column CSV (النطاق, نوع الكتلة, المحتوى, الخلفية, لون النص, حجم الخط) with one row per cell-block in the welcome sheet (10 blocks: hero header, tagline, 3 quick-start cards, 2 signature lines, 3 footer lines)."
+    },
+    {
+      "path": "data/onboarding/quick_start_steps.csv",
+      "description": "UTF-8-with-BOM 5-column CSV (رقم الخطوة, العنوان, المتن, الورقة الهدف للرابط, لون حدّ البطاقة) with the 3 quick-start cards: 01 Settings (cyan #06B6D4, links to 'الإعدادات وأسعار الصرف'), 02 Monthly Input (green #10B981, links to 'يناير'), 03 Dashboard Reading (orange #F97316, links to 'اللوحة الرئيسية والتقرير السنوي')."
+    },
+    {
+      "path": "data/onboarding/developer_signature.csv",
+      "description": "UTF-8-with-BOM 2-column CSV (السطر, النصّ) with the 2 lines of the developer signature. Single source of truth - any change to the credit text propagates from here."
+    },
+    {
+      "path": "README.md",
+      "description": "Updated to reflect Phase 5: phase badge bumped 4/13 -> 5/13, repo layout tree expanded with docs/09 + docs/10 and the new data/onboarding/ subdirectory with all 3 CSVs, English and Arabic summaries updated to mention Phase 5 (welcome sheet, dual-line hero header, restricted developer signature, accent-bordered quick-start cards, hyperlinks), full new 'المرحلة الخامسة: ورقة الترحيب ودليل الاستخدام / Phase 5: Onboarding & Welcome Sheet' section with the workbook-wide soft-lock policy table and the final 17-tab order, a 10-step 'How to assemble the welcome sheet' subsection with deep links to all 3 CSVs and to docs/09 + docs/10, and a brand-new 'Full Workbook Compile Guide' section that walks the user through the seven steps to produce the complete 5/13 workbook from scratch."
+    },
+    {
+      "path": ".agents/tasks/initial/features/05_onboarding_welcome_sheet.json",
+      "description": "This feature record."
+    }
+  ],
+  "key_facts": {
+    "sheet_name": "📖 دليل الاستخدام والترحيب",
+    "sheet_position_in_tab_order": 1,
+    "rtl_required": true,
+    "theme": "Luxury Dark Mode (same as Phase 4)",
+    "hero_title_arabic": "نظام ميزان المالي الذكي",
+    "hero_title_english": "BUDGET CALCULATOR 2026",
+    "developer_signature_line_1": "💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس",
+    "developer_signature_line_2": "📩 للتواصل والدعم الفني: boulahdiddjamaleddine",
+    "developer_signature_scope": "EXCLUSIVELY in 📖 دليل الاستخدام والترحيب - forbidden anywhere else in the workbook",
+    "quick_start_cards": [
+      { "id": "01", "title": "اضبط الإعدادات أوّلاً", "anchor": "B11:F23", "accent_border": "#06B6D4", "links_to": "الإعدادات وأسعار الصرف" },
+      { "id": "02", "title": "أدخل بياناتك الشهريّة", "anchor": "G11:K23", "accent_border": "#10B981", "links_to": "يناير" },
+      { "id": "03", "title": "اقرأ اللوحة الرئيسيّة بأمان", "anchor": "L11:P23", "accent_border": "#F97316", "links_to": "اللوحة الرئيسية والتقرير السنوي" }
+    ],
+    "developer_signature_anchor": "B26:O29",
+    "footer_anchor": "B32:O34",
+    "hyperlink_formula_template": "=HYPERLINK(\"#gid=<sheet_id>\", \"<displayed text>\")"
+  },
+  "soft_lock_warnings_standardized": {
+    "welcome_sheet_branding": "هذه الكتلة جزء من الهويّة البصريّة للقالب. التعديل غير مرغوب.",
+    "settings_sheet": "هذه الورقة هي مصدر الحقيقة الوحيد للإعدادات. التعديل قد يكسر كل المصنّف.",
+    "calculated_cells_general": "هذه الخلية محسوبة آلياً، لا تُعدَّل يدوياً.",
+    "dashboard_engine_sheet": "هذه الورقة جزء من المحرك الخلفي للوحة المعلومات. التعديل قد يكسر الصيغ والرسوم البيانية."
+  },
+  "named_ranges_consumed": [],
+  "verification": {
+    "build_command": "n/a (documentation + CSV seed only, no compiled artifacts)",
+    "test_command": "n/a (no test harness in repo)",
+    "manual_checks_performed": [
+      "All 3 new CSVs in data/onboarding/ start with the UTF-8 BOM bytes EF BB BF (verified via od -An -tx1 -N3).",
+      "Zero em-dash characters (U+2014) anywhere in the repo (verified via Python tree scan; the 3 em-dashes initially generated in docs/09 were programmatically replaced with HYPHEN-MINUS before commit).",
+      "Sheet name matches spec exactly including the 📖 emoji prefix (verified across docs/09, docs/10, README, the feature JSON, and welcome_sheet_layout.csv).",
+      "Developer signature byte-for-byte match across all artifacts (docs/09 section 6, docs/10 section 3.6, developer_signature.csv, README phase 5 section).",
+      "Tab-order documentation (1 = welcome, 2 = settings, 3 = goals, 4..15 = months, 16 = dashboard, 17 = engine) consistent across docs/09 section 1.3 and README phase 5 section.",
+      "All 3 quick-start cards reference the canonical sheet names from prior phases ('الإعدادات وأسعار الصرف', 'يناير', 'اللوحة الرئيسية والتقرير السنوي') verbatim - no rename drift."
+    ]
+  },
+  "deviations_from_spec": [
+    "User wrote 'Boulahdid Djamal Eddine — المهندس' with an em-dash, but the repo-wide rule forbids U+2014. The signature uses a HYPHEN-MINUS (U+002D) instead. Visual rendering under RTL with center alignment remains professional. This substitution is documented explicitly in section 6.1 of docs/09.",
+    "User said 'Position this as the very first sheet in the workbook tab order (Far Right in RTL setup)'. Under Google Sheets RTL view, the tab bar at the bottom flips so position 1 (the first/leftmost in the underlying tab index) renders at the far right of the screen. This means the 'first tab' = 'far right tab' under RTL, which matches the user's intent. Documented in section 1.3 of docs/09."
+  ],
+  "notes_for_followups": [
+    "The Hyperlink formulas in the quick-start cards require the workbook-specific gid for each target sheet. The user must either fill in the gid manually after first-load (one-time step) or use Insert → Link → Sheets in this spreadsheet which Google Sheets auto-resolves.",
+    "An Apps Script automation phase could batch-create the welcome sheet, apply the dark theme, paste all CSV contents, build the hyperlinks programmatically (using SpreadsheetApp.getSheetByName(...).getSheetId()), and apply the soft-lock protection layer in one step.",
+    "A future commercial-distribution phase could offer template variants where the developer signature is replaced by the buyer's white-label branding. The current single-source-of-truth in data/onboarding/developer_signature.csv makes this rebrand a one-line change.",
+    "The 7-step 'Full Workbook Compile Guide' added to README is the entry point for any new user. It assumes Phases 1-5 are merged (PRs #1..#5) before execution."
+  ]
+}
