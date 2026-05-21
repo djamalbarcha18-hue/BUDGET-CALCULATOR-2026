@@ -1,0 +1,129 @@
+{
+  "id": "03_savings_goals_emergency_fund",
+  "title": "Phase 3: Savings Goals & Emergency Fund System (نظام الأهداف المالية والادخار)",
+  "status": "completed",
+  "summary": "Architectural blueprint, copy-pasteable Google-Sheets-compatible formulas, importable CSV seeds, and README integration for the dedicated RTL Arabic sheet 'الأهداف المالية والادخار'. The sheet ships a merged title in A1:I1, a workbook-level summary panel on rows 2-4 (إجمالي تكلفة الأهداف, إجمالي المدخر, نسبة الإنجاز الكلية, إجمالي القسط الشهري المطلوب, ثلاث عدّادات للحالات), a 9-column goals table with header on row 6 and 20 input rows from row 7 to row 26, and four pre-seeded baseline goals (شراء سيارة, شراء منزل, صندوق الطوارئ, السفر والاستثمار). The dynamic status engine in column H emits the literal glyphs 🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد using IFS (and a nested-IF equivalent). The smart-recommendation engine in column I is a single Google-Sheets-compatible IFS expression that branches on goal completion, expired target dates, and a tiered horizon (F7 > 24 ⏳ calm / F7 > 6 🟡 balanced / F7 ≤ 6 🔴 urgent), with the required-installment amount embedded via TEXT(G7, rng_ActiveFormat) so the currency glyph follows rng_MainCurrency without any hardcoded symbol.",
+  "deliverables": [
+    {
+      "path": "docs/05_savings_goals_architecture.md",
+      "description": "Phase 3 architecture document in Arabic (RTL-wrapped). Sixteen sections: (1) RTL foundation and the explicit reading that under View → Right-to-Left, column A is the rightmost visible column and I is the leftmost, (2) merged title in A1:I1, (3) summary panel grid for rows 2-4 with exact cells and per-cell formulas (B2 SUM, D2 SUM, F2 IFERROR/SUM ratio, B3 SUMIF on 🟡 قيد الادخار, D3/F3/B4 COUNTIF), (4) row-6 goals-table header in exact RTL order from A to I, (5) data rows 7-26 with the four baseline seeded goals and the explicit placeholder disclaimer, (6) percentage-progress per-row + ARRAYFORMULA, (7) months-remaining DATEDIF + arithmetic + ARRAYFORMULA variants, (8) required-monthly-saving per-row + ARRAYFORMULA with C7>=B7 and F7=0 guards, (9) status engine with IFS recommended and nested-IF equivalent, (10) smart-recommendation IFS with the empty-row guard firing first then completion / expired / >24 / >6 / default, all amounts via TEXT(..., rng_ActiveFormat), (11) data validation table covering B7:B26, C7:C26, E7:E26, G7:G26 plus a recommendation to protect the formula columns D/F/G/H/I, (12) conditional-formatting custom formulas on H7:H26 for the three status glyphs and a recommended D7:D26 rule for D7>=1, (13) currency-formatting policy through rng_ActiveFormat with the explicit prohibition on hardcoded symbols, (14) cross-sheet references showing rng_ActiveFormat is the only Phase-1 named range consumed and listing the seven values the future annual-summary sheet will read back, (15) eleven-step assembly procedure, (16) link to formula reference."
+    },
+    {
+      "path": "docs/06_savings_goals_formulas_reference.md",
+      "description": "Phase 3 formula quick-reference, 21 sections. Each formula in a copy-pasteable code block with an Arabic description and recommended target cell. Covers: percentage progress (per-row + ARRAYFORMULA), months remaining (DATEDIF + arithmetic + two ARRAYFORMULA variants), required monthly saving (per-row + ARRAYFORMULA), status (IFS + nested IF), the full smart-recommendation IFS with a one-line per-branch selection table, TEXT formatting wrapper, all seven summary-panel formulas (SUM, SUM, IFERROR/SUM ratio, SUMIF, three COUNTIFs), conditional-formatting custom-formula strings, and a cross-sheet lookup reference for the upcoming annual-summary sheet."
+    },
+    {
+      "path": "data/savings_goals/goals_seed.csv",
+      "description": "UTF-8-with-BOM CSV. Header row in RTL order from column A: الهدف, التكلفة التقديرية, المبلغ المدخر حالياً, نسبة الإنجاز, الموعد المستهدف, الأشهر المتبقية, القسط الشهري المطلوب, الحالة, التوصية الذكية. Four baseline rows pre-populated with placeholder values for columns A, B, C, E only (D, F, G, H, I left empty since they are formula-driven): شراء سيارة (80000/12000/2027-12-31), شراء منزل (1200000/50000/2030-12-31), صندوق الطوارئ (60000/15000/2026-12-31), السفر والاستثمار (25000/5000/2026-08-31). Dates use ISO-8601 (YYYY-MM-DD) to ensure consistent parsing across locales."
+    },
+    {
+      "path": "data/savings_goals/summary_panel_labels.csv",
+      "description": "UTF-8-with-BOM two-column CSV with header `بيان,قيمة`. Seven label rows for the summary-panel KPIs: إجمالي تكلفة الأهداف, إجمالي المدخر, نسبة الإنجاز الكلية, إجمالي القسط الشهري المطلوب, أهداف مكتملة, أهداف قيد الادخار, أهداف لم تبدأ. Value column intentionally left blank so the user fills the formulas from docs/06."
+    },
+    {
+      "path": "README.md",
+      "description": "Updated to reflect Phase 3: phase badge bumped 2/13 → 3/13, repository layout tree expanded to include the two new docs and the data/savings_goals/ subdirectory with both new CSVs, English and Arabic summaries updated to mention Phase 3's savings-goals & emergency-fund engine, a full 'المرحلة الثالثة: نظام الأهداف المالية والادخار / Phase 3: Savings Goals & Emergency Fund System' section added covering the merged title, the rows 2-4 summary panel, the 9-column RTL goals-table layout, the four baseline seeded goals, the status engine (🟢/🟡/⚪) and the tiered smart-recommendation behavior, plus a 'كيف تركّب ورقة الأهداف · How to assemble the goals sheet' subsection with deep links to docs/05 (assembly), docs/06 (formulas), and both CSV seeds. The 'Upcoming phase' pointer now refers to the annual-summary sheet (Phase 4) and references both the SUMIF + INDIRECT pattern in docs/04 and the cross-sheet lookups in docs/06."
+    },
+    {
+      "path": ".agents/tasks/initial/features/03_savings_goals_emergency_fund.json",
+      "description": "This feature record."
+    }
+  ],
+  "key_formulas_summary": {
+    "percentage_progress_per_row": "=IFERROR(C7/B7, 0)",
+    "percentage_progress_arrayformula": "=ARRAYFORMULA(IF(B7:B26=\"\", \"\", IFERROR(C7:C26/B7:B26, 0)))",
+    "months_remaining_datedif": "=IFERROR(MAX(0, DATEDIF(TODAY(), E7, \"M\")), 0)",
+    "months_remaining_arithmetic": "=IFERROR(MAX(0, ROUND((E7-TODAY())/30.4375, 0)), 0)",
+    "months_remaining_arrayformula_datedif": "=ARRAYFORMULA(IF(E7:E26=\"\", \"\", IFERROR(MAX(0, DATEDIF(TODAY(), E7:E26, \"M\")), 0)))",
+    "months_remaining_arrayformula_arithmetic": "=ARRAYFORMULA(IF(E7:E26=\"\", \"\", IFERROR(MAX(0, ROUND((E7:E26-TODAY())/30.4375, 0)), 0)))",
+    "required_monthly_saving_per_row": "=IF(C7>=B7, 0, IFERROR((B7-C7)/F7, 0))",
+    "required_monthly_saving_arrayformula": "=ARRAYFORMULA(IF(B7:B26=\"\", \"\", IF(C7:C26>=B7:B26, 0, IFERROR((B7:B26 - C7:C26)/F7:F26, 0))))",
+    "status_ifs": "=IFS(B7=\"\", \"\", IFERROR(C7/B7, 0) >= 1, \"🟢 مكتمل\", IFERROR(C7/B7, 0) >= 0.01, \"🟡 قيد الادخار\", TRUE, \"⚪ لم يبدأ بعد\")",
+    "status_nested_if": "=IF(B7=\"\", \"\", IF(IFERROR(C7/B7, 0) >= 1, \"🟢 مكتمل\", IF(IFERROR(C7/B7, 0) >= 0.01, \"🟡 قيد الادخار\", \"⚪ لم يبدأ بعد\")))",
+    "smart_recommendation": "=IFS(B7=\"\", \"\", IFERROR(C7/B7, 0) >= 1, \"🎉 الهدف محقق بالكامل، يمكن إعادة توجيه القسط لهدف جديد.\", F7 = 0, \"⚠️ الموعد المستهدف انتهى دون اكتمال الهدف، يجب تمديد المدة أو زيادة الادخار.\", F7 > 24, \"⏳ لديك وقت كافٍ، خصص \" & TEXT(G7, rng_ActiveFormat) & \" شهرياً للوصول للهدف خلال \" & F7 & \" شهراً.\", F7 > 6, \"🟡 الزمن متوسط، التزم بـ \" & TEXT(G7, rng_ActiveFormat) & \" شهرياً ولا تؤجّل الادخار.\", TRUE, \"🔴 الموعد قريب جداً، يلزم ادخار \" & TEXT(G7, rng_ActiveFormat) & \" شهرياً وقد يتطلب الأمر مراجعة الأولويات.\")",
+    "summary_total_cost": "=SUM(B7:B26)",
+    "summary_total_saved": "=SUM(C7:C26)",
+    "summary_overall_progress": "=IFERROR(SUM(C7:C26)/SUM(B7:B26), 0)",
+    "summary_total_required_monthly": "=SUMIF(H7:H26, \"🟡 قيد الادخار\", G7:G26)",
+    "summary_count_completed": "=COUNTIF(H7:H26, \"🟢 مكتمل\")",
+    "summary_count_in_progress": "=COUNTIF(H7:H26, \"🟡 قيد الادخار\")",
+    "summary_count_not_started": "=COUNTIF(H7:H26, \"⚪ لم يبدأ بعد\")",
+    "text_wrapper_active_format": "=TEXT(G7, rng_ActiveFormat)"
+  },
+  "named_ranges_consumed": [
+    "rng_ActiveFormat"
+  ],
+  "savings_goals_sheet_layout_invariants": {
+    "sheet_name": "الأهداف المالية والادخار",
+    "rtl_required": true,
+    "title_row": { "range": "A1:I1", "merged": true, "text": "الأهداف المالية والادخار - نظام مالي ذكي متكامل" },
+    "summary_panel": {
+      "rows": "2-4",
+      "cells": {
+        "A2": "إجمالي تكلفة الأهداف",
+        "B2": "=SUM(B7:B26)",
+        "C2": "إجمالي المدخر",
+        "D2": "=SUM(C7:C26)",
+        "E2": "نسبة الإنجاز الكلية",
+        "F2": "=IFERROR(SUM(C7:C26)/SUM(B7:B26), 0)",
+        "A3": "إجمالي القسط الشهري المطلوب",
+        "B3": "=SUMIF(H7:H26, \"🟡 قيد الادخار\", G7:G26)",
+        "C3": "أهداف مكتملة",
+        "D3": "=COUNTIF(H7:H26, \"🟢 مكتمل\")",
+        "E3": "أهداف قيد الادخار",
+        "F3": "=COUNTIF(H7:H26, \"🟡 قيد الادخار\")",
+        "A4": "أهداف لم تبدأ",
+        "B4": "=COUNTIF(H7:H26, \"⚪ لم يبدأ بعد\")"
+      }
+    },
+    "header_row": 6,
+    "columns_in_rtl_order_from_A": [
+      "الهدف",
+      "التكلفة التقديرية",
+      "المبلغ المدخر حالياً",
+      "نسبة الإنجاز",
+      "الموعد المستهدف",
+      "الأشهر المتبقية",
+      "القسط الشهري المطلوب",
+      "الحالة",
+      "التوصية الذكية"
+    ],
+    "data_rows": "7-26",
+    "baseline_seeded_goals": [
+      { "row": 7, "name": "شراء سيارة", "estimated_cost": 80000, "currently_saved": 12000, "target_date": "2027-12-31" },
+      { "row": 8, "name": "شراء منزل", "estimated_cost": 1200000, "currently_saved": 50000, "target_date": "2030-12-31" },
+      { "row": 9, "name": "صندوق الطوارئ", "estimated_cost": 60000, "currently_saved": 15000, "target_date": "2026-12-31" },
+      { "row": 10, "name": "السفر والاستثمار", "estimated_cost": 25000, "currently_saved": 5000, "target_date": "2026-08-31" }
+    ],
+    "status_glyphs": ["🟢 مكتمل", "🟡 قيد الادخار", "⚪ لم يبدأ بعد"],
+    "recommendation_emojis": ["🎉", "⚠️", "⏳", "🟡", "🔴"]
+  },
+  "verification": {
+    "build_command": "n/a (documentation + CSV seed only, no compiled artifacts)",
+    "test_command": "n/a (no test harness in repo)",
+    "manual_checks_performed": [
+      "Both new CSVs in data/savings_goals/ start with the UTF-8 BOM bytes EF BB BF (verified via od -An -tx1 | head -1).",
+      "No em-dash characters (U+2014) anywhere in the repo (verified via Python scan over all UTF-8 files, 0 hits).",
+      "All status glyphs in docs/05 and docs/06 match the spec literally: '🟢 مكتمل', '🟡 قيد الادخار', '⚪ لم يبدأ بعد' (verified via Python str.count, all >= 5 occurrences in each doc).",
+      "All recommendation emojis present in both docs: 🎉 (completion), ⚠️ (overdue), ⏳ (long horizon), 🟡 (balanced), 🔴 (urgent).",
+      "All formulas have balanced parentheses (verified via Python paren-balance script that ignores content inside double-quoted strings, 0 unbalanced).",
+      "No hardcoded currency glyphs ($, €, ر.س, د.ج, ...) inside any formula in the two new docs. The only hits are inside the prose paragraph that explicitly forbids them, mirroring the same convention used in Phase 2 docs.",
+      "Currency rendering inside the smart-recommendation string flows exclusively through TEXT(G7, rng_ActiveFormat). No literal currency symbol anywhere in the IFS expression.",
+      "All formulas confirmed Google-Sheets-compatible: IFS, IF, IFERROR, MAX, ROUND, DATEDIF, TODAY, SUM, SUMIF, COUNTIF, ARRAYFORMULA, TEXT. No Excel-365-only spill operators or LAMBDA/MAP/REDUCE/BYROW.",
+      "README phase badge updated 2/13 → 3/13.",
+      "README repository-layout tree expanded with docs/05, docs/06, and the new data/savings_goals/ subdirectory with both CSVs.",
+      "README anchor links to docs/05 and docs/06 follow the same pattern as the existing Phase 2 anchor (#11-إجراء-التركيب-التفصيلي-...) which has been verified to work in the repo's existing convention."
+    ]
+  },
+  "deviations_from_spec": [
+    "The spec describes the seeded baseline rows as 'rows 7-10 pre-seeded'. The CSV seed file (goals_seed.csv) contains a header line + 4 data lines, so when imported via 'Replace data at selected cell' targeting A6 the four goals land in rows 7-10 exactly as the spec requires. If the user instead pastes only the 4 data rows (skipping the CSV header because they wrote the header manually), they should target A7. Both options are documented in section 5 step 5 of docs/05.",
+    "Validation rule on G7:G26 is documented as 'Number ≥ 0 (احتياطي)' even though G is formula-driven. This guard fires only if the user manually overwrites a calculated cell with a paste, mirroring the same defensive style used in Phase 2 for column F (الفرق).",
+    "An optional ARRAYFORMULA variant for the smart-recommendation column I is intentionally NOT provided. ARRAYFORMULA wrapping IFS with TEXT and string concatenation produces unreliable results across Google Sheets versions (especially when concatenating a scalar like F7 inside a per-row branch). The recommendation is documented as a per-row formula written in I7 and dragged down to I26. This is called out explicitly in section 10.4 of docs/05."
+  ],
+  "notes_for_followups": [
+    "The upcoming Phase 4 annual-summary sheet should read from the savings-goals summary panel using the seven cross-sheet references documented in section 21 of docs/06_savings_goals_formulas_reference.md. The most useful cells for the annual KPI panel are B3 (إجمالي القسط الشهري المطلوب, to subtract from monthly disposable income) and F2 (نسبة الإنجاز الكليّة, as a top-line health indicator).",
+    "Conditional-formatting rules for column H (الحالة) cannot be expressed in CSV form and must be applied manually in the workbook (or via Apps Script in a future automation phase). The literal status strings used in the comparators must match docs/05 section 12.1 byte-for-byte.",
+    "Per-range protections (Data → Protect range) on D/F/G/H/I do not propagate when a sheet is duplicated (the savings-goals sheet is a singleton, so this is less of an issue here than in Phase 2).",
+    "If a future phase adds a 'goal type' dimension (e.g., short-term vs long-term, fund vs purchase), the existing layout supports adding a new column J without breaking the formulas, since all SUMIF/COUNTIF references address explicit ranges (B7:B26, C7:C26, ...) rather than open-ended columns."
+  ]
+}
