@@ -3,17 +3,17 @@
 
 [![Sheet](https://img.shields.io/badge/Google%20Sheets-Compatible-success)]()
 [![Locale](https://img.shields.io/badge/Locale-Arabic%20RTL-blue)]()
-[![Status](https://img.shields.io/badge/Phase-1%2F13-orange)]()
+[![Status](https://img.shields.io/badge/Phase-2%2F13-orange)]()
 
 ---
 
 ### English summary
 
-`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. This phase delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats consumed by the twelve monthly sheets that follow.
+`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine).
 
 ### الملخّص العربي
 
-`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم هذه المرحلة **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، والتي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام التي ستستهلكها الأوراق الشهرية الاثنتا عشرة اللاحقة.
+`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي).
 
 ---
 
@@ -21,19 +21,28 @@
 
 ```
 BUDGET-CALCULATOR-2026/
-├── README.md                                  ← this file
+├── README.md                                       ← this file
 ├── docs/
-│   ├── 01_settings_and_exchange_rates.md     ← architecture blueprint (Arabic, RTL)
-│   └── 02_formulas_reference.md              ← copy-pasteable formula reference (Arabic, RTL)
+│   ├── 01_settings_and_exchange_rates.md          ← Phase 1 architecture (Arabic, RTL)
+│   ├── 02_formulas_reference.md                   ← Phase 1 formula quick-reference (Arabic, RTL)
+│   ├── 03_monthly_sheets_architecture.md          ← Phase 2 architecture: 12 monthly sheets (Arabic, RTL)
+│   └── 04_monthly_formulas_reference.md           ← Phase 2 formula quick-reference (Arabic, RTL)
 └── data/
-    ├── currencies.csv          ← 14 currencies × 4 columns (UTF-8 BOM)
-    ├── income_categories.csv   ← 8 income categories
-    ├── expense_categories.csv  ← 12 expense categories (exact spec order)
-    └── payment_methods.csv     ← 4 payment methods
+    ├── currencies.csv                  ← 14 currencies × 4 columns (UTF-8 BOM)
+    ├── income_categories.csv           ← 8 income categories
+    ├── expense_categories.csv          ← 12 expense categories (exact spec order)
+    ├── payment_methods.csv             ← 4 payment methods
+    └── monthly_template/               ← Phase 2 paste-ready row seeds (UTF-8 BOM)
+        ├── income_block_header.csv         ← 7-column header for قسم الدخل (RTL from col A)
+        ├── expenses_block_header.csv       ← 8-column header for قسم المصاريف (RTL from col A)
+        ├── kpi_panel_labels.csv            ← KPI panel label list for أعلى يمين الورقة الشهرية
+        └── month_names.csv                 ← The 12 Arabic month names in calendar order
 ```
 
-- **[docs/01_settings_and_exchange_rates.md](docs/01_settings_and_exchange_rates.md)** - Cell-by-cell layout, currency engine, named ranges configuration, validation rules, and integration plan with the monthly sheets.
-- **[docs/02_formulas_reference.md](docs/02_formulas_reference.md)** - Every formula in copy-pasteable form with named-range equivalents.
+- **[docs/01_settings_and_exchange_rates.md](docs/01_settings_and_exchange_rates.md)** - Phase 1: cell-by-cell layout, currency engine, named ranges configuration, validation rules, and integration plan with the monthly sheets.
+- **[docs/02_formulas_reference.md](docs/02_formulas_reference.md)** - Phase 1: every settings-layer formula in copy-pasteable form with named-range equivalents.
+- **[docs/03_monthly_sheets_architecture.md](docs/03_monthly_sheets_architecture.md)** - Phase 2: RTL layout, KPI panel, income/expenses blocks, dynamic alert engine, conditional formatting, step-by-step assembly procedure for the 12 monthly sheets.
+- **[docs/04_monthly_formulas_reference.md](docs/04_monthly_formulas_reference.md)** - Phase 2: every monthly-sheet formula in copy-pasteable form (per-row, ARRAYFORMULA, IFS, INDEX/MATCH, annual-summary aggregator).
 - **[data/](data/)** - UTF-8-with-BOM CSV seeds importable directly into the documented ranges.
 
 ---
@@ -99,16 +108,39 @@ BUDGET-CALCULATOR-2026/
 
 ---
 
-## الأوراق الشهرية القادمة · Upcoming Monthly Sheets
+## المرحلة الثانية: الأوراق الشهرية الاثنتا عشرة · Phase 2: 12 Monthly Sheets Architecture
 
-سيُلحق بالمصنّف لاحقاً الأوراق الاثنتا عشرة التالية، وكلٌّ منها سيُشير إلى ورقة "الإعدادات وأسعار الصرف" حصراً عبر النطاقات المُسمّاة، بدون أيّ بيانات مرجعية محلية:
+تمتدّ المرحلة الثانية إلى ثنتي عشرة ورقة شهرية، كلّها مُهندَسة من اليمين إلى اليسار (RTL)، وكلّها تستهلك بيانات المرجع من المرحلة الأولى عبر النطاقات المُسمّاة `rng_*` حصراً (دون أيّ قائمة محليّة).
 
-> `يناير` · `فبراير` · `مارس` · `أبريل` · `مايو` · `يونيو` · `يوليو` · `أغسطس` · `سبتمبر` · `أكتوبر` · `نوفمبر` · `ديسمبر`
+> أسماء الأوراق الإلزاميّة (يجب أن تطابق تماماً): `يناير` · `فبراير` · `مارس` · `أبريل` · `مايو` · `يونيو` · `يوليو` · `أغسطس` · `سبتمبر` · `أكتوبر` · `نوفمبر` · `ديسمبر`.
 
-كل ورقة شهرية ستحوي صفوف معاملات بالأعمدة:
-`A: التاريخ | B: نوع المعاملة | C: الفئة | D: المبلغ بعملة المعاملة | E: عملة المعاملة | F: المبلغ بعملة العرض | G: طريقة الدفع | H: ملاحظات`.
+### ما تحتويه كل ورقة شهرية
 
-تفاصيل الصيغ المستخدمة في كل ورقة شهرية موثّقة في [مرجع الصيغ](docs/02_formulas_reference.md).
+1. **لوحة المؤشّرات الذكيّة** (الصفوف `1:6`، الأعمدة `A:G`، تظهر تحت RTL في أعلى يمين الورقة): العملة الرئيسية للعرض، الشهر، إجماليات الدخل والمصروف (المتوقّع والفعلي)، صافي الفائض/العجز، نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف ومبلغها، ومؤشّر التنبيه الذكي على مستوى الشهر.
+2. **كتلة الدخل** (الصفوف `9:29`): ترويسة سبعة أعمدة بترتيب RTL من العمود `A` (`التاريخ، الفئة، الوصف، الدخل المتوقع، الدخل الفعلي، الفرق، طريقة الدفع`)، 19 صفّ إدخال، صفّ إجماليات.
+3. **كتلة المصاريف** (الصفوف `32:63`): ترويسة سبعة أعمدة بنفس ترتيب RTL (`التاريخ، الفئة، الوصف، المصروف المتوقع، المصروف الفعلي، الفرق، طريقة الدفع`) بالإضافة إلى عمود `حالة التنبيه` في `H`، 30 صفّ إدخال، صفّ إجماليات.
+4. **محرّك التنبيهات الديناميكي** (في `H33:H62` على مستوى الصف، وفي `F2` على مستوى الشهر) بثلاث إشارات إلزاميّة:
+   - 🔴 `تجاوز الميزانية` عندما `المصروف الفعلي > المصروف المتوقع`.
+   - 🟡 `اقتراب من الحد` عندما `المصروف الفعلي ≥ 0.9 × المصروف المتوقع`.
+   - 🟢 `أداء مالي ممتاز` فيما عدا ذلك.
+5. **التنسيق المالي الديناميكي** عبر `rng_ActiveFormat`: تغيير العملة الرئيسيّة في ورقة الإعدادات يُحدِّث رمز كل المبالغ في الأشهر الـ 12 فوراً.
+
+### كيف تركّب ورقة شهريّة واحدة · How to assemble one monthly sheet
+
+1. أنشئ ورقة جديدة وأعد تسميتها إلى اسم الشهر بالضبط، ثم فعّل `View → Right-to-Left`.
+2. الصق ترويسة كتلة الدخل من [`data/monthly_template/income_block_header.csv`](data/monthly_template/income_block_header.csv) في `A9`.
+3. الصق ترويسة كتلة المصاريف من [`data/monthly_template/expenses_block_header.csv`](data/monthly_template/expenses_block_header.csv) في `A32`.
+4. الصق تسميات لوحة المؤشّرات من [`data/monthly_template/kpi_panel_labels.csv`](data/monthly_template/kpi_panel_labels.csv) (للاسترشاد بالقائمة الكاملة لتسميات لوحة `A1:G6`).
+5. اكتب الصيغ من [`docs/04_monthly_formulas_reference.md`](docs/04_monthly_formulas_reference.md): الفرق، التنبيه على مستوى الصف، الإجماليات، نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، مؤشّر التنبيه الإجمالي.
+6. طبّق قواعد التحقّق من البيانات على أعمدة الفئة وطريقة الدفع والتاريخ والمبالغ كما هو موثّق في [القسم 5 من وثيقة العمارة](docs/03_monthly_sheets_architecture.md#5-قواعد-التحقّق-من-البيانات-data-validation-rules).
+7. طبّق التنسيق الشرطي بصيغ `Custom formula is` على عمود `H33:H62` (3 قواعد).
+8. ضاعف الورقة عبر `Right-click → Duplicate` 11 مرّة، وأعد تسمية كل نسخة لاسم الشهر التالي. أسماء الأشهر الكاملة موجودة في [`data/monthly_template/month_names.csv`](data/monthly_template/month_names.csv).
+
+> الإجراء التفصيلي خطوة بخطوة موجود في [القسم 11 من `docs/03_monthly_sheets_architecture.md`](docs/03_monthly_sheets_architecture.md#11-إجراء-التركيب-التفصيلي-لورقة-شهريّة-واحدة-step-by-step-assembly).
+
+### المرحلة القادمة · Upcoming phase
+
+ستبني المرحلة الثالثة ورقة "الملخّص السنوي" التي تضمّ نتائج الـ 12 شهراً في جدول واحد عبر النمط `SUMIF + INDIRECT` الموثَّق في [القسم 21 من مرجع الصيغ](docs/04_monthly_formulas_reference.md#21-مُجمِّع-شهري-لاستهلاكه-في-ورقة-الملخّص-السنوي-لاحقاً).
 
 ---
 
