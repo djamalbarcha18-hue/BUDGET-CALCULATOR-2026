@@ -3,17 +3,17 @@
 
 [![Sheet](https://img.shields.io/badge/Google%20Sheets-Compatible-success)]()
 [![Locale](https://img.shields.io/badge/Locale-Arabic%20RTL-blue)]()
-[![Status](https://img.shields.io/badge/Phase-2%2F13-orange)]()
+[![Status](https://img.shields.io/badge/Phase-3%2F13-orange)]()
 
 ---
 
 ### English summary
 
-`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine).
+`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine). Phase 3 delivers the **savings goals & emergency fund engine**, "الأهداف المالية والادخار", a dedicated RTL sheet with a 9-column goals table, dynamic status engine (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد), and contextual smart-recommendation messages tiered by months remaining.
 
 ### الملخّص العربي
 
-`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي).
+`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي). وتُسلّم المرحلة الثالثة **نظام الأهداف المالية والادخار** "الأهداف المالية والادخار"، وهو ورقة RTL مخصّصة بجدول من تسعة أعمدة، ومحرّك حالات ديناميكي (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد)، وتوصيات ذكيّة تُولَّد آلياً بحسب الأشهر المتبقية.
 
 ---
 
@@ -26,23 +26,30 @@ BUDGET-CALCULATOR-2026/
 │   ├── 01_settings_and_exchange_rates.md          ← Phase 1 architecture (Arabic, RTL)
 │   ├── 02_formulas_reference.md                   ← Phase 1 formula quick-reference (Arabic, RTL)
 │   ├── 03_monthly_sheets_architecture.md          ← Phase 2 architecture: 12 monthly sheets (Arabic, RTL)
-│   └── 04_monthly_formulas_reference.md           ← Phase 2 formula quick-reference (Arabic, RTL)
+│   ├── 04_monthly_formulas_reference.md           ← Phase 2 formula quick-reference (Arabic, RTL)
+│   ├── 05_savings_goals_architecture.md           ← Phase 3 architecture: savings goals sheet (Arabic, RTL)
+│   └── 06_savings_goals_formulas_reference.md     ← Phase 3 formula quick-reference (Arabic, RTL)
 └── data/
     ├── currencies.csv                  ← 14 currencies × 4 columns (UTF-8 BOM)
     ├── income_categories.csv           ← 8 income categories
     ├── expense_categories.csv          ← 12 expense categories (exact spec order)
     ├── payment_methods.csv             ← 4 payment methods
-    └── monthly_template/               ← Phase 2 paste-ready row seeds (UTF-8 BOM)
-        ├── income_block_header.csv         ← 7-column header for قسم الدخل (RTL from col A)
-        ├── expenses_block_header.csv       ← 8-column header for قسم المصاريف (RTL from col A)
-        ├── kpi_panel_labels.csv            ← KPI panel label list for أعلى يمين الورقة الشهرية
-        └── month_names.csv                 ← The 12 Arabic month names in calendar order
+    ├── monthly_template/               ← Phase 2 paste-ready row seeds (UTF-8 BOM)
+    │   ├── income_block_header.csv         ← 7-column header for قسم الدخل (RTL from col A)
+    │   ├── expenses_block_header.csv       ← 8-column header for قسم المصاريف (RTL from col A)
+    │   ├── kpi_panel_labels.csv            ← KPI panel label list for أعلى يمين الورقة الشهرية
+    │   └── month_names.csv                 ← The 12 Arabic month names in calendar order
+    └── savings_goals/                  ← Phase 3 paste-ready seeds (UTF-8 BOM)
+        ├── goals_seed.csv                  ← 9-column header + 4 baseline goals (RTL from col A)
+        └── summary_panel_labels.csv        ← 7 summary-panel KPI labels for ورقة الأهداف
 ```
 
 - **[docs/01_settings_and_exchange_rates.md](docs/01_settings_and_exchange_rates.md)** - Phase 1: cell-by-cell layout, currency engine, named ranges configuration, validation rules, and integration plan with the monthly sheets.
 - **[docs/02_formulas_reference.md](docs/02_formulas_reference.md)** - Phase 1: every settings-layer formula in copy-pasteable form with named-range equivalents.
 - **[docs/03_monthly_sheets_architecture.md](docs/03_monthly_sheets_architecture.md)** - Phase 2: RTL layout, KPI panel, income/expenses blocks, dynamic alert engine, conditional formatting, step-by-step assembly procedure for the 12 monthly sheets.
 - **[docs/04_monthly_formulas_reference.md](docs/04_monthly_formulas_reference.md)** - Phase 2: every monthly-sheet formula in copy-pasteable form (per-row, ARRAYFORMULA, IFS, INDEX/MATCH, annual-summary aggregator).
+- **[docs/05_savings_goals_architecture.md](docs/05_savings_goals_architecture.md)** - Phase 3: RTL layout for ورقة "الأهداف المالية والادخار"، لوحة المؤشّرات الكليّة، 9-column goals table، dynamic status engine، and smart-recommendation engine.
+- **[docs/06_savings_goals_formulas_reference.md](docs/06_savings_goals_formulas_reference.md)** - Phase 3: every savings-goals formula in copy-pasteable form (نسبة الإنجاز، الأشهر المتبقية بصيغتي DATEDIF والحسابيّة، القسط الشهري، الحالة بـ IFS وIF، التوصية الذكيّة الكاملة، صيغ لوحة المؤشّرات السبع).
 - **[data/](data/)** - UTF-8-with-BOM CSV seeds importable directly into the documented ranges.
 
 ---
@@ -138,9 +145,63 @@ BUDGET-CALCULATOR-2026/
 
 > الإجراء التفصيلي خطوة بخطوة موجود في [القسم 11 من `docs/03_monthly_sheets_architecture.md`](docs/03_monthly_sheets_architecture.md#11-إجراء-التركيب-التفصيلي-لورقة-شهريّة-واحدة-step-by-step-assembly).
 
+---
+
+## المرحلة الثالثة: نظام الأهداف المالية والادخار · Phase 3: Savings Goals & Emergency Fund System
+
+تضيف المرحلة الثالثة ورقة مخصّصة باسم `الأهداف المالية والادخار`، مُهندَسة من اليمين إلى اليسار (RTL)، تستهلك من المرحلة الأولى نطاقاً مُسمّى واحداً فقط (`rng_ActiveFormat`) لتنسيق المبالغ داخل التوصيات الذكيّة. الورقة منفصلة عن سجلّ المعاملات الشهرية، لكنّ ورقة "الملخّص السنوي" القادمة ستقرأ منها قيم لوحة المؤشّرات الكليّة.
+
+### ما تحتويه ورقة الأهداف
+
+1. **الترويسة الرئيسية** في `A1:I1` (مدموجة): `الأهداف المالية والادخار - نظام مالي ذكي متكامل`.
+2. **لوحة المؤشّرات الكليّة** على الصفوف `2 → 4` (تجميعات `SUM`، `SUMIF`، `COUNTIF` فوق جدول الأهداف): إجمالي تكلفة الأهداف، إجمالي المدخر، نسبة الإنجاز الكليّة، إجمالي القسط الشهري المطلوب، عدد الأهداف المكتملة، عدد الأهداف قيد الادخار، عدد الأهداف التي لم تبدأ.
+3. **جدول الأهداف** بترويسة على الصف 6 ونطاق إدخال `A7:I26` (20 صفّاً)، بترتيب RTL إلزامي للأعمدة التسعة من العمود `A` إلى `I`:
+   1. `الهدف`
+   2. `التكلفة التقديرية`
+   3. `المبلغ المدخر حالياً`
+   4. `نسبة الإنجاز` (محسوبة)
+   5. `الموعد المستهدف`
+   6. `الأشهر المتبقية` (محسوبة)
+   7. `القسط الشهري المطلوب` (محسوبة)
+   8. `الحالة` (محسوبة)
+   9. `التوصية الذكية` (محسوبة)
+4. **محرّك الحالات الديناميكي** في عمود `H` بثلاث إشارات حرفيّة إلزاميّة:
+   - 🟢 `مكتمل` عندما `نسبة الإنجاز ≥ 100%`.
+   - 🟡 `قيد الادخار` عندما `1% ≤ نسبة الإنجاز < 100%`.
+   - ⚪ `لم يبدأ بعد` عندما `نسبة الإنجاز < 1%`.
+5. **التوصيات الذكيّة** في عمود `I` تُولَّد بـ `IFS` تأخذ في الاعتبار حالة الإكمال، وانتهاء الموعد، والقسط الشهري المطلوب مقابل الأشهر المتبقية، مع تدرّج النصّ بحسب الأفق الزمني (`F7 > 24` ⏳ هادئ، `6 < F7 ≤ 24` 🟡 متوازن، `F7 ≤ 6` 🔴 إلحاحيّ). المبلغ داخل النصّ يُولَّد ديناميكيّاً عبر `TEXT(G7, rng_ActiveFormat)` فيتغيّر رمز العملة تلقائياً مع تغيّر العملة الرئيسية في ورقة الإعدادات.
+
+### الأهداف الافتراضيّة الأربعة (Baseline Goals)
+
+تُلصَق من [`data/savings_goals/goals_seed.csv`](data/savings_goals/goals_seed.csv) كنقطة بداية، وعلى المستخدم تحديثها لتعكس وضعه الماليّ الفعلي:
+
+| الهدف | التكلفة التقديرية | المبلغ المدخر حالياً | الموعد المستهدف |
+|---|---|---|---|
+| `شراء سيارة` | 80,000 | 12,000 | 2027-12-31 |
+| `شراء منزل` | 1,200,000 | 50,000 | 2030-12-31 |
+| `صندوق الطوارئ` | 60,000 | 15,000 | 2026-12-31 |
+| `السفر والاستثمار` | 25,000 | 5,000 | 2026-08-31 |
+
+> الأرقام والتواريخ أعلاه **مؤشّرات افتراضيّة** فقط. الأرقام بدون رمز عملة لأنّ الرمز يأتي حصراً من `rng_ActiveFormat`، والتواريخ بصيغة ISO-8601 لضمان قراءة Google Sheets الصحيحة بصرف النظر عن المنطقة.
+
+### كيف تركّب ورقة الأهداف · How to assemble the goals sheet
+
+1. أنشئ ورقة جديدة وأعد تسميتها إلى `الأهداف المالية والادخار` بالضبط، ثمّ فعّل `View → Right-to-Left`.
+2. أدخل العنوان `الأهداف المالية والادخار - نظام مالي ذكي متكامل` في `A1` ودَمج `A1:I1`.
+3. الصق تسميات لوحة المؤشّرات من [`data/savings_goals/summary_panel_labels.csv`](data/savings_goals/summary_panel_labels.csv) واتبع شبكة الفقرة 3.1 من وثيقة العمارة لتوزيعها على الصفوف `2 → 4`.
+4. اكتب صيغ لوحة المؤشّرات السبع من [الفقرات 13 → 19 من `docs/06`](docs/06_savings_goals_formulas_reference.md): `=SUM(B7:B26)`، `=SUM(C7:C26)`، `=IFERROR(SUM(C7:C26)/SUM(B7:B26), 0)`، `=SUMIF(H7:H26, "🟡 قيد الادخار", G7:G26)`، وثلاث `COUNTIF`.
+5. الصق ترويسة جدول الأهداف والأهداف الأربعة الافتراضيّة من [`data/savings_goals/goals_seed.csv`](data/savings_goals/goals_seed.csv) في `A6` (ترويسة + 4 صفوف).
+6. اكتب الصيغ في الصف 7 من [`docs/06_savings_goals_formulas_reference.md`](docs/06_savings_goals_formulas_reference.md): نسبة الإنجاز (`D7`)، الأشهر المتبقية بصيغة DATEDIF أو الحسابيّة (`F7`)، القسط الشهري المطلوب (`G7`)، الحالة بـ `IFS` (`H7`)، والتوصية الذكيّة الكاملة (`I7`).
+7. حدّد `D7:I7` واسحب مقبض التعبئة حتى الصف 26.
+8. طبّق قواعد التحقّق من البيانات على `B7:B26`, `C7:C26`, `E7:E26`, `G7:G26` كما في [القسم 11 من وثيقة العمارة](docs/05_savings_goals_architecture.md#11-قواعد-التحقّق-من-البيانات-data-validation-rules).
+9. طبّق التنسيق الشرطي بصيغ `Custom formula is` على عمود `H7:H26` (3 قواعد لكلٍّ من 🟢/🟡/⚪) وعلى عمود `D7:D26` (قاعدة `=$D7>=1`).
+10. نسِّق الأعمدة الماليّة `B7:B26`, `C7:C26`, `G7:G26` وخلايا لوحة المؤشّرات `B2, D2, B3` بسلسلة `rng_ActiveFormat`، ونسِّق `D7:D26` و`F2` كنسبة مئويّة.
+
+> الإجراء التفصيلي خطوة بخطوة موجود في [القسم 15 من `docs/05_savings_goals_architecture.md`](docs/05_savings_goals_architecture.md#15-إجراء-التركيب-التفصيلي-step-by-step-assembly).
+
 ### المرحلة القادمة · Upcoming phase
 
-ستبني المرحلة الثالثة ورقة "الملخّص السنوي" التي تضمّ نتائج الـ 12 شهراً في جدول واحد عبر النمط `SUMIF + INDIRECT` الموثَّق في [القسم 21 من مرجع الصيغ](docs/04_monthly_formulas_reference.md#21-مُجمِّع-شهري-لاستهلاكه-في-ورقة-الملخّص-السنوي-لاحقاً).
+ستبني المرحلة الرابعة ورقة "الملخّص السنوي" التي تضمّ نتائج الـ 12 شهراً في جدول واحد عبر النمط `SUMIF + INDIRECT` الموثَّق في [القسم 21 من مرجع الصيغ الشهرية](docs/04_monthly_formulas_reference.md#21-مُجمِّع-شهري-لاستهلاكه-في-ورقة-الملخّص-السنوي-لاحقاً)، وستقرأ من ورقة الأهداف قيم لوحة المؤشّرات الكليّة عبر مراجع `='الأهداف المالية والادخار'!B2` ونحوها كما في [القسم 21 من مرجع صيغ الأهداف](docs/06_savings_goals_formulas_reference.md#21-مرجع-للأوراق-المستقبليّة-cross-sheet-lookups).
 
 ---
 
