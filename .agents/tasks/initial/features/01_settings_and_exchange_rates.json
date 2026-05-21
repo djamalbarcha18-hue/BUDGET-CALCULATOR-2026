@@ -1,0 +1,66 @@
+{
+  "id": "01_settings_and_exchange_rates",
+  "title": "Foundational settings layer: \"الإعدادات وأسعار الصرف\"",
+  "status": "completed",
+  "summary": "Delivered the architectural blueprint, importable CSV seed data, and exact Google Sheets formulas for the foundational settings layer of the Premium Arabic Budget Template (نظام مالي ذكي متكامل). This layer is the single source of truth that the upcoming twelve monthly sheets (يناير → ديسمبر) will reference via named ranges.",
+  "deliverables": [
+    {
+      "path": "docs/01_settings_and_exchange_rates.md",
+      "description": "Primary architecture document in Arabic (RTL-wrapped). Contains cell-by-cell layout for the sheet \"الإعدادات وأسعار الصرف\", the 14-currency engine table with indicative USD rates and Arabic financial number-format strings, income/expense/payment-method category tables, the Main Currency Selector cell (B3), the named-ranges configuration, exact Google-Sheets-compatible formulas (XLOOKUP rate lookup, USD-bridge conversion in generic + named-range + LET forms, ARRAYFORMULA whole-column conversion, FILTER dependent dropdowns, active-format-string formula, conditional category dropdown), data validation rules for the monthly sheets, and the integration plan for the 12 monthly sheets."
+    },
+    {
+      "path": "docs/02_formulas_reference.md",
+      "description": "Quick-reference with every formula in copy-pasteable code blocks, each with an Arabic description and named-range equivalent. Covers rate lookup, currency-name lookup, format-string lookup, single-cell conversion, LET-based conversion, ARRAYFORMULA conversion, FILTER dropdowns, conditional category dropdown, TEXT formatting, GOOGLEFINANCE auto-update, monthly totals (income/expense/net)."
+    },
+    {
+      "path": "data/currencies.csv",
+      "description": "UTF-8-with-BOM CSV seed for the currency engine table. 14 rows: DZD, SAR, AED, QAR, KWD, BHD, OMR, EGP, JOD, TND, MAD, EUR, USD, GBP. Columns: رمز العملة, اسم العملة, سعر الصرف مقابل الدولار USD, التنسيق المالي الافتراضي. Rates are indicative placeholders."
+    },
+    {
+      "path": "data/income_categories.csv",
+      "description": "UTF-8-with-BOM CSV seed for income categories: راتب أساسي, مكافآت وحوافز, عمل حر, دخل استثماري, إيجارات, أرباح تجارية, هدايا, أخرى."
+    },
+    {
+      "path": "data/expense_categories.csv",
+      "description": "UTF-8-with-BOM CSV seed with the EXACT 12 expense categories from the user's spec, in the spec's order: الطعام, النقل, السكن, الفواتير, الصحة, التعليم, التسوق, الترفيه, الاشتراكات, السفر, الطوارئ, أخرى."
+    },
+    {
+      "path": "data/payment_methods.csv",
+      "description": "UTF-8-with-BOM CSV seed for the 4 payment methods: نقداً, بطاقة بنكية, تحويل الكتروني, أخرى."
+    },
+    {
+      "path": "README.md",
+      "description": "Bilingual (Arabic + English) top-level README replacing the minimal stub. Brief project description, repository layout, six-step Google Sheets setup walkthrough (workbook creation, sheet naming, CSV import targets, named-ranges definition, data validation, sheet protection), list of upcoming 12 monthly sheets in Arabic, and the indicative-rates disclaimer."
+    }
+  ],
+  "named_ranges_defined": [
+    "rng_MainCurrency",
+    "rng_ActiveFormat",
+    "rng_MainRate",
+    "rng_Currencies",
+    "rng_CurrencyNames",
+    "rng_CurrencyRates",
+    "rng_FormatStrings",
+    "rng_CurrencyTable",
+    "rng_IncomeCategories",
+    "rng_ExpenseCategories",
+    "rng_PaymentMethods"
+  ],
+  "verification": {
+    "build_command": "n/a (documentation + CSV seed only, no compiled artifacts)",
+    "test_command": "n/a (no test harness in repo)",
+    "manual_checks_performed": [
+      "Confirmed all four CSV files start with the UTF-8 BOM bytes EF BB BF (od -An -tx1).",
+      "Confirmed currencies.csv contains 1 header + 14 currency rows in the spec order.",
+      "Confirmed expense_categories.csv contains 1 header + 12 categories in the EXACT order specified by the user.",
+      "Confirmed all formulas use Google-Sheets-compatible functions only: XLOOKUP, FILTER, ARRAYFORMULA, LET, IFERROR, TEXT, IF, SUMIFS, GOOGLEFINANCE. No Excel-365 spill operators.",
+      "Confirmed Arabic content renders correctly when re-read."
+    ]
+  },
+  "notes_for_followups": [
+    "The 12 monthly sheets must be named exactly: يناير, فبراير, مارس, أبريل, مايو, يونيو, يوليو, أغسطس, سبتمبر, أكتوبر, نوفمبر, ديسمبر.",
+    "The settings sheet must be named exactly: الإعدادات وأسعار الصرف. Every cross-sheet reference and named range relies on this name.",
+    "Monthly sheets should adopt the standard column layout A:H documented in section 5 of docs/01_settings_and_exchange_rates.md so an annual summary sheet can later stack them via QUERY or SUMIFS.",
+    "Exchange rates in data/currencies.csv are indicative placeholders. Followup work should add an optional GOOGLEFINANCE auto-refresh formula in column C with a manual fallback for currencies not consistently supported (DZD, TND, MAD often need manual entry)."
+  ]
+}
