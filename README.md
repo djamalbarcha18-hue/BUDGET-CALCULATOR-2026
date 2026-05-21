@@ -3,17 +3,17 @@
 
 [![Sheet](https://img.shields.io/badge/Google%20Sheets-Compatible-success)]()
 [![Locale](https://img.shields.io/badge/Locale-Arabic%20RTL-blue)]()
-[![Status](https://img.shields.io/badge/Phase-4%2F13-orange)]()
+[![Status](https://img.shields.io/badge/Phase-5%2F13-orange)]()
 
 ---
 
 ### English summary
 
-`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine). Phase 3 delivers the **savings goals & emergency fund engine**, "الأهداف المالية والادخار", a dedicated RTL sheet with a 9-column goals table, dynamic status engine (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد), and contextual smart-recommendation messages tiered by months remaining. Phase 4 delivers the **Ultimate Fintech Dashboard**, "اللوحة الرئيسية والتقرير السنوي", a luxury dark-mode RTL sheet (`#0F172A` background, `#1F2937` cards) with six top-row KPI cards (with micro-trend arrows), four mid-section charts (combo, waterfall, two doughnuts), a financial-health gauge, three goal progress bars driven by SPARKLINE, a dynamic latest-5-transactions ledger compiled across the 12 months, and a soft-lock protection layer with Arabic warning messages.
+`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine). Phase 3 delivers the **savings goals & emergency fund engine**, "الأهداف المالية والادخار", a dedicated RTL sheet with a 9-column goals table, dynamic status engine (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد), and contextual smart-recommendation messages tiered by months remaining. Phase 4 delivers the **Ultimate Fintech Dashboard**, "اللوحة الرئيسية والتقرير السنوي", a luxury dark-mode RTL sheet (`#0F172A` background, `#1F2937` cards) with six top-row KPI cards (with micro-trend arrows), four mid-section charts (combo, waterfall, two doughnuts), a financial-health gauge, three goal progress bars driven by SPARKLINE, a dynamic latest-5-transactions ledger compiled across the 12 months, and a soft-lock protection layer with Arabic warning messages. Phase 5 delivers the **branded onboarding & welcome sheet**, "📖 دليل الاستخدام والترحيب", positioned as the first tab so it opens by default; it carries the Hero Header (`نظام ميزان المالي الذكي - BUDGET CALCULATOR 2026`), the developer-signature card (RESTRICTED to this sheet only), and three accent-bordered Quick Start cards that hyperlink to the settings, monthly, and dashboard sheets.
 
 ### الملخّص العربي
 
-`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي). وتُسلّم المرحلة الثالثة **نظام الأهداف المالية والادخار** "الأهداف المالية والادخار"، وهو ورقة RTL مخصّصة بجدول من تسعة أعمدة، ومحرّك حالات ديناميكي (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد)، وتوصيات ذكيّة تُولَّد آلياً بحسب الأشهر المتبقية. وتُسلّم المرحلة الرابعة **اللوحة الرئيسية والتقرير السنوي**، وهي ورقة فنتك فاخرة بوضع داكن (خلفية `#0F172A` وبطاقات `#1F2937`) تحوي ستّ بطاقات KPI علويّة بمؤشّرات اتجاه دقيقة، وأربعة رسوم بيانيّة وسطى (Combo + Waterfall + دونات الدخل + دونات المصاريف)، ومقياس \"درجة الصحّة المالية\"، وثلاثة أشرطة تقدّم للأهداف عبر SPARKLINE، وسجلّ \"أحدث المعاملات\" يُجمَّع ديناميكيّاً من الأوراق الشهريّة، وطبقة حماية ناعمة برسائل تحذير عربيّة.
+`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي). وتُسلّم المرحلة الثالثة **نظام الأهداف المالية والادخار** "الأهداف المالية والادخار"، وهو ورقة RTL مخصّصة بجدول من تسعة أعمدة، ومحرّك حالات ديناميكي (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد)، وتوصيات ذكيّة تُولَّد آلياً بحسب الأشهر المتبقية. وتُسلّم المرحلة الرابعة **اللوحة الرئيسية والتقرير السنوي**، وهي ورقة فنتك فاخرة بوضع داكن (خلفية `#0F172A` وبطاقات `#1F2937`) تحوي ستّ بطاقات KPI علويّة بمؤشّرات اتجاه دقيقة، وأربعة رسوم بيانيّة وسطى (Combo + Waterfall + دونات الدخل + دونات المصاريف)، ومقياس \"درجة الصحّة المالية\"، وثلاثة أشرطة تقدّم للأهداف عبر SPARKLINE، وسجلّ \"أحدث المعاملات\" يُجمَّع ديناميكيّاً من الأوراق الشهريّة، وطبقة حماية ناعمة برسائل تحذير عربيّة. وتُسلّم المرحلة الخامسة **ورقة الترحيب ودليل الاستخدام** "📖 دليل الاستخدام والترحيب" كأوّل تبويب في المصنّف بحيث يفتح تلقائياً، وتحوي الترويسة المزدوجة (`نظام ميزان المالي الذكي - BUDGET CALCULATOR 2026`)، وكتلة توقيع المطوّر **محصورة في هذه الورقة فقط**، وثلاث بطاقات Quick Start بحدود ملوَّنة وروابط Hyperlink لأوراق الإعدادات والشهر الحالي واللوحة الرئيسيّة.
 
 ---
 
@@ -30,7 +30,9 @@ BUDGET-CALCULATOR-2026/
 │   ├── 05_savings_goals_architecture.md           ← Phase 3 architecture: savings goals sheet (Arabic, RTL)
 │   ├── 06_savings_goals_formulas_reference.md     ← Phase 3 formula quick-reference (Arabic, RTL)
 │   ├── 07_dashboard_architecture.md               ← Phase 4 architecture: fintech dashboard (Arabic, RTL)
-│   └── 08_dashboard_formulas_reference.md         ← Phase 4 formula quick-reference (Arabic, RTL)
+│   ├── 08_dashboard_formulas_reference.md         ← Phase 4 formula quick-reference (Arabic, RTL)
+│   ├── 09_onboarding_welcome_architecture.md      ← Phase 5 architecture: onboarding/welcome sheet (Arabic, RTL)
+│   └── 10_onboarding_assembly_checklist.md        ← Phase 5 assembly checklist + paste-ready text (Arabic, RTL)
 └── data/
     ├── currencies.csv                  ← 14 currencies × 4 columns (UTF-8 BOM)
     ├── income_categories.csv           ← 8 income categories
@@ -44,12 +46,16 @@ BUDGET-CALCULATOR-2026/
     ├── savings_goals/                  ← Phase 3 paste-ready seeds (UTF-8 BOM)
     │   ├── goals_seed.csv                  ← 9-column header + 4 baseline goals (RTL from col A)
     │   └── summary_panel_labels.csv        ← 7 summary-panel KPI labels for ورقة الأهداف
-    └── dashboard/                      ← Phase 4 dashboard seeds (UTF-8 BOM)
-        ├── kpi_card_labels.csv             ← 6 KPI card titles for the top row
-        ├── engine_monthly_grid.csv         ← 12-month skeleton for the hidden engine sheet
-        ├── theme_palette.csv               ← All 18 theme tokens with their hex codes
-        ├── progress_bar_goals.csv          ← The 3 goal names rendered as SPARKLINE progress bars
-        └── protection_rules.csv            ← 14 soft-lock protection rules with Arabic warnings
+    ├── dashboard/                      ← Phase 4 dashboard seeds (UTF-8 BOM)
+    │   ├── kpi_card_labels.csv             ← 6 KPI card titles for the top row
+    │   ├── engine_monthly_grid.csv         ← 12-month skeleton for the hidden engine sheet
+    │   ├── theme_palette.csv               ← All 18 theme tokens with their hex codes
+    │   ├── progress_bar_goals.csv          ← The 3 goal names rendered as SPARKLINE progress bars
+    │   └── protection_rules.csv            ← 14 soft-lock protection rules with Arabic warnings
+    └── onboarding/                     ← Phase 5 welcome-sheet seeds (UTF-8 BOM)
+        ├── welcome_sheet_layout.csv        ← Cell-by-cell layout for the onboarding sheet
+        ├── quick_start_steps.csv           ← The 3 quick-start cards (number, title, body, link target, accent)
+        └── developer_signature.csv         ← The 2-line developer signature (THIS sheet only)
 ```
 
 - **[docs/01_settings_and_exchange_rates.md](docs/01_settings_and_exchange_rates.md)** - Phase 1: cell-by-cell layout, currency engine, named ranges configuration, validation rules, and integration plan with the monthly sheets.
@@ -60,6 +66,8 @@ BUDGET-CALCULATOR-2026/
 - **[docs/06_savings_goals_formulas_reference.md](docs/06_savings_goals_formulas_reference.md)** - Phase 3: every savings-goals formula in copy-pasteable form (نسبة الإنجاز، الأشهر المتبقية بصيغتي DATEDIF والحسابيّة، القسط الشهري، الحالة بـ IFS وIF، التوصية الذكيّة الكاملة، صيغ لوحة المؤشّرات السبع).
 - **[docs/07_dashboard_architecture.md](docs/07_dashboard_architecture.md)** - Phase 4: ورقة `اللوحة الرئيسية والتقرير السنوي`، Luxury Dark-Mode palette، layout الأربع وحدات (KPIs, Charts, Gauge+Bars+Ledger, Soft-Lock)، ورقة المحرّك الخلفي `_DashboardEngine`، إجراء التركيب التفصيلي.
 - **[docs/08_dashboard_formulas_reference.md](docs/08_dashboard_formulas_reference.md)** - Phase 4: every dashboard formula in copy-pasteable form (annual sums، per-category 12-sheet aggregator، compact INDIRECT variant، trend strings، health-score composite، SPARKLINE bars، QUERY ledger in two variants).
+- **[docs/09_onboarding_welcome_architecture.md](docs/09_onboarding_welcome_architecture.md)** - Phase 5: ورقة `📖 دليل الاستخدام والترحيب`، الترويسة المزدوجة، بطاقات Quick Start الثلاث، كتلة توقيع المطوّر (محصورة في هذه الورقة فقط)، السياسة المُعزَّزة لطبقة الحماية الناعمة عبر المصنّف.
+- **[docs/10_onboarding_assembly_checklist.md](docs/10_onboarding_assembly_checklist.md)** - Phase 5: قائمة مراجعة سريعة + نصوص جاهزة للنسخ + صيغ Hyperlink + رسائل التحذير العربيّة الموحَّدة.
 - **[data/](data/)** - UTF-8-with-BOM CSV seeds importable directly into the documented ranges.
 
 ---
@@ -264,7 +272,77 @@ BUDGET-CALCULATOR-2026/
 
 ### المرحلة القادمة · Upcoming phase
 
-تختتم المرحلة الرابعة الإصدار الأساسي (4/13) للمنظومة. المراحل القادمة (5..13) ستركّز على الأتمتة عبر Apps Script، إعدادات الـ Locale المُسبَقة، طبقة الديون والالتزامات المنفصلة، الأرشيف السنوي متعدّد السنوات، والتوزيع التجاري للقالب.
+تختتم المرحلة الرابعة لوحة المعلومات. ورقة الترحيب القادمة (المرحلة 5) تختم الإصدار 1.0.0 (انظر القسم التالي).
+
+---
+
+## المرحلة الخامسة: ورقة الترحيب ودليل الاستخدام · Phase 5: Onboarding & Welcome Sheet
+
+تُتوِّج المرحلة الخامسة المنظومة بورقة استقبال احترافيّة باسم `📖 دليل الاستخدام والترحيب`. الورقة تُوضع في الموضع الأوّل من المصنّف، فتفتح تلقائيّاً عند فتح الملفّ، وتحمل ثلاث وظائف مركَّزة في صفحة واحدة: تعريف بالمنتج بهويّة بصريّة موحَّدة، توقيع المطوّر **محصور هنا حصراً**، ودليل بدء سريع من ثلاث خطوات.
+
+> الورقة تستخدم نفس Luxury Dark Mode من المرحلة الرابعة (`#0F172A` خلفيّة، `#1F2937` بطاقات) لاتساق التجربة من أوّل لقاء.
+
+### ما تحتويه ورقة الترحيب
+
+1. **كتلة الترويسة (Hero Header)** على `B2:O4` المدموجة، بسطرين:
+   - السطر العربي: `نظام ميزان المالي الذكي` (32pt عريض جداً).
+   - السطر الإنجليزي: `BUDGET CALCULATOR 2026` (16pt).
+2. **نبذة تعريفيّة قصيرة** على `B6:O9` تُلخّص مكوّنات القالب الأربعة (محرّك العملات، 12 شهراً بالتنبيهات، الأهداف بالتوصيات، اللوحة الفاخرة).
+3. **ثلاث بطاقات Quick Start** متجاورة أفقيّاً (تتدفّق من اليمين إلى اليسار):
+   - **البطاقة 01 (`B11:F23`، حدّ علوي سماوي `#06B6D4`):** `اضبط الإعدادات أوّلاً` - رابط Hyperlink لورقة الإعدادات.
+   - **البطاقة 02 (`G11:K23`، حدّ علوي أخضر `#10B981`):** `أدخل بياناتك الشهريّة` - رابط لورقة `يناير`.
+   - **البطاقة 03 (`L11:P23`، حدّ علوي برتقالي `#F97316`):** `اقرأ اللوحة الرئيسيّة بأمان` - رابط للوحة الرئيسيّة.
+4. **كتلة توقيع المطوّر** على `B26:O29` المدموجة، بسطرين:
+   - `💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس`
+   - `📩 للتواصل والدعم الفني: boulahdiddjamaleddine`
+   > **سياسة إلزاميّة:** هذه الكتلة هي **المكان الوحيد في كامل المصنّف** الذي يُعرَض فيه توقيع المطوّر. باقي الأوراق (الإعدادات، 12 شهر، الأهداف، اللوحة الرئيسيّة) تبقى نظيفة من أيّ شريط نصّي إعلاني، حفاظاً على تركيز كل ورقة على وظيفتها التشغيليّة.
+5. **شريط Footer** على الصفوف 32..34 برقم الإصدار وإخلاء مسؤوليّة أسعار الصرف وملاحظة توافق Google Sheets.
+
+### السياسة المُعزَّزة لطبقة الحماية الناعمة (Soft-Lock Layer)
+
+المرحلة الخامسة تُعمِّم قاعدة `Data → Protect range → Show a warning` على نطاقات حسّاسة في كل أوراق المصنّف، مع رسائل تحذير عربيّة موحَّدة (انظر [القسم 8 من docs/09](docs/09_onboarding_welcome_architecture.md#8-السياسة-المُعزَّزة-لطبقة-الحماية-الناعمة-soft-lock-layer-عبر-المصنّف-بالكامل)). كل قاعدة تُظهر للمستخدم رسالة عربيّة قبل تطبيق أيّ تعديل، فتمنع الحوادث الناتجة عن النقر الخاطئ أو لصق نطاق ضخم بطريق الخطأ، دون منع التعديل المتعمَّد عند الحاجة الفعليّة.
+
+### ترتيب التبويبات النهائي بعد المرحلة 5
+
+| المرتبة | الورقة | المرحلة |
+|---|---|---|
+| 1 | `📖 دليل الاستخدام والترحيب` | 5 (تفتح تلقائيّاً) |
+| 2 | `الإعدادات وأسعار الصرف` | 1 |
+| 3 | `الأهداف المالية والادخار` | 3 |
+| 4..15 | `يناير` ← `ديسمبر` | 2 |
+| 16 | `اللوحة الرئيسية والتقرير السنوي` | 4 |
+| 17 | `_DashboardEngine` (مخفيّة) | 4 |
+
+### كيف تركّب ورقة الترحيب · How to assemble the welcome sheet
+
+1. أنشئ ورقة جديدة وأعد تسميتها إلى `📖 دليل الاستخدام والترحيب` بالضبط، ثمّ اسحب التبويب إلى الموضع رقم 1، وفعّل `View → Right-to-Left`.
+2. طبّق الثيم الداكن: حدّد كل الورقة وضع خلفيّة `#0F172A` ولون نصّ `#F1F5F9`.
+3. الصق محتوى الترويسة في `B2:O4` المدموجة (سطران مفصولان بـ Alt+Enter).
+4. الصق النبذة التعريفيّة في `B6:O9` المدموجة.
+5. ابنِ بطاقات Quick Start الثلاث من [`data/onboarding/quick_start_steps.csv`](data/onboarding/quick_start_steps.csv)، مع تطبيق الحدّ العلوي الملوَّن لكل بطاقة وصيغة `HYPERLINK` للوصول السريع.
+6. الصق توقيع المطوّر في `B26:O29` من [`data/onboarding/developer_signature.csv`](data/onboarding/developer_signature.csv).
+7. طبّق `Data → Protect range → Show a warning` على كتلة التوقيع برسالة `هذه الكتلة جزء من الهويّة البصريّة للقالب. التعديل غير مرغوب.`
+8. الصق Footer في الصفوف 32..34 من [`data/onboarding/welcome_sheet_layout.csv`](data/onboarding/welcome_sheet_layout.csv).
+9. وسِّع طبقة الحماية الناعمة على باقي الأوراق حسب جدول [القسم 8 من docs/09](docs/09_onboarding_welcome_architecture.md#8-السياسة-المُعزَّزة-لطبقة-الحماية-الناعمة-soft-lock-layer-عبر-المصنّف-بالكامل).
+10. **التحقّق النهائي:** ابحث في كامل المصنّف عن `Boulahdid` (`Ctrl+F` على مستوى المصنّف) - يجب أن تُعيد نتيجة واحدة فقط في `📖 دليل الاستخدام والترحيب`.
+
+> الإجراء التفصيلي خطوة بخطوة في [القسم 9 من `docs/09_onboarding_welcome_architecture.md`](docs/09_onboarding_welcome_architecture.md#9-إجراء-التركيب-التفصيلي-لورقة-الترحيب-step-by-step-assembly)، وقائمة المراجعة السريعة + النصوص الجاهزة للنسخ في [`docs/10_onboarding_assembly_checklist.md`](docs/10_onboarding_assembly_checklist.md).
+
+---
+
+## دليل تركيب المصنّف الكامل · Full Workbook Compile Guide
+
+بعد اكتمال المراحل الخمس (5/13)، يمكنك بناء المصنّف بالكامل بالترتيب التالي:
+
+1. **افتح Google Sheets جديد** عبر [sheets.new](https://sheets.new)، سمِّه `نظام مالي ذكي متكامل 2026`، واضبط `Locale = Saudi Arabia` وفعّل `View → Right-to-Left`.
+2. **المرحلة 1 (الإعدادات):** اتبع القسم 2-6 من قسم "التركيب خطوة بخطوة في Google Sheets" أعلاه. استورد الأربع ملفات من `data/*.csv` (currencies, income_categories, expense_categories, payment_methods)، وعرّف النطاقات المُسمّاة الـ 11.
+3. **المرحلة 2 (12 ورقة شهريّة):** ابنِ ورقة `يناير` كاملة من docs/03 + docs/04 + ملفات `data/monthly_template/`، ثمّ ضاعفها 11 مرّة وأعد التسمية لكل شهر.
+4. **المرحلة 3 (الأهداف):** اتبع docs/05 + docs/06، الصق `data/savings_goals/goals_seed.csv` في `A6` من ورقة `الأهداف المالية والادخار`.
+5. **المرحلة 4 (اللوحة الرئيسيّة):** أنشئ ورقتي `اللوحة الرئيسية والتقرير السنوي` و`_DashboardEngine`، اتبع docs/07 + docs/08 وطبّق ملفات `data/dashboard/` لبناء البطاقات والرسوم والـ Gauge والسجلّ.
+6. **المرحلة 5 (الترحيب):** أنشئ `📖 دليل الاستخدام والترحيب` في الموضع الأوّل، اتبع docs/09 + docs/10 وطبّق ملفات `data/onboarding/`.
+7. **التحقّق النهائي:** غيّر العملة الرئيسيّة في `الإعدادات وأسعار الصرف!B3` من `USD` إلى `SAR` (مثلاً) وتأكّد من تحديث رمز العملة في كل أوراق الشهر، وفي بطاقات اللوحة، وفي صفحة الأهداف، وداخل نصوص التوصيات الذكيّة - دفعة واحدة. اضغط `Ctrl+F` على كلمة `Boulahdid` في كامل المصنّف ← يجب أن تُعيد نتيجة واحدة فقط في ورقة الترحيب.
+
+> هذه السبع خطوات تُنتج المصنّف الكامل بالحالة 5/13. المراحل القادمة (6..13) تركّز على الأتمتة عبر Apps Script، إعدادات الـ Locale المُسبَقة، طبقة الديون والالتزامات، الأرشيف السنوي متعدّد السنوات، والتوزيع التجاري للقالب.
 
 ---
 
