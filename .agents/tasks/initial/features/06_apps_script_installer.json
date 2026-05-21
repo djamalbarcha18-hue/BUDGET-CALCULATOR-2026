@@ -1,0 +1,61 @@
+{
+  "id": "06_apps_script_installer",
+  "title": "Phase 6: Apps Script Single-Click Installer (مُركِّب التطبيق ذو النقرة الواحدة)",
+  "status": "completed",
+  "summary": "A Google Apps Script (~700 lines) that bootstraps the entire 5-phase BUDGET-CALCULATOR-2026 workbook in any Google Sheets file from a single button-press. It creates all 17 sheets in canonical tab order, enables RTL on every sheet, applies the Luxury Dark Mode theme on the welcome and dashboard, populates the 14-currency table + 8 income categories + 12 expense categories + 4 payment methods + 4 baseline goals + 12 monthly grid cells in _DashboardEngine, writes every formula documented in Phases 1-5 (XLOOKUP rate lookup, alert engine IFs, savings/spending rates, top-expense-category XLOOKUP+SUMIF+ARRAYFORMULA, smart-recommendation IFS with TEXT(rng_ActiveFormat) currency embed, 6 KPI cards, 3 SPARKLINE progress bars, latest-5 QUERY ledger, composite health score), defines all 11 named ranges (rng_*), applies category/payment-method dropdown validations on all 12 monthly sheets, applies conditional formatting (🟢/🟡/⚪ goal statuses, 🔴/🟡/🟢 monthly alerts, ▲/▼ trend coloring, 'دخل'/'مصروف' tag colors), applies the soft-lock protection layer (whole-sheet for engine, range-based for branding/calculated cells/settings) with the four standardized Arabic warning strings, hides _DashboardEngine, reorders tabs (welcome first), and lands the user on the welcome sheet. The four charts and the gauge are intentionally NOT auto-inserted because their styling is faster to tune in the GUI; the installer populates their data anchors and shows placeholder cards labeled with insertion instructions.",
+  "deliverables": [
+    {
+      "path": "scripts/install.gs",
+      "description": "The single-file Apps Script installer. ~700 lines. Entry point: installBudgetCalculator2026(). Pure Apps Script SpreadsheetApp API (no Drive, Gmail, or external scope requested). Idempotent: re-running uses getOrCreateSheet semantics."
+    },
+    {
+      "path": "scripts/README.md",
+      "description": "User-facing usage guide. 6 step-by-step instructions, troubleshooting section, what-the-installer-does-not-do section, and three-step post-install verification checklist."
+    },
+    {
+      "path": ".agents/tasks/initial/features/06_apps_script_installer.json",
+      "description": "This feature record."
+    }
+  ],
+  "scope_decisions": [
+    {
+      "decision": "Charts are NOT auto-inserted",
+      "rationale": "Apps Script's ChartBuilder API is verbose and chart-type-specific (Waterfall, Gauge, Doughnut all have quirks). Tuning palette per series, marking the Waterfall subtotal, and setting gauge bands is significantly faster in the native chart editor. The installer populates all chart-data anchors and renders placeholder cards labeled with the exact source range, so the user inserts each chart in ~60 seconds via Insert → Chart."
+    },
+    {
+      "decision": "RTL is per-sheet (sheet.setRightToLeft) not workbook-wide",
+      "rationale": "Apps Script can set RTL per-sheet but the workbook-level Locale must be set by the user before running the script (documented in scripts/README.md step 1). The installer's per-sheet RTL flags ensure RTL renders correctly even if the user forgets to change Locale."
+    },
+    {
+      "decision": "Named ranges are defined AFTER all sheets exist",
+      "rationale": "Cross-sheet formulas like rng_ExpenseCategories must point to settings sheet ranges that exist at the time of definition. The installer builds settings, goals, monthly sheets, dashboard, engine, and welcome FIRST, then defineNamedRanges() runs last so all targets resolve."
+    },
+    {
+      "decision": "Validation depending on named ranges runs inside defineNamedRanges()",
+      "rationale": "applyMonthlyValidations() is called from within defineNamedRanges() because the dropdown sources are the rng_* named ranges. If validation were applied earlier, the data validation rules would dangle."
+    }
+  ],
+  "verification": {
+    "build_command": "n/a (Apps Script runs in Google's runtime; no local build)",
+    "test_command": "Manual: paste install.gs into a fresh Google Sheet's Apps Script editor, run installBudgetCalculator2026(), verify the 3-step checklist in scripts/README.md.",
+    "manual_checks_performed": [
+      "All Arabic strings inside install.gs match the canonical spec from docs/01-09 byte-for-byte (sheet names, category names, payment methods, status glyphs, smart-recommendation text, signature text, footer text, warning messages).",
+      "All formula strings in install.gs match docs/02, 04, 06, 08 (alert engine, totals, savings/spending rates, top expense category, smart recommendations, trend strings, latest-5 QUERY).",
+      "Theme palette tokens in T = {...} match data/dashboard/theme_palette.csv exactly.",
+      "Tab order in reorderTabs() matches docs/09 section 1.3 exactly (welcome → settings → goals → 12 months → dashboard → engine).",
+      "Protection rules in applyProtection() match docs/09 section 8 table exactly (4 standardized Arabic warnings).",
+      "Zero em-dash characters in install.gs and scripts/README.md (verified via grep -P '\\x{2014}').",
+      "Smart-recommendation IFS in buildGoals() embeds TEXT(G<row>, rng_ActiveFormat) with correct row interpolation.",
+      "buildCategorySumFormula() handles both literal-category and cell-reference-category cases correctly."
+    ]
+  },
+  "deviations_from_spec": [
+    "Charts not auto-inserted (see scope_decisions above)."
+  ],
+  "notes_for_followups": [
+    "A Phase 7 'chart auto-insertion' enhancement could call SpreadsheetApp.newChart() for each of the four charts and the gauge with hardcoded styling. This is doable but adds ~300 lines and is fragile across Apps Script API versions.",
+    "A Phase 8 'live exchange rates' enhancement could add a doGet() trigger that refreshes the C7:C20 column from a configured FX feed weekly.",
+    "A Phase 9 'commercial distribution' enhancement could wrap install.gs in a Google Workspace Add-on so non-developer users can install via the Google Marketplace instead of pasting code.",
+    "The script uses get-or-create semantics, so re-running on a workbook that already has the sheets is safe but does NOT clear existing data. To do a clean install, start from a fresh empty Google Sheet (https://sheets.new)."
+  ]
+}
