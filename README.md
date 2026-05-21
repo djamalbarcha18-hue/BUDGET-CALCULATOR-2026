@@ -3,17 +3,17 @@
 
 [![Sheet](https://img.shields.io/badge/Google%20Sheets-Compatible-success)]()
 [![Locale](https://img.shields.io/badge/Locale-Arabic%20RTL-blue)]()
-[![Status](https://img.shields.io/badge/Phase-3%2F13-orange)]()
+[![Status](https://img.shields.io/badge/Phase-4%2F13-orange)]()
 
 ---
 
 ### English summary
 
-`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine). Phase 3 delivers the **savings goals & emergency fund engine**, "الأهداف المالية والادخار", a dedicated RTL sheet with a 9-column goals table, dynamic status engine (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد), and contextual smart-recommendation messages tiered by months remaining.
+`BUDGET-CALCULATOR-2026` is a premium Arabic-first personal finance template engineered for Google Sheets. The repository ships the full architectural blueprint, importable seed data, and exact formulas required to assemble a multi-currency budget workbook covering all twelve months of the year. Phase 1 delivers the **foundational settings layer**, "الإعدادات وأسعار الصرف", which acts as the single source of truth for currencies, exchange rates, expense and income categories, payment methods, and number formats. Phase 2 delivers the **twelve RTL monthly ledger sheets** (يناير → ديسمبر) with their built-in financial intelligence layer (savings rate, spending rate, top expense category, dynamic alert engine). Phase 3 delivers the **savings goals & emergency fund engine**, "الأهداف المالية والادخار", a dedicated RTL sheet with a 9-column goals table, dynamic status engine (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد), and contextual smart-recommendation messages tiered by months remaining. Phase 4 delivers the **Ultimate Fintech Dashboard**, "اللوحة الرئيسية والتقرير السنوي", a luxury dark-mode RTL sheet (`#0F172A` background, `#1F2937` cards) with six top-row KPI cards (with micro-trend arrows), four mid-section charts (combo, waterfall, two doughnuts), a financial-health gauge, three goal progress bars driven by SPARKLINE, a dynamic latest-5-transactions ledger compiled across the 12 months, and a soft-lock protection layer with Arabic warning messages.
 
 ### الملخّص العربي
 
-`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي). وتُسلّم المرحلة الثالثة **نظام الأهداف المالية والادخار** "الأهداف المالية والادخار"، وهو ورقة RTL مخصّصة بجدول من تسعة أعمدة، ومحرّك حالات ديناميكي (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد)، وتوصيات ذكيّة تُولَّد آلياً بحسب الأشهر المتبقية.
+`BUDGET-CALCULATOR-2026` قالب ميزانية عربي احترافي مُهندَس لـ Google Sheets. يحتوي المستودع على المخطّط المعماري الكامل، وملفات البيانات المرجعية القابلة للاستيراد، والصيغ الدقيقة اللازمة لبناء مصنّف ميزانية متعدّد العملات يُغطّي شهور السنة الاثني عشر. تُسلّم المرحلة الأولى **طبقة الإعدادات التأسيسية** "الإعدادات وأسعار الصرف"، التي تعمل كمصدر الحقيقة الوحيد للعملات وأسعار الصرف وفئات الدخل والمصاريف وطرق الدفع وتنسيقات الأرقام. وتُسلّم المرحلة الثانية **الأوراق الشهرية الاثنتي عشرة** (يناير → ديسمبر) بطبقتها الذكية المدمجة (نسبة الادخار، نسبة الإنفاق، أعلى فئة استنزاف، محرّك التنبيهات الديناميكي). وتُسلّم المرحلة الثالثة **نظام الأهداف المالية والادخار** "الأهداف المالية والادخار"، وهو ورقة RTL مخصّصة بجدول من تسعة أعمدة، ومحرّك حالات ديناميكي (🟢 مكتمل / 🟡 قيد الادخار / ⚪ لم يبدأ بعد)، وتوصيات ذكيّة تُولَّد آلياً بحسب الأشهر المتبقية. وتُسلّم المرحلة الرابعة **اللوحة الرئيسية والتقرير السنوي**، وهي ورقة فنتك فاخرة بوضع داكن (خلفية `#0F172A` وبطاقات `#1F2937`) تحوي ستّ بطاقات KPI علويّة بمؤشّرات اتجاه دقيقة، وأربعة رسوم بيانيّة وسطى (Combo + Waterfall + دونات الدخل + دونات المصاريف)، ومقياس \"درجة الصحّة المالية\"، وثلاثة أشرطة تقدّم للأهداف عبر SPARKLINE، وسجلّ \"أحدث المعاملات\" يُجمَّع ديناميكيّاً من الأوراق الشهريّة، وطبقة حماية ناعمة برسائل تحذير عربيّة.
 
 ---
 
@@ -28,7 +28,9 @@ BUDGET-CALCULATOR-2026/
 │   ├── 03_monthly_sheets_architecture.md          ← Phase 2 architecture: 12 monthly sheets (Arabic, RTL)
 │   ├── 04_monthly_formulas_reference.md           ← Phase 2 formula quick-reference (Arabic, RTL)
 │   ├── 05_savings_goals_architecture.md           ← Phase 3 architecture: savings goals sheet (Arabic, RTL)
-│   └── 06_savings_goals_formulas_reference.md     ← Phase 3 formula quick-reference (Arabic, RTL)
+│   ├── 06_savings_goals_formulas_reference.md     ← Phase 3 formula quick-reference (Arabic, RTL)
+│   ├── 07_dashboard_architecture.md               ← Phase 4 architecture: fintech dashboard (Arabic, RTL)
+│   └── 08_dashboard_formulas_reference.md         ← Phase 4 formula quick-reference (Arabic, RTL)
 └── data/
     ├── currencies.csv                  ← 14 currencies × 4 columns (UTF-8 BOM)
     ├── income_categories.csv           ← 8 income categories
@@ -39,9 +41,15 @@ BUDGET-CALCULATOR-2026/
     │   ├── expenses_block_header.csv       ← 8-column header for قسم المصاريف (RTL from col A)
     │   ├── kpi_panel_labels.csv            ← KPI panel label list for أعلى يمين الورقة الشهرية
     │   └── month_names.csv                 ← The 12 Arabic month names in calendar order
-    └── savings_goals/                  ← Phase 3 paste-ready seeds (UTF-8 BOM)
-        ├── goals_seed.csv                  ← 9-column header + 4 baseline goals (RTL from col A)
-        └── summary_panel_labels.csv        ← 7 summary-panel KPI labels for ورقة الأهداف
+    ├── savings_goals/                  ← Phase 3 paste-ready seeds (UTF-8 BOM)
+    │   ├── goals_seed.csv                  ← 9-column header + 4 baseline goals (RTL from col A)
+    │   └── summary_panel_labels.csv        ← 7 summary-panel KPI labels for ورقة الأهداف
+    └── dashboard/                      ← Phase 4 dashboard seeds (UTF-8 BOM)
+        ├── kpi_card_labels.csv             ← 6 KPI card titles for the top row
+        ├── engine_monthly_grid.csv         ← 12-month skeleton for the hidden engine sheet
+        ├── theme_palette.csv               ← All 18 theme tokens with their hex codes
+        ├── progress_bar_goals.csv          ← The 3 goal names rendered as SPARKLINE progress bars
+        └── protection_rules.csv            ← 14 soft-lock protection rules with Arabic warnings
 ```
 
 - **[docs/01_settings_and_exchange_rates.md](docs/01_settings_and_exchange_rates.md)** - Phase 1: cell-by-cell layout, currency engine, named ranges configuration, validation rules, and integration plan with the monthly sheets.
@@ -50,6 +58,8 @@ BUDGET-CALCULATOR-2026/
 - **[docs/04_monthly_formulas_reference.md](docs/04_monthly_formulas_reference.md)** - Phase 2: every monthly-sheet formula in copy-pasteable form (per-row, ARRAYFORMULA, IFS, INDEX/MATCH, annual-summary aggregator).
 - **[docs/05_savings_goals_architecture.md](docs/05_savings_goals_architecture.md)** - Phase 3: RTL layout for ورقة "الأهداف المالية والادخار"، لوحة المؤشّرات الكليّة، 9-column goals table، dynamic status engine، and smart-recommendation engine.
 - **[docs/06_savings_goals_formulas_reference.md](docs/06_savings_goals_formulas_reference.md)** - Phase 3: every savings-goals formula in copy-pasteable form (نسبة الإنجاز، الأشهر المتبقية بصيغتي DATEDIF والحسابيّة، القسط الشهري، الحالة بـ IFS وIF، التوصية الذكيّة الكاملة، صيغ لوحة المؤشّرات السبع).
+- **[docs/07_dashboard_architecture.md](docs/07_dashboard_architecture.md)** - Phase 4: ورقة `اللوحة الرئيسية والتقرير السنوي`، Luxury Dark-Mode palette، layout الأربع وحدات (KPIs, Charts, Gauge+Bars+Ledger, Soft-Lock)، ورقة المحرّك الخلفي `_DashboardEngine`، إجراء التركيب التفصيلي.
+- **[docs/08_dashboard_formulas_reference.md](docs/08_dashboard_formulas_reference.md)** - Phase 4: every dashboard formula in copy-pasteable form (annual sums، per-category 12-sheet aggregator، compact INDIRECT variant، trend strings، health-score composite، SPARKLINE bars، QUERY ledger in two variants).
 - **[data/](data/)** - UTF-8-with-BOM CSV seeds importable directly into the documented ranges.
 
 ---
@@ -201,7 +211,60 @@ BUDGET-CALCULATOR-2026/
 
 ### المرحلة القادمة · Upcoming phase
 
-ستبني المرحلة الرابعة ورقة "الملخّص السنوي" التي تضمّ نتائج الـ 12 شهراً في جدول واحد عبر النمط `SUMIF + INDIRECT` الموثَّق في [القسم 21 من مرجع الصيغ الشهرية](docs/04_monthly_formulas_reference.md#21-مُجمِّع-شهري-لاستهلاكه-في-ورقة-الملخّص-السنوي-لاحقاً)، وستقرأ من ورقة الأهداف قيم لوحة المؤشّرات الكليّة عبر مراجع `='الأهداف المالية والادخار'!B2` ونحوها كما في [القسم 21 من مرجع صيغ الأهداف](docs/06_savings_goals_formulas_reference.md#21-مرجع-للأوراق-المستقبليّة-cross-sheet-lookups).
+ستجمع المرحلة الرابعة كل ما سبق في **اللوحة الرئيسية والتقرير السنوي** (انظر القسم التالي).
+
+---
+
+## المرحلة الرابعة: اللوحة الرئيسية والتقرير السنوي · Phase 4: Ultimate Fintech Dashboard
+
+تختم المرحلة الرابعة المنظومة بورقة فنتك فاخرة باسم `اللوحة الرئيسية والتقرير السنوي`، مُهندَسة من اليمين إلى اليسار (RTL) بوضع داكن (Luxury Dark Mode). تستهلك الورقة بيانات الأوراق الشهريّة الـ 12 وورقة الأهداف عبر مُجمِّعات `SUM`/`SUMIF` وصيغ `QUERY`، وتُخفي الحسابات الداعمة في ورقة مساعدة `_DashboardEngine` تُحمى بطبقة Soft-Lock مع رسائل تحذير عربيّة.
+
+### لوحة الألوان · Theme Palette
+
+| Token | الاستخدام | Hex |
+|---|---|---|
+| `bg-page` | خلفيّة الورقة | `#0F172A` |
+| `bg-card` | خلفيّة كل بطاقة | `#1F2937` |
+| `fg-primary` | النصّ الأساسي | `#F1F5F9` |
+| `fg-muted` | النصّ الثانوي | `#94A3B8` |
+| `accent-income` | الأخضر النيوني (الدخل، اتجاه صاعد) | `#10B981` |
+| `accent-expense` | الأحمر القرمزي (المصروفات، اتجاه هابط) | `#DC2626` |
+| `accent-net` | الأزرق السماوي (خط صافي الربح) | `#06B6D4` |
+| Donut palette | البرتقالي / الأزرق / البنفسجي / الوردي | `#F97316` / `#3B82F6` / `#8B5CF6` / `#EC4899` |
+
+> القائمة الكاملة (18 token) في [`data/dashboard/theme_palette.csv`](data/dashboard/theme_palette.csv).
+
+### الوحدات الأربع · The four modules
+
+1. **Module 1 - بطاقات المؤشّرات الستّ (الصف العلوي):** `إجمالي الدخل`، `إجمالي المصروفات`، `صافي الربح`، `إجمالي الأصول`، `إجمالي الالتزامات`، `معدل الادخار %`. كل بطاقة تحوي رقماً كبيراً + خط اتجاه (▲/▼) ملوَّن شرطياً.
+2. **Module 2 - الرسوم البيانية الكبرى:**
+   - **Chart 1 (Combo - المقارنة الشهريّة):** أعمدة الدخل خضراء `#10B981`، أعمدة المصروف حمراء `#DC2626`، خط صافي الربح أزرق سماوي `#06B6D4`.
+   - **Chart 2 (Waterfall - تدفّق النقد السنوي):** يُظهر تتالي إجمالي الدخل ← السكن ← الطعام ← المواصلات (= الفئة `النقل`) ← باقي المصاريف ← صافي الربح.
+   - **Chart 3 (Doughnut - أكثر مصادر الدخل)** و**Chart 4 (Doughnut - أكثر فئات الإنفاق استنزافاً):** بلوحة ألوان (برتقالي/أزرق/بنفسجي/وردي).
+3. **Module 3 - الصف الثالث:**
+   - **مقياس \"درجة الصحّة المالية\"** (Gauge من 0 إلى 100) مع تسمية نصّيّة (`ممتاز` / `جيد` / `مقبول` / `يحتاج إلى تحسين`). الصيغة المُركَّبة تَزن: نسبة الادخار 40 نقطة + الانضباط الميزاني 30 نقطة + تقدّم الأهداف 30 نقطة.
+   - **أشرطة تقدّم SPARKLINE** لثلاثة أهداف: `صندوق الطوارئ`، `شراء منزل`، `صندوق التقاعد` (لون الشريط يتدرّج: أحمر < 33%، كهرماني 33-66%، أخضر > 66%).
+   - **سجلّ \"أحدث المعاملات\"** عبر `QUERY` على مصفوفة موحَّدة من 12 ورقة، يعرض آخر 5 معاملات، مع وسوم لونيّة `[دخل]` خضراء و`[مصروف]` حمراء.
+4. **Module 4 - طبقة الحماية الناعمة (Soft-Lock):** 14 قاعدة حماية على بطاقات الـ KPI ومرجعيّات الرسوم وسجلّ المعاملات وورقة المحرّك، كلّها تعرض رسالة تحذير عربيّة دون رفض التعديل تماماً (انظر [`data/dashboard/protection_rules.csv`](data/dashboard/protection_rules.csv)).
+
+### كيف تركّب اللوحة الرئيسية · How to assemble the dashboard sheet
+
+1. أنشئ ورقة جديدة وأعد تسميتها إلى `اللوحة الرئيسية والتقرير السنوي` بالضبط، ثمّ فعّل `View → Right-to-Left`.
+2. أنشئ ورقة ثانية باسم `_DashboardEngine` (الشرطة السفليّة في البداية إلزاميّة)، فعّل عليها RTL أيضاً.
+3. طبّق ثيم Luxury Dark Mode (الفقرة 1.1 في [`docs/07_dashboard_architecture.md`](docs/07_dashboard_architecture.md)) باستخدام الـ tokens من [`data/dashboard/theme_palette.csv`](data/dashboard/theme_palette.csv).
+4. الصق هيكل المحرّك من [`data/dashboard/engine_monthly_grid.csv`](data/dashboard/engine_monthly_grid.csv) في `_DashboardEngine!A1`، ثم اكتب صيغ `B2..B13` و`C2..C13` و`D2..D13` من [`docs/08_dashboard_formulas_reference.md`](docs/08_dashboard_formulas_reference.md) (الفقرة 9).
+5. الصق تسميات بطاقات المؤشّرات من [`data/dashboard/kpi_card_labels.csv`](data/dashboard/kpi_card_labels.csv) كمرجع للبطاقات الستّ، ثمّ اكتب الصيغ من docs/08 (الفقرات 1-7).
+6. أدرج الرسوم البيانية الأربعة (Combo, Waterfall, Doughnut x2) من القائمة `Insert → Chart` بإرسائها على النطاقات المذكورة في القسم 2 من docs/07.
+7. أدرج Gauge chart للصحّة المالية، واكتب صيغ SPARKLINE الثلاث لأشرطة التقدّم من docs/08 الفقرة 15.
+8. اكتب صيغة سجلّ المعاملات في `H48` من docs/08 الفقرة 18 (Variant A الموصى به).
+9. طبّق التنسيق الشرطي (لون الاتجاه، وسوم النوع في السجلّ، تدرّج لون النسب).
+10. طبّق طبقة الحماية الناعمة من [`data/dashboard/protection_rules.csv`](data/dashboard/protection_rules.csv)، ثم أخفِ ورقة `_DashboardEngine` عبر `Right-click tab → Hide sheet`.
+
+> الإجراء التفصيلي خطوة بخطوة في [القسم 9 من `docs/07_dashboard_architecture.md`](docs/07_dashboard_architecture.md#9-إجراء-التركيب-التفصيلي-step-by-step-assembly).
+
+### المرحلة القادمة · Upcoming phase
+
+تختتم المرحلة الرابعة الإصدار الأساسي (4/13) للمنظومة. المراحل القادمة (5..13) ستركّز على الأتمتة عبر Apps Script، إعدادات الـ Locale المُسبَقة، طبقة الديون والالتزامات المنفصلة، الأرشيف السنوي متعدّد السنوات، والتوزيع التجاري للقالب.
 
 ---
 
