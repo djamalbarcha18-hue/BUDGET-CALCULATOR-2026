@@ -43,16 +43,56 @@ the formulas expect.
 `Extensions → Apps Script`. A new tab opens with `Code.gs` containing a
 placeholder `function myFunction() {}`.
 
-### 3. Paste the installer
+### 3. Paste the installer modules
 
-1. Open [`install.gs`](./install.gs) on GitHub.
-2. Click the **Raw** button at the top of the file viewer. You'll see the
-   plain `.gs` source.
-3. `Ctrl+A`, `Ctrl+C`.
-4. Back in your Apps Script editor, **delete everything** in `Code.gs` and
-   `Ctrl+V` to paste.
+The installer is split into 14 module files (see [Module layout](#module-layout)
+below). All `.gs` files in an Apps Script project share a single global scope,
+so the modules call each other without imports — you just paste each file as
+its own script.
+
+1. In the Apps Script editor, find the **Files** panel on the left.
+2. **Delete everything** inside the placeholder `Code.gs`, then rename it to
+   `install` (no `.gs` extension is needed in the editor).
+3. For each of the 13 other module files in [`scripts/`](.) — `00_constants`,
+   `01_seed_data`, `10_lib_apps_script`, `11_lib_formulas`,
+   `20_phase1_settings`, `21_phase2_monthly`, `22_phase3_goals`,
+   `23_phase4_engine`, `24_phase4_dashboard`, `25_phase5_welcome`,
+   `30_named_ranges`, `31_validations`, `32_protection`, `33_tabs` — do:
+   - Click **+ → Script** in the Files panel
+   - Name it after the module (e.g. `00_constants`)
+   - Open the corresponding file in this repository, click **Raw**, copy all
+     (`Ctrl+A`, `Ctrl+C`), paste into the Apps Script editor (`Ctrl+V`)
+4. Open `install` and paste the contents of [`install.gs`](./install.gs).
 5. `Ctrl+S` to save. Give the project any name, e.g.
    `BUDGET-CALCULATOR-2026 Installer`.
+
+The numeric prefixes (`00_`, `01_`, `10_`, ...) keep the files in dependency
+order in the editor sidebar: data first, helpers next, phase builders last.
+
+### Module layout
+
+| File | Layer | Responsibility |
+|---|---|---|
+| [`install.gs`](./install.gs) | Entry | `installBudgetCalculator2026()` orchestrator |
+| [`00_constants.gs`](./00_constants.gs) | Data | Theme palette `T`, sheet names, soft-lock warning strings |
+| [`01_seed_data.gs`](./01_seed_data.gs) | Data | Currencies, categories, payment methods, months, goals seed |
+| [`10_lib_apps_script.gs`](./10_lib_apps_script.gs) | IO helpers | `getOrCreateSheet`, `paintSheet`, `mergeAndStyle`, `paintCard` |
+| [`11_lib_formulas.gs`](./11_lib_formulas.gs) | Pure helpers | `buildCategorySumFormula`, `buildAnnualSum`, `buildTrendFormula` |
+| [`20_phase1_settings.gs`](./20_phase1_settings.gs) | Phase 1 | `buildSettings(ss)` — settings + currency engine |
+| [`21_phase2_monthly.gs`](./21_phase2_monthly.gs) | Phase 2 | `buildMonth(ss, monthName)` — one monthly sheet |
+| [`22_phase3_goals.gs`](./22_phase3_goals.gs) | Phase 3 | `buildGoals(ss)` — goals + smart recommendations |
+| [`23_phase4_engine.gs`](./23_phase4_engine.gs) | Phase 4a | `buildDashboardEngine(ss)` — hidden aggregation sheet |
+| [`24_phase4_dashboard.gs`](./24_phase4_dashboard.gs) | Phase 4b | `buildDashboard(ss)` — KPI cards, gauge, ledger |
+| [`25_phase5_welcome.gs`](./25_phase5_welcome.gs) | Phase 5 | `buildWelcome(ss)` — onboarding sheet |
+| [`30_named_ranges.gs`](./30_named_ranges.gs) | Wiring | `defineNamedRanges(ss)` — 11 `rng_*` ranges |
+| [`31_validations.gs`](./31_validations.gs) | Wiring | `applyMonthlyValidations(ss)` |
+| [`32_protection.gs`](./32_protection.gs) | Wiring | `applyProtection(ss)` — soft-lock layer |
+| [`33_tabs.gs`](./33_tabs.gs) | Wiring | `reorderTabs(ss)` |
+
+The split was performed in PR 1 of the refactor plan with **zero behavior
+change**: the generated workbook is identical to the previous monolithic
+installer. No formulas, A1 references, sheet names, or named ranges have
+changed.
 
 ### 4. Run the installer
 
