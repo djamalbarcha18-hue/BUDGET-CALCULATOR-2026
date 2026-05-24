@@ -150,12 +150,19 @@ function installBudgetCalculator2026() {
     if (r !== ui.Button.YES) return;
   }
 
+  // PRE-FLIGHT: create every sheet as an empty stub BEFORE any formula is written.
+  // This guarantees that every cross-sheet reference (e.g. `'اللوحة الرئيسية والتقرير
+  // السنوي'!B5` written from the engine builder) can be resolved by Apps Script at
+  // setFormula() time. Without this, formulas referencing sheets that don't yet
+  // exist get persisted as #REF! and never recover — the "ghost reference" bug.
+  precreateAllSheetStubs(ss);
+
   // Build in canonical order (settings first because everything else references it).
   buildSettings(ss);
   buildGoals(ss);
   for (let i = 0; i < MONTHS.length; i++) buildMonth(ss, MONTHS[i]);
-  buildDashboardEngine(ss);
-  buildDashboard(ss);
+  buildDashboard(ss);          // <-- moved BEFORE the engine: card cells now exist
+  buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
   buildWelcome(ss);
 
   defineNamedRanges(ss);
@@ -172,7 +179,89 @@ function installBudgetCalculator2026() {
   ui.alert(
     'تم تركيب القالب بنجاح',
     'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
-    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) كما هو موضح في docs/07_dashboard_architecture.md، الفقرات 4-5.',
+    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
+    ui.ButtonSet.OK);
+}
+
+// ============================================================================
+// REPAIR ENTRY POINT - rewrites broken formulas WITHOUT rebuilding the workbook
+// ============================================================================
+/**
+ * Use this on an existing workbook that already shows #REF! and #VALUE! on the
+ * dashboard. It rewrites only the formulas — KPI cards, trend cells, the
+ * `_DashboardEngine` engine columns G/H/I/O — and re-binds the four chart
+ * named ranges. User-entered data in the monthly sheets and the goals sheet is
+ * never touched.
+ *
+ * From the Apps Script editor function dropdown, pick `repairDashboard2026`
+ * and click Run. A confirmation alert appears when the rewrite is complete.
+ */
+function repairDashboard2026() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (!engine || !dash) {
+    ui.alert('لم يتم العثور على الأوراق المطلوبة',
+      'تأكّد أنّ ورقتَي \"' + SHEET_NAMES.engine + '\" و \"' + SHEET_NAMES.dashboard +
+      '\" موجودتان قبل تشغيل أداة الإصلاح.', ui.ButtonSet.OK);
+    return;
+  }
+
+  // 1) Rewrite the engine cells that previously held ghost dashboard refs.
+  engine.getRange('G2').setFormula('=IFERROR(H2, 0)');
+  engine.getRange('G6').setFormula('=IFERROR(-1 * (H3 + G3 + G4 + G5), 0)');
+  engine.getRange('G7').setFormula('=IFERROR(SUM(G2:G6), 0)');
+
+  // 2) Rewrite engine H/I trend feeders with IFERROR armor.
+  engine.getRange('H2').setFormula('=IFERROR(SUM(B2:B13), 0)');
+  engine.getRange('I2').setFormula('=IFERROR(SUM(B2:B12), 0)');
+  engine.getRange('H3').setFormula('=IFERROR(SUM(C2:C13), 0)');
+  engine.getRange('I3').setFormula('=IFERROR(SUM(C2:C12), 0)');
+  engine.getRange('H4').setFormula('=IFERROR(H2-H3, 0)');
+  engine.getRange('I4').setFormula('=IFERROR(I2-I3, 0)');
+  engine.getRange('H5').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!D2 + O5, 0)`);
+  engine.getRange('I5').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!D2 + SUM(D2:D12), 0)`);
+  engine.getRange('H6').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!B3 * 12, 0)`);
+  engine.getRange('I6').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!B3 * 11, 0)`);
+  engine.getRange('H7').setFormula('=IFERROR((H2-H3)/H2, 0)');
+  engine.getRange('I7').setFormula('=IFERROR((I2-I3)/I2, 0)');
+
+  // 3) Rewrite the composite health score with the engine-internal version.
+  const monthlyExpectedExpenseSum = MONTHS.map(m => `'${m}'!D33:D62`).join(', ');
+  engine.getRange('O2').setFormula(
+    `=ROUND(40 * MAX(0, MIN(1, IFERROR((H2 - H3) / H2, 0))) + 30 * MAX(0, MIN(1, IFERROR(1 - (H3 / SUM(${monthlyExpectedExpenseSum})), 0))) + 30 * IFERROR('${SHEET_NAMES.goals}'!F2, 0), 0)`);
+
+  // 4) Repoint the dashboard KPI big-numbers at the engine.
+  dash.getRange('B5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H2, 0)`);
+  dash.getRange('F5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H3, 0)`);
+  dash.getRange('J5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H4, 0)`);
+  dash.getRange('N5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H5, 0)`);
+  dash.getRange('R5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H6, 0)`);
+  dash.getRange('V5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H7, 0)`).setNumberFormat('0.0%');
+
+  // 5) Rewrite the six trend cells with the bulletproof formula.
+  dash.getRange('B7').setFormula(buildTrendFormula('H2', 'I2'));
+  dash.getRange('F7').setFormula(buildTrendFormula('H3', 'I3'));
+  dash.getRange('J7').setFormula(buildTrendFormula('H4', 'I4'));
+  dash.getRange('N7').setFormula(buildTrendFormula('H5', 'I5'));
+  dash.getRange('R7').setFormula(buildTrendFormula('H6', 'I6'));
+  dash.getRange('V7').setFormula(buildTrendFormula('H7', 'I7'));
+
+  // 6) Re-bind the four chart named ranges (idempotent — safe to re-run).
+  ss.setNamedRange('rng_dash_monthly_grid',     engine.getRange('A1:D13'));
+  ss.setNamedRange('rng_dash_waterfall',        engine.getRange('F1:G7'));
+  ss.setNamedRange('rng_dash_doughnut_income',  engine.getRange('I1:J9'));
+  ss.setNamedRange('rng_dash_doughnut_expense', engine.getRange('L1:M13'));
+
+  SpreadsheetApp.flush();
+  ui.alert(
+    'تم إصلاح اللوحة',
+    'أُعيدت كتابة جميع صيغ المحرّك وبطاقات المؤشّرات بإصدار محصَّن ضدّ الأخطاء، ' +
+    'وأُعيد ربط النطاقات المُسمَّاة الأربعة للرسوم البيانية. ' +
+    'افتح ورقة \"' + SHEET_NAMES.dashboard + '\" — يجب أن تختفي رسائل #REF! و #VALUE! ' +
+    'وتظهر الأسهم الخضراء/الحمراء على بطاقات الاتجاه.',
     ui.ButtonSet.OK);
 }
 
@@ -184,6 +273,27 @@ function getOrCreateSheet(ss, name) {
   if (!s) s = ss.insertSheet(name);
   s.setRightToLeft(true);
   return s;
+}
+
+/**
+ * Creates an empty stub for every sheet the workbook will contain BEFORE any
+ * builder writes a formula. This is what prevents the "ghost reference" bug:
+ * Apps Script binds the sheet-name token in a formula at setFormula() time, so
+ * if the referenced sheet does not exist yet, the formula is persisted as a
+ * `#REF!` and never recovers — even after the sheet is later created.
+ *
+ * Called as the FIRST step of `installBudgetCalculator2026()`.
+ */
+function precreateAllSheetStubs(ss) {
+  const all = [
+    SHEET_NAMES.welcome,
+    SHEET_NAMES.settings,
+    SHEET_NAMES.goals,
+    ...MONTHS,
+    SHEET_NAMES.dashboard,
+    SHEET_NAMES.engine,
+  ];
+  all.forEach(name => getOrCreateSheet(ss, name));
 }
 
 function paintSheet(s, fg, bg) {
@@ -453,11 +563,16 @@ function buildDashboardEngine(ss) {
   // O5: cumulative net surplus (used by Card K4)
   s.getRange('O5').setFormula('=SUM(D2:D13)');
 
-  // F:G - Waterfall data (per docs/07 section 4.2.1)
+  // F:G - Waterfall data (per docs/07 section 4.2.1).
+  // REFACTOR: column G is now 100% engine-internal. Previously G2/G6/G7 read
+  // from the dashboard sheet, but if the engine was ever rebuilt before the
+  // dashboard existed those references were locked into #REF!. The engine now
+  // computes the waterfall purely from its own H column (which is in turn
+  // derived from the 12 monthly sheets), so there is no chance of a ghost ref.
   s.getRange('F1:G1').setValues([['العنصر', 'المبلغ']])
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
   s.getRange('F2').setValue('إجمالي الدخل');
-  s.getRange('G2').setFormula(`='${SHEET_NAMES.dashboard}'!B5`);
+  s.getRange('G2').setFormula('=IFERROR(H2, 0)');                 // total income (engine-internal)
   s.getRange('F3').setValue('السكن');
   s.getRange('G3').setFormula(buildCategorySumFormula('السكن', /*expense=*/true, /*negate=*/true));
   s.getRange('F4').setValue('الطعام');
@@ -465,23 +580,29 @@ function buildDashboardEngine(ss) {
   s.getRange('F5').setValue('المواصلات');
   s.getRange('G5').setFormula(buildCategorySumFormula('النقل', true, true)); // canonical category is النقل
   s.getRange('F6').setValue('باقي المصاريف');
-  s.getRange('G6').setFormula(`=-1 * ('${SHEET_NAMES.dashboard}'!F5 + G3 + G4 + G5)`);
+  // Remainder = -(total expense + already-negative G3 + G4 + G5).
+  s.getRange('G6').setFormula('=IFERROR(-1 * (H3 + G3 + G4 + G5), 0)');
   s.getRange('F7').setValue('صافي الربح');
-  s.getRange('G7').setFormula(`='${SHEET_NAMES.dashboard}'!J5`);
+  s.getRange('G7').setFormula('=IFERROR(SUM(G2:G6), 0)');         // subtotal of the waterfall
 
-  // H:I - Trend current/prior (per docs/07 section 8.3)
-  s.getRange('H2').setFormula('=SUM(B2:B13)');     // Total income (current)
-  s.getRange('I2').setFormula('=SUM(B2:B12)');     // Total income (prior, last 11 months)
-  s.getRange('H3').setFormula('=SUM(C2:C13)');     // Total expense (current)
-  s.getRange('I3').setFormula('=SUM(C2:C12)');     // Total expense (prior)
-  s.getRange('H4').setFormula('=H2-H3');           // Net profit (current)
-  s.getRange('I4').setFormula('=I2-I3');           // Net profit (prior)
-  s.getRange('H5').setFormula(`='${SHEET_NAMES.goals}'!D2 + O5`);                     // Assets (current)
-  s.getRange('I5').setFormula(`='${SHEET_NAMES.goals}'!D2 + SUM(D2:D12)`);            // Assets (prior)
-  s.getRange('H6').setFormula(`='${SHEET_NAMES.goals}'!B3 * 12`);                     // Liabilities (current)
-  s.getRange('I6').setFormula(`='${SHEET_NAMES.goals}'!B3 * 11`);                     // Liabilities (prior)
-  s.getRange('H7').setFormula('=IFERROR((H2-H3)/H2, 0)');                             // Savings rate (current)
-  s.getRange('I7').setFormula('=IFERROR((I2-I3)/I2, 0)');                             // Savings rate (prior)
+  // H:I - Trend current/prior (per docs/07 section 8.3).
+  // REFACTOR: every cell is wrapped with IFERROR so that a single broken
+  // upstream value (an empty goals!D2, a zero goals!B3, a SUM that hits a
+  // text cell, etc.) cannot poison the trend strings on the dashboard cards.
+  // The trend formulas in row 7 of the dashboard read these values directly,
+  // so robustness here is what kills the #VALUE! cascade end-to-end.
+  s.getRange('H2').setFormula('=IFERROR(SUM(B2:B13), 0)');     // Total income (current)
+  s.getRange('I2').setFormula('=IFERROR(SUM(B2:B12), 0)');     // Total income (prior, last 11 months)
+  s.getRange('H3').setFormula('=IFERROR(SUM(C2:C13), 0)');     // Total expense (current)
+  s.getRange('I3').setFormula('=IFERROR(SUM(C2:C12), 0)');     // Total expense (prior)
+  s.getRange('H4').setFormula('=IFERROR(H2-H3, 0)');           // Net profit (current)
+  s.getRange('I4').setFormula('=IFERROR(I2-I3, 0)');           // Net profit (prior)
+  s.getRange('H5').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!D2 + O5, 0)`);                     // Assets (current)
+  s.getRange('I5').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!D2 + SUM(D2:D12), 0)`);            // Assets (prior)
+  s.getRange('H6').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!B3 * 12, 0)`);                     // Liabilities (current)
+  s.getRange('I6').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!B3 * 11, 0)`);                     // Liabilities (prior)
+  s.getRange('H7').setFormula('=IFERROR((H2-H3)/H2, 0)');                                         // Savings rate (current)
+  s.getRange('I7').setFormula('=IFERROR((I2-I3)/I2, 0)');                                         // Savings rate (prior)
 
   // I:J - Income source doughnut (per docs/07 section 4.3)
   s.getRange('I1:J1').setValues([['فئة الدخل', 'الإجمالي']])
@@ -499,10 +620,15 @@ function buildDashboardEngine(ss) {
     s.getRange(2 + i, 13).setFormula(buildCategorySumFormula('', true, false, `L${2 + i}`));
   }
 
-  // O2 - Composite health score (40 savings + 30 budget discipline + 30 goal progress)
+  // O2 - Composite health score (40 savings + 30 budget discipline + 30 goal progress).
+  // REFACTOR: previously this formula referenced the dashboard sheet's B5 and
+  // F5. Because the engine used to be built before the dashboard, those refs
+  // were captured as #REF! and propagated into the final score. The score now
+  // reads `H2` (total income) and `H3` (total expense) from the engine itself,
+  // so it is always self-consistent and survives any rebuild order.
   const monthlyExpectedExpenseSum = MONTHS.map(m => `'${m}'!D33:D62`).join(', ');
   s.getRange('O2').setFormula(
-    `=ROUND(40 * MAX(0, MIN(1, IFERROR(('${SHEET_NAMES.dashboard}'!B5 - '${SHEET_NAMES.dashboard}'!F5) / '${SHEET_NAMES.dashboard}'!B5, 0))) + 30 * MAX(0, MIN(1, IFERROR(1 - ('${SHEET_NAMES.dashboard}'!F5 / SUM(${monthlyExpectedExpenseSum})), 0))) + 30 * IFERROR('${SHEET_NAMES.goals}'!F2, 0), 0)`);
+    `=ROUND(40 * MAX(0, MIN(1, IFERROR((H2 - H3) / H2, 0))) + 30 * MAX(0, MIN(1, IFERROR(1 - (H3 / SUM(${monthlyExpectedExpenseSum})), 0))) + 30 * IFERROR('${SHEET_NAMES.goals}'!F2, 0), 0)`);
   s.getRange('O3').setFormula('=IFS(O2>=90, "ممتاز", O2>=75, "جيد", O2>=60, "مقبول", TRUE, "يحتاج إلى تحسين")');
 
   // Q:W - Stacked transactions for ledger (we keep this as a SIMPLER variant: just the
@@ -564,11 +690,18 @@ function buildDashboard(ss) {
     { bg: T.bgPage, fg: T.fgPrimary, size: 18, bold: true, align: 'center' });
 
   // ---- Module 1: Six KPI cards ----
+  // SOURCE OF TRUTH: every KPI now reads from `_DashboardEngine` so the
+  // dashboard sheet stays a pure presentation layer. The engine in turn reads
+  // from the 12 monthly sheets and the goals sheet. This removes the duplicate
+  // SUM(…12 months…) blocks that used to live on the dashboard, eliminates an
+  // entire class of "the engine and the card disagree" bugs, and keeps every
+  // formula short enough to fit in one log line during debugging.
+  //
   // Card 1: إجمالي الدخل (B4:E8)
   paintCard(s, 'B4:E8');
   mergeAndStyle(s, 'B4:E4', 'إجمالي الدخل', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
   mergeAndStyle(s, 'B5:E6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('B5').setFormula(buildAnnualSum(/*income=*/true));
+  s.getRange('B5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H2, 0)`);
   mergeAndStyle(s, 'B7:E7', '', { bg: T.bgCard, size: 12, align: 'right' });
   s.getRange('B7').setFormula(buildTrendFormula('H2', 'I2'));
   mergeAndStyle(s, 'B8:E8', 'إجمالي الدخل الفعلي السنوي عبر 12 شهراً.',
@@ -578,7 +711,7 @@ function buildDashboard(ss) {
   paintCard(s, 'F4:I8');
   mergeAndStyle(s, 'F4:I4', 'إجمالي المصروفات', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
   mergeAndStyle(s, 'F5:I6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('F5').setFormula(buildAnnualSum(false));
+  s.getRange('F5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H3, 0)`);
   mergeAndStyle(s, 'F7:I7', '', { bg: T.bgCard, size: 12, align: 'right' });
   s.getRange('F7').setFormula(buildTrendFormula('H3', 'I3'));
   mergeAndStyle(s, 'F8:I8', 'إجمالي المصروف الفعلي السنوي عبر 12 شهراً.',
@@ -588,7 +721,7 @@ function buildDashboard(ss) {
   paintCard(s, 'J4:M8');
   mergeAndStyle(s, 'J4:M4', 'صافي الربح', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
   mergeAndStyle(s, 'J5:M6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('J5').setFormula('=B5 - F5');
+  s.getRange('J5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H4, 0)`);
   mergeAndStyle(s, 'J7:M7', '', { bg: T.bgCard, size: 12, align: 'right' });
   s.getRange('J7').setFormula(buildTrendFormula('H4', 'I4'));
   mergeAndStyle(s, 'J8:M8', 'الفرق بين إجمالي الدخل وإجمالي المصروفات.',
@@ -598,7 +731,7 @@ function buildDashboard(ss) {
   paintCard(s, 'N4:Q8');
   mergeAndStyle(s, 'N4:Q4', 'إجمالي الأصول', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
   mergeAndStyle(s, 'N5:Q6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('N5').setFormula(`='${SHEET_NAMES.goals}'!D2 + ${SHEET_NAMES.engine}!O5`);
+  s.getRange('N5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H5, 0)`);
   mergeAndStyle(s, 'N7:Q7', '', { bg: T.bgCard, size: 12, align: 'right' });
   s.getRange('N7').setFormula(buildTrendFormula('H5', 'I5'));
   mergeAndStyle(s, 'N8:Q8', 'المبالغ المدّخرة في الأهداف + الفائض المتراكم.',
@@ -608,7 +741,7 @@ function buildDashboard(ss) {
   paintCard(s, 'R4:U8');
   mergeAndStyle(s, 'R4:U4', 'إجمالي الالتزامات', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
   mergeAndStyle(s, 'R5:U6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('R5').setFormula(`='${SHEET_NAMES.goals}'!B3 * 12`);
+  s.getRange('R5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H6, 0)`);
   mergeAndStyle(s, 'R7:U7', '', { bg: T.bgCard, size: 12, align: 'right' });
   s.getRange('R7').setFormula(buildTrendFormula('H6', 'I6'));
   mergeAndStyle(s, 'R8:U8', 'الأقساط الشهريّة المطلوبة × 12 (تقدير سنوي).',
@@ -618,7 +751,7 @@ function buildDashboard(ss) {
   paintCard(s, 'V4:Y8');
   mergeAndStyle(s, 'V4:Y4', 'معدل الادخار %', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
   mergeAndStyle(s, 'V5:Y6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('V5').setFormula('=IFERROR((B5 - F5) / B5, 0)').setNumberFormat('0.0%');
+  s.getRange('V5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H7, 0)`).setNumberFormat('0.0%');
   mergeAndStyle(s, 'V7:Y7', '', { bg: T.bgCard, size: 12, align: 'right' });
   s.getRange('V7').setFormula(buildTrendFormula('H7', 'I7'));
   mergeAndStyle(s, 'V8:Y8', '(الدخل - المصروفات) / الدخل.',
@@ -687,18 +820,22 @@ function buildDashboard(ss) {
       .setBackground(T.accentExpense).setFontColor(T.white).setRanges([jRange]).build());
   s.setConditionalFormatRules(rules);
 
-  // Stub anchors for the four charts (visible card backgrounds the user can drop charts onto)
+  // Stub anchors for the four charts (visible card backgrounds the user can drop charts onto).
+  // Insert each chart via Insert → Chart and bind it to the matching NAMED RANGE
+  // (defined in defineNamedRanges) instead of typing the engine A1 ranges by hand.
+  // The named ranges are stable across rebuilds, so the chart never needs to be
+  // re-bound when the engine sheet is rebuilt or moved.
   paintCard(s, 'B11:M26');
-  mergeAndStyle(s, 'B11:M11', 'Chart 1: المقارنة الشهريّة (أدرجه يدوياً من _DashboardEngine!A1:D13)',
+  mergeAndStyle(s, 'B11:M11', 'Chart 1: المقارنة الشهريّة (أدرجه يدوياً من النطاق المُسمَّى rng_dash_monthly_grid)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'N11:Y26');
-  mergeAndStyle(s, 'N11:Y11', 'Chart 2: Waterfall - تدفّق النقد (أدرجه يدوياً من _DashboardEngine!F1:G7)',
+  mergeAndStyle(s, 'N11:Y11', 'Chart 2: Waterfall - تدفّق النقد (أدرجه يدوياً من النطاق المُسمَّى rng_dash_waterfall)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'B29:G44');
-  mergeAndStyle(s, 'B29:G29', 'Chart 3: دونات الدخل (أدرجه يدوياً من _DashboardEngine!I1:J9)',
+  mergeAndStyle(s, 'B29:G29', 'Chart 3: دونات الدخل (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_income)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'H29:M44');
-  mergeAndStyle(s, 'H29:M29', 'Chart 4: دونات المصاريف (أدرجه يدوياً من _DashboardEngine!L1:M13)',
+  mergeAndStyle(s, 'H29:M29', 'Chart 4: دونات المصاريف (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_expense)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
 }
 
@@ -712,9 +849,35 @@ function buildAnnualSum(income) {
 }
 
 function buildTrendFormula(curCell, priCell) {
-  const cur = `${SHEET_NAMES.engine}!${curCell}`;
-  const pri = `${SHEET_NAMES.engine}!${priCell}`;
-  return `=IF(${pri}=0, "-", IF(${cur} >= ${pri}, "▲ " & TEXT((${cur} - ${pri}) / ${pri}, "0.0%"), "▼ " & TEXT((${cur} - ${pri}) / ${pri}, "0.0%")))`;
+  // Bulletproof trend formula. The previous version did naked arithmetic on
+  // `_DashboardEngine!H/I` cells, so a single text/blank value upstream
+  // produced #VALUE! that bled all the way to the card. This version:
+  //
+  //   1. Coerces both operands to numbers via `IFERROR(<ref>+0, 0)`. Adding
+  //      zero to a number is a no-op; adding zero to text returns #VALUE!,
+  //      which the inner IFERROR catches and replaces with 0. This is the
+  //      safest numeric-coercion idiom in Sheets — N() does NOT trap
+  //      propagated errors, so it cannot be used here.
+  //
+  //   2. Wraps the entire expression in an outer IFERROR so any arithmetic
+  //      surprise (division by zero, locale-related TEXT failure, etc.)
+  //      degrades gracefully to a single em-dash "—" instead of #VALUE!.
+  //
+  //   3. Returns a clean em-dash for the "no prior data" branch, matching
+  //      the visual language used everywhere else in the dashboard.
+  const cur = `IFERROR(${SHEET_NAMES.engine}!${curCell}+0, 0)`;
+  const pri = `IFERROR(${SHEET_NAMES.engine}!${priCell}+0, 0)`;
+  // We compute the delta once via LET to keep the formula readable.
+  return (
+    '=IFERROR(LET(' +
+    `cur, ${cur}, ` +
+    `pri, ${pri}, ` +
+    'IF(pri=0, "—", ' +
+      'IF(cur >= pri, ' +
+        '"▲ " & TEXT((cur-pri)/pri, "0.0%"), ' +
+        '"▼ " & TEXT((cur-pri)/pri, "0.0%")))), ' +
+    '"—")'
+  );
 }
 
 // ============================================================================
@@ -808,6 +971,18 @@ function defineNamedRanges(ss) {
   set('rng_IncomeCategories', 'F7:F14');
   set('rng_ExpenseCategories', 'G7:G18');
   set('rng_PaymentMethods',   'H7:H10');
+
+  // Dynamic chart ranges. Charts on the dashboard should be configured to read
+  // from these named ranges instead of hard-coded `_DashboardEngine!A1:D13`
+  // anchors. As long as the engine layout stays stable, every chart redraws
+  // automatically the moment a monthly sheet, a goal, or an exchange rate is
+  // edited — no manual rewiring of chart sources needed.
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  const setEng = (name, a1) => ss.setNamedRange(name, engine.getRange(a1));
+  setEng('rng_dash_monthly_grid',     'A1:D13');   // Chart 1 - Combo (monthly comparison)
+  setEng('rng_dash_waterfall',        'F1:G7');    // Chart 2 - Waterfall (cash flow)
+  setEng('rng_dash_doughnut_income',  'I1:J9');    // Chart 3 - Doughnut (income sources)
+  setEng('rng_dash_doughnut_expense', 'L1:M13');   // Chart 4 - Doughnut (expense categories)
 
   // Now apply data validations that depend on named ranges (categories, payment methods)
   applyMonthlyValidations(ss);
