@@ -1078,3 +1078,267 @@ function reorderTabs(ss) {
     }
   }
 }
+
+
+// =============================================================================
+// CATEGORY SYNC - rebuilds DataValidation dropdowns on every monthly sheet
+// =============================================================================
+//
+// Why this exists
+// ---------------
+// Symptom: dropdowns on the monthly tabs (B10:B28 income category, B33:B62
+// expense category) go empty - the user opens يناير, clicks the dropdown, sees
+// nothing. Root cause is almost always one of:
+//   a) The named range `rng_IncomeCategories` / `rng_ExpenseCategories` got
+//      deleted, renamed, or its target sheet was removed.
+//   b) The settings sheet was reorganised and the named range now points at
+//      empty cells.
+//   c) The DataValidation rule on the monthly sheet was wiped during a manual
+//      paste-as-values operation.
+//
+// What this function does
+// -----------------------
+// Resolves a master category list from a three-tier fallback chain, then
+// rebuilds the DataValidation rules on every monthly sheet using a STATIC
+// snapshot of the resolved list. The snapshot survives later named-range
+// breakage - if `rng_IncomeCategories` gets deleted tomorrow, every dropdown
+// keeps working until the next explicit sync.
+//
+// Master category source - tried in this exact order:
+//   1. The named range (`rng_IncomeCategories` / `rng_ExpenseCategories`).
+//      This is the canonical source set up by `defineNamedRanges` in this
+//      installer, pointing at the settings sheet.
+//   2. `_DashboardEngine!I2:I` (income) / `_DashboardEngine!L2:L` (expense).
+//      The hidden engine sheet mirrors the master list for chart-data use,
+//      so it is a near-perfect fallback when the named range is broken.
+//   3. The hardcoded `INCOME_CATEGORIES` / `EXPENSE_CATEGORIES` constants
+//      defined at the top of this file. Last-resort guarantee that even a
+//      severely-corrupted workbook still gets a working dropdown.
+//
+// Resilience
+// ----------
+// - Per-sheet failures (sheet renamed, sheet protected, etc.) are caught,
+//   logged via `Logger.log`, and the loop continues. One bad sheet cannot
+//   block the rest of the sync.
+// - Top-level failures are caught and surfaced as a single Arabic UI alert.
+// - All three source tiers are also try/catch'd individually so a corrupted
+//   tier does not block the next one.
+// - View the per-sheet log entries via the Apps Script editor:
+//   `View -> Logs` (or `Cmd/Ctrl+Enter`) right after running.
+
+/**
+ * Public entry point. Run from the Apps Script editor:
+ *   function dropdown -> `syncCategories` -> Run.
+ * Shows a single Arabic UI alert summarising the result.
+ */
+function syncCategories() {
+  const ui = SpreadsheetApp.getUi();
+
+  let report;
+  try {
+    report = syncCategoriesCore_(SpreadsheetApp.getActive());
+  } catch (err) {
+    Logger.log('syncCategories: fatal error: ' + (err && err.stack ? err.stack : err));
+    ui.alert(
+      'فشل مزامنة الفئات',
+      (err && err.message) ? err.message : String(err),
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // Build the user-facing Arabic alert from the structured report.
+  const lines = [
+    'مصدر فئات الدخل: ' + report.incomeSource +
+      ' (' + report.incomeCount + ' فئة)',
+    'مصدر فئات المصاريف: ' + report.expenseSource +
+      ' (' + report.expenseCount + ' فئة)',
+    '',
+    'الأوراق التي تمت مزامنتها بنجاح: ' + report.synced.length + ' من ' +
+      (report.synced.length + report.failed.length),
+  ];
+  if (report.failed.length) {
+    lines.push('');
+    lines.push('الأوراق التي فشلت:');
+    report.failed.forEach(function (f) {
+      lines.push('  • ' + f.sheet + ': ' + f.error);
+    });
+    lines.push('');
+    lines.push('راجع سجل التنفيذ من قائمة View -> Logs لمزيد من التفاصيل.');
+  }
+
+  ui.alert(
+    report.failed.length ? 'تمت مزامنة الفئات مع تحفّظات' : 'تمت مزامنة الفئات بنجاح',
+    lines.join('\n'),
+    ui.ButtonSet.OK);
+}
+
+/**
+ * Silent core. Resolves master category lists, then rebuilds every monthly
+ * sheet's income/expense DataValidation. Returns a structured report;
+ * never throws on a per-sheet failure (those are collected in `report.failed`).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @return {{
+ *   incomeSource:string,  incomeCount:number,
+ *   expenseSource:string, expenseCount:number,
+ *   synced:string[], failed:Array<{sheet:string,error:string}>
+ * }}
+ */
+function syncCategoriesCore_(ss) {
+  // 1) Resolve the master lists via the three-tier fallback chain.
+  const incomeRes = resolveCategoryList_(ss, {
+    namedRange:   'rng_IncomeCategories',
+    engineColumn: 'I',                                                 // _DashboardEngine!I2:I
+    seedConstant: (typeof INCOME_CATEGORIES !== 'undefined') ? INCOME_CATEGORIES : null,
+    label:        'الدخل',
+  });
+  const expenseRes = resolveCategoryList_(ss, {
+    namedRange:   'rng_ExpenseCategories',
+    engineColumn: 'L',                                                 // _DashboardEngine!L2:L
+    seedConstant: (typeof EXPENSE_CATEGORIES !== 'undefined') ? EXPENSE_CATEGORIES : null,
+    label:        'المصاريف',
+  });
+
+  // 2) Build STATIC DataValidation rules. `requireValueInList` snapshots the
+  //    array at build time, so the dropdown is independent of the named-range
+  //    state going forward - even if `rng_IncomeCategories` gets deleted
+  //    tomorrow, every monthly dropdown keeps working until the next sync.
+  //    This is the trade-off that fixes the "dropdowns went empty" symptom.
+  const incomeDv = SpreadsheetApp.newDataValidation()
+    .requireValueInList(incomeRes.values, /*showDropdown=*/true)
+    .setAllowInvalid(false)                                            // hard-reject typos
+    .setHelpText('اختر فئة الدخل من القائمة المسموحة.')
+    .build();
+  const expenseDv = SpreadsheetApp.newDataValidation()
+    .requireValueInList(expenseRes.values, true)
+    .setAllowInvalid(false)
+    .setHelpText('اختر فئة المصاريف من القائمة المسموحة.')
+    .build();
+
+  // 3) Walk every monthly sheet and apply both rules. Auto-discover the
+  //    monthly sheet names so this function works on workbooks that were
+  //    installed by an older version of the installer (where MONTHS may not
+  //    have been defined or may have been renamed).
+  const monthsList = (typeof MONTHS !== 'undefined') ? MONTHS : detectMonthlySheets_(ss);
+
+  const synced = [];
+  const failed = [];
+  monthsList.forEach(function (m) {
+    try {
+      const sheet = ss.getSheetByName(m);
+      if (!sheet) {
+        throw new Error('الورقة غير موجودة في المصنّف.');
+      }
+      sheet.getRange('B10:B28').setDataValidation(incomeDv);
+      sheet.getRange('B33:B62').setDataValidation(expenseDv);
+      synced.push(m);
+    } catch (err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      Logger.log('syncCategories: sheet "' + m + '" failed: ' + msg);
+      failed.push({ sheet: m, error: msg });
+      // Fall through - do NOT rethrow. Robustness is the whole point.
+    }
+  });
+
+  return {
+    incomeSource:  incomeRes.source,
+    incomeCount:   incomeRes.values.length,
+    expenseSource: expenseRes.source,
+    expenseCount:  expenseRes.values.length,
+    synced:        synced,
+    failed:        failed,
+  };
+}
+
+/**
+ * Three-tier category-list resolver. Returns the first non-empty list it
+ * finds, along with a human-readable source label for the UI report.
+ *
+ *   Tier 1: named range  (canonical - install.gs sets these up)
+ *   Tier 2: _DashboardEngine column (mirror of the master list)
+ *   Tier 3: hardcoded seed constant (last-resort guarantee)
+ *
+ * Throws ONLY if every single tier comes back empty - which would mean the
+ * workbook is severely corrupted (no settings sheet, no engine sheet, AND
+ * the install.gs constants are unavailable).
+ *
+ * @return {{values: string[], source: string}}
+ */
+function resolveCategoryList_(ss, opts) {
+  // -------- Tier 1: named range --------
+  try {
+    const nr = ss.getRangeByName(opts.namedRange);
+    if (nr) {
+      const vals = readNonEmptyColumn_(nr);
+      if (vals.length) {
+        return {
+          values: vals,
+          source: 'النطاق المُسمَّى ' + opts.namedRange,
+        };
+      }
+    }
+  } catch (err) {
+    Logger.log('resolveCategoryList: tier 1 (named range "' + opts.namedRange +
+      '") failed: ' + err);
+  }
+
+  // -------- Tier 2: _DashboardEngine column --------
+  try {
+    const engineSheetName = (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.engine)
+      ? SHEET_NAMES.engine
+      : '_DashboardEngine';
+    const engine = ss.getSheetByName(engineSheetName);
+    if (engine && engine.getLastRow() >= 2) {
+      const last = engine.getLastRow();
+      const a1   = opts.engineColumn + '2:' + opts.engineColumn + last;
+      const vals = readNonEmptyColumn_(engine.getRange(a1));
+      if (vals.length) {
+        return {
+          values: vals,
+          source: engineSheetName + '!' + a1,
+        };
+      }
+    }
+  } catch (err) {
+    Logger.log('resolveCategoryList: tier 2 (engine column ' + opts.engineColumn +
+      ') failed: ' + err);
+  }
+
+  // -------- Tier 3: hardcoded seed constant --------
+  if (opts.seedConstant && opts.seedConstant.length) {
+    return {
+      values: opts.seedConstant.slice(),       // defensive copy
+      source: 'القائمة المضمَّنة في install.gs',
+    };
+  }
+
+  // All three tiers empty - unrecoverable.
+  throw new Error('تعذّر استرجاع قائمة فئات ' + opts.label +
+    ' من أي مصدر (النطاق المُسمَّى، أو ورقة _DashboardEngine، ' +
+    'أو القائمة المضمَّنة).');
+}
+
+/**
+ * Reads a single-column Range, trims each value, and returns only the
+ * non-empty entries. Centralised so both tier 1 and tier 2 use identical
+ * empty-detection logic.
+ */
+function readNonEmptyColumn_(range) {
+  return range.getValues()
+    .map(function (row) { return String(row[0] == null ? '' : row[0]).trim(); })
+    .filter(function (v) { return v.length > 0; });
+}
+
+/**
+ * Fallback for the auto-discovery branch in `syncCategoriesCore_`. Used only
+ * when the global `MONTHS` const is not in scope (i.e., this function got
+ * pasted into a workbook whose installer did not define it). Returns the
+ * names of every canonical Arabic-month sheet that actually exists.
+ */
+function detectMonthlySheets_(ss) {
+  const canonical = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  ];
+  return canonical.filter(function (m) { return !!ss.getSheetByName(m); });
+}
