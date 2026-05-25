@@ -177,14 +177,32 @@ function installBudgetCalculator2026() {
   ss.setActiveSheet(welcome);
 
   // ---------------------------------------------------------------------------
-  // FINAL STEP: programmatic chart injection.
-  // We call the silent core (`automateDashboardVisualsCore_`) so the installer
-  // owns the user-facing alert. Wrapped in try/catch so any chart failure —
-  // missing sheet, missing named range, Charts API hiccup — is captured and
-  // reported in the success dialog WITHOUT aborting the otherwise-successful
-  // install. The user can always retry by running `automateDashboardVisuals`
-  // manually from the Apps Script editor.
+  // FINAL STEPS - sequential workflow (Arabic UI only).
+  //
+  //   STEP A: repairDashboard2026() ensures every named range is correctly
+  //           bound and rewrites all engine + KPI formulas with the IFERROR-
+  //           armored variants. Idempotent on a fresh install (the formulas
+  //           have already been written this way), but provides insurance and
+  //           guarantees `rng_dash_monthly_grid`, `rng_dash_waterfall`,
+  //           `rng_dash_doughnut_income`, `rng_dash_doughnut_expense` are
+  //           live before the chart builders read them.
+  //
+  //   STEP B: automateDashboardVisuals() injects the three dark-mode charts
+  //           (income doughnut, expense doughnut, annual bar) on the dashboard
+  //           sheet, auto-creating `rng_dash_annual_bars` if missing.
+  //
+  // Each step runs inside its own try/catch so a failure at any stage cannot
+  // crash the installer — the build phases above have already completed and
+  // the workbook is fully usable. Failures are collected and reported in a
+  // single Arabic-only alert at the end so the user gets one clear status.
   // ---------------------------------------------------------------------------
+  let repairError = null;
+  try {
+    repairDashboard2026Core_(ss);
+  } catch (err) {
+    repairError = (err && err.message) ? err.message : String(err);
+  }
+
   let visualsResult = null;
   let visualsError  = null;
   try {
@@ -193,28 +211,35 @@ function installBudgetCalculator2026() {
     visualsError = (err && err.message) ? err.message : String(err);
   }
 
-  // Branch the success alert on whether visuals fully succeeded.
+  // Build the consolidated Arabic-only final alert.
+  const repairOk  = !repairError;
   const visualsOk = visualsResult
                  && !visualsError
                  && visualsResult.failed.length === 0;
 
-  if (visualsOk) {
+  if (repairOk && visualsOk) {
     ui.alert(
       'تم تركيب القالب بنجاح',
-      'System installed, data structures rebuilt, and all 3 visual charts injected successfully.\n\n' +
-      'تمّ تركيب النظام وإعادة بناء هياكل البيانات وإدراج الرسوم البيانية الثلاثة بنجاح.',
+      'تم تركيب النظام بنجاح، وإعادة بناء هياكل البيانات، وإدراج الرسوم البيانية الثلاثة بنجاح.',
       ui.ButtonSet.OK);
   } else {
-    // Partial success: the workbook is fully installed but at least one chart
-    // could not be created. Surface the exact reason so the user can decide
-    // whether to retry `automateDashboardVisuals` manually.
-    const errLine = visualsError
-      ? visualsError
-      : visualsResult.failed.map(f => f.label + ': ' + f.error).join(' | ');
+    // Aggregate every failure encountered into a single bullet list so the
+    // user can see exactly what went wrong without having to read logs.
+    const issues = [];
+    if (repairError) {
+      issues.push('فشل إعادة بناء هياكل البيانات: ' + repairError);
+    }
+    if (visualsError) {
+      issues.push('فشل إدراج الرسوم البيانية: ' + visualsError);
+    } else if (visualsResult && visualsResult.failed.length) {
+      visualsResult.failed.forEach(function (f) {
+        issues.push('فشل إدراج \"' + f.label + '\": ' + f.error);
+      });
+    }
     ui.alert(
-      'تم تركيب القالب مع تحفّظ على الرسوم البيانية',
-      'System installed and data structures rebuilt successfully — but chart automation reported an issue.\n\n' +
-      'تفاصيل المشكلة: ' + errLine + '\n\n' +
+      'تم تركيب القالب مع وجود مشاكل',
+      'تم تركيب النظام، ولكن بعض الخطوات النهائية لم تكتمل:\n\n' +
+      '  • ' + issues.join('\n  • ') + '\n\n' +
       'يمكنك إعادة المحاولة يدوياً بتشغيل الدالة automateDashboardVisuals من قائمة Apps Script.',
       ui.ButtonSet.OK);
   }
@@ -234,16 +259,38 @@ function installBudgetCalculator2026() {
  * and click Run. A confirmation alert appears when the rewrite is complete.
  */
 function repairDashboard2026() {
-  const ss = SpreadsheetApp.getActive();
   const ui = SpreadsheetApp.getUi();
+  try {
+    repairDashboard2026Core_(SpreadsheetApp.getActive());
+  } catch (err) {
+    ui.alert('فشل تنفيذ أداة الإصلاح',
+      (err && err.message) ? err.message : String(err), ui.ButtonSet.OK);
+    return;
+  }
+  ui.alert(
+    'تم إصلاح اللوحة',
+    'أُعيدت كتابة جميع صيغ المحرّك وبطاقات المؤشّرات بإصدار محصَّن ضدّ الأخطاء، ' +
+    'وأُعيد ربط النطاقات المُسمَّاة الأربعة للرسوم البيانية. ' +
+    'افتح ورقة \"' + SHEET_NAMES.dashboard + '\" — يجب أن تختفي رسائل #REF! و #VALUE! ' +
+    'وتظهر الأسهم الخضراء/الحمراء على بطاقات الاتجاه.',
+    ui.ButtonSet.OK);
+}
 
+/**
+ * Silent core of `repairDashboard2026`. Performs the full repair pipeline and
+ * throws on a precondition failure (missing engine or dashboard sheet). The
+ * installer calls this directly so it can fold any failure into its own
+ * consolidated success alert instead of double-popping a UI dialog.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @throws {Error} if the engine or dashboard sheet cannot be found.
+ */
+function repairDashboard2026Core_(ss) {
   const engine = ss.getSheetByName(SHEET_NAMES.engine);
   const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
   if (!engine || !dash) {
-    ui.alert('لم يتم العثور على الأوراق المطلوبة',
-      'تأكّد أنّ ورقتَي \"' + SHEET_NAMES.engine + '\" و \"' + SHEET_NAMES.dashboard +
-      '\" موجودتان قبل تشغيل أداة الإصلاح.', ui.ButtonSet.OK);
-    return;
+    throw new Error('لم يتم العثور على ورقتَي \"' + SHEET_NAMES.engine + '\" و \"' +
+      SHEET_NAMES.dashboard + '\". تأكّد من وجودهما قبل تشغيل أداة الإصلاح.');
   }
 
   // 1) Rewrite the engine cells that previously held ghost dashboard refs.
@@ -293,13 +340,6 @@ function repairDashboard2026() {
   ss.setNamedRange('rng_dash_doughnut_expense', engine.getRange('L1:M13'));
 
   SpreadsheetApp.flush();
-  ui.alert(
-    'تم إصلاح اللوحة',
-    'أُعيدت كتابة جميع صيغ المحرّك وبطاقات المؤشّرات بإصدار محصَّن ضدّ الأخطاء، ' +
-    'وأُعيد ربط النطاقات المُسمَّاة الأربعة للرسوم البيانية. ' +
-    'افتح ورقة \"' + SHEET_NAMES.dashboard + '\" — يجب أن تختفي رسائل #REF! و #VALUE! ' +
-    'وتظهر الأسهم الخضراء/الحمراء على بطاقات الاتجاه.',
-    ui.ButtonSet.OK);
 }
 
 // ============================================================================
