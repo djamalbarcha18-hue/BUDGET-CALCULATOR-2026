@@ -77,25 +77,48 @@ const NR = {
 };
 
 // =============================================================================
-// MAIN ENTRY POINT
+// MAIN ENTRY POINTS
 // =============================================================================
 /**
- * Orchestrates the full chart-rebuild pipeline. Each phase is wrapped in its
- * own try/catch so a partial failure still surfaces a clear UI message and
- * leaves the sheet in a coherent state.
+ * Public entry point. Run this from the Apps Script editor or a custom menu.
+ * Delegates to the silent core, then surfaces a single consolidated UI alert.
  */
 function automateDashboardVisuals() {
   const ss = SpreadsheetApp.getActive();
   const ui = SpreadsheetApp.getUi();
 
-  let sheet;
+  let result;
   try {
-    // STEP 1 - Resolve the dashboard sheet.
-    sheet = getDashboardSheet_(ss);
+    result = automateDashboardVisualsCore_(ss);
   } catch (err) {
-    ui.alert('فشل تحديد ورقة اللوحة', err.message, ui.ButtonSet.OK);
+    ui.alert('فشل تنفيذ أتمتة الرسوم البيانية',
+      (err && err.message) ? err.message : String(err), ui.ButtonSet.OK);
     return;
   }
+
+  // Format the structured result into a single Arabic alert.
+  let msg = `تمت إزالة ${result.removed} رسم(ة) موجود(ة) سابقاً.\n\n` +
+            `تمّ إنشاء ${result.built.length} رسم(ات) بنجاح:\n  • ${result.built.join('\n  • ')}`;
+  if (result.failed.length) {
+    msg += `\n\nتعذّر إنشاء ${result.failed.length} رسم(ات):\n` +
+           result.failed.map(f => `  • ${f.label}: ${f.error}`).join('\n');
+  }
+  ui.alert('automateDashboardVisuals', msg, ui.ButtonSet.OK);
+}
+
+/**
+ * Silent core. Performs the full rebuild pipeline and returns a structured
+ * result object instead of showing a UI alert. This is what the installer
+ * (`installBudgetCalculator2026`) calls so it can fold the visuals outcome
+ * into its own consolidated success message instead of double-popping alerts.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @return {{removed:number, built:string[], failed:Array<{label:string,error:string}>}}
+ * @throws if the dashboard sheet cannot be resolved.
+ */
+function automateDashboardVisualsCore_(ss) {
+  // STEP 1 - Resolve the dashboard sheet (throws on failure - caller decides).
+  const sheet = getDashboardSheet_(ss);
 
   // STEP 2 - Cleanup: remove every existing chart on the dashboard sheet.
   const removed = cleanupDashboardCharts_(sheet);
@@ -104,24 +127,18 @@ function automateDashboardVisuals() {
   ensureAnnualBarsNamedRange_(ss);
 
   // STEP 4 - Build the three charts. Each call is independent: a failure in
-  // one does not block the others. We collect the outcomes and report once.
+  // one does not block the others.
   const results = [
     buildIncomeDoughnut_(sheet, ss),
     buildExpenseDoughnut_(sheet, ss),
     buildAnnualBarChart_(sheet, ss),
   ];
 
-  // STEP 5 - Surface a single consolidated status to the user.
-  const built  = results.filter(r => r.ok).map(r => r.label);
-  const failed = results.filter(r => !r.ok);
-
-  let msg = `تمت إزالة ${removed} رسم(ة) موجود(ة) سابقاً.\n\n` +
-            `تمّ إنشاء ${built.length} رسم(ات) بنجاح:\n  • ${built.join('\n  • ')}`;
-  if (failed.length) {
-    msg += `\n\nتعذّر إنشاء ${failed.length} رسم(ات):\n` +
-           failed.map(f => `  • ${f.label}: ${f.error}`).join('\n');
-  }
-  ui.alert('automateDashboardVisuals', msg, ui.ButtonSet.OK);
+  return {
+    removed: removed,
+    built:   results.filter(r =>  r.ok).map(r => r.label),
+    failed:  results.filter(r => !r.ok).map(r => ({ label: r.label, error: r.error })),
+  };
 }
 
 // =============================================================================

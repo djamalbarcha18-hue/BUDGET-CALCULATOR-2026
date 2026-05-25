@@ -176,11 +176,48 @@ function installBudgetCalculator2026() {
   const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
   ss.setActiveSheet(welcome);
 
-  ui.alert(
-    'تم تركيب القالب بنجاح',
-    'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
-    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
-    ui.ButtonSet.OK);
+  // ---------------------------------------------------------------------------
+  // FINAL STEP: programmatic chart injection.
+  // We call the silent core (`automateDashboardVisualsCore_`) so the installer
+  // owns the user-facing alert. Wrapped in try/catch so any chart failure —
+  // missing sheet, missing named range, Charts API hiccup — is captured and
+  // reported in the success dialog WITHOUT aborting the otherwise-successful
+  // install. The user can always retry by running `automateDashboardVisuals`
+  // manually from the Apps Script editor.
+  // ---------------------------------------------------------------------------
+  let visualsResult = null;
+  let visualsError  = null;
+  try {
+    visualsResult = automateDashboardVisualsCore_(ss);
+  } catch (err) {
+    visualsError = (err && err.message) ? err.message : String(err);
+  }
+
+  // Branch the success alert on whether visuals fully succeeded.
+  const visualsOk = visualsResult
+                 && !visualsError
+                 && visualsResult.failed.length === 0;
+
+  if (visualsOk) {
+    ui.alert(
+      'تم تركيب القالب بنجاح',
+      'System installed, data structures rebuilt, and all 3 visual charts injected successfully.\n\n' +
+      'تمّ تركيب النظام وإعادة بناء هياكل البيانات وإدراج الرسوم البيانية الثلاثة بنجاح.',
+      ui.ButtonSet.OK);
+  } else {
+    // Partial success: the workbook is fully installed but at least one chart
+    // could not be created. Surface the exact reason so the user can decide
+    // whether to retry `automateDashboardVisuals` manually.
+    const errLine = visualsError
+      ? visualsError
+      : visualsResult.failed.map(f => f.label + ': ' + f.error).join(' | ');
+    ui.alert(
+      'تم تركيب القالب مع تحفّظ على الرسوم البيانية',
+      'System installed and data structures rebuilt successfully — but chart automation reported an issue.\n\n' +
+      'تفاصيل المشكلة: ' + errLine + '\n\n' +
+      'يمكنك إعادة المحاولة يدوياً بتشغيل الدالة automateDashboardVisuals من قائمة Apps Script.',
+      ui.ButtonSet.OK);
+  }
 }
 
 // ============================================================================
