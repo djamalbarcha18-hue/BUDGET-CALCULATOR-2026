@@ -176,11 +176,57 @@ function installBudgetCalculator2026() {
   const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
   ss.setActiveSheet(welcome);
 
-  ui.alert(
-    'تم تركيب القالب بنجاح',
-    'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
-    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
-    ui.ButtonSet.OK);
+  // ---------------------------------------------------------------------------
+  // FINAL STEP: programmatic chart injection.
+  // We call the silent core (`automateDashboardVisualsCore_`) defined in the
+  // sibling file `automate_dashboard_visuals.gs`. The `typeof` guard makes
+  // this safe even if that file is not present in the project - the installer
+  // will simply skip the chart step and surface a manual-fallback message.
+  // Wrapped in try/catch so any chart failure cannot abort the installer.
+  // ---------------------------------------------------------------------------
+  let visualsResult = null;
+  let visualsError  = null;
+  if (typeof automateDashboardVisualsCore_ === 'function') {
+    try {
+      visualsResult = automateDashboardVisualsCore_(ss);
+    } catch (err) {
+      visualsError = (err && err.message) ? err.message : String(err);
+    }
+  }
+
+  const visualsOk = visualsResult
+                 && !visualsError
+                 && visualsResult.failed.length === 0;
+
+  if (visualsOk) {
+    ui.alert(
+      'تم تركيب القالب بنجاح',
+      'تمّ تركيب النظام، وإعادة بناء هياكل البيانات، وإدراج الرسوم البيانية الثلاثة بنجاح.',
+      ui.ButtonSet.OK);
+  } else if (visualsResult || visualsError) {
+    // Chart code ran but had partial/total failure - surface details.
+    const issues = [];
+    if (visualsError) {
+      issues.push('فشل تنفيذ أتمتة الرسوم البيانية: ' + visualsError);
+    } else if (visualsResult && visualsResult.failed.length) {
+      visualsResult.failed.forEach(function (f) {
+        issues.push('فشل إدراج \"' + f.label + '\": ' + f.error);
+      });
+    }
+    ui.alert(
+      'تم تركيب القالب مع تحفّظات على الرسوم البيانية',
+      'تمّ تركيب النظام بنجاح، ولكن بعض الرسوم البيانية لم يكتمل إدراجها:\n\n' +
+      '  • ' + issues.join('\n  • ') + '\n\n' +
+      'يمكنك إعادة المحاولة يدوياً بتشغيل الدالة automateDashboardVisuals من قائمة Apps Script.',
+      ui.ButtonSet.OK);
+  } else {
+    // automate_dashboard_visuals.gs is not in the project at all.
+    ui.alert(
+      'تم تركيب القالب بنجاح',
+      'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
+      'لتفعيل الإدراج التلقائي للرسوم البيانية الثلاثة (عمودي + دونات الدخل + دونات المصاريف) أضف الملف automate_dashboard_visuals.gs إلى مشروع Apps Script ثم شغّل الدالة automateDashboardVisuals.',
+      ui.ButtonSet.OK);
+  }
 }
 
 // ============================================================================
@@ -983,6 +1029,7 @@ function defineNamedRanges(ss) {
   setEng('rng_dash_waterfall',        'F1:G7');    // Chart 2 - Waterfall (cash flow)
   setEng('rng_dash_doughnut_income',  'I1:J9');    // Chart 3 - Doughnut (income sources)
   setEng('rng_dash_doughnut_expense', 'L1:M13');   // Chart 4 - Doughnut (expense categories)
+  setEng('rng_dash_annual_columns',   'A1:D13');   // Chart 5 - Vertical Column (income / expense / savings)
 
   // Now apply data validations that depend on named ranges (categories, payment methods)
   applyMonthlyValidations(ss);
