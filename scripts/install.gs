@@ -1155,3 +1155,349 @@ function reorderTabs(ss) {
     }
   }
 }
+
+
+// =============================================================================
+// DASHBOARD VISUALS - programmatic chart injection
+// =============================================================================
+//
+// What this section provides
+// --------------------------
+//   automateDashboardVisuals()        - public entry point, shows a UI alert
+//   automateDashboardVisualsCore_(ss) - silent core (called by the installer)
+//
+// The installer wires the silent core into `installBudgetCalculator2026` as
+// its final step (see the FINAL STEPS block in the installer body), so on a
+// fresh install the three dashboard charts get drawn automatically. The
+// public function is also runnable on its own from the Apps Script editor.
+//
+// Pipeline
+// --------
+// 1. Locate the dashboard sheet (canonical name first, short form fallback,
+//    then active sheet).
+// 2. Wipe every existing chart on that sheet to prevent duplicates.
+// 3. Ensure every named range required by the charts is wired up
+//    (`rng_dash_annual_bars` is auto-created at `_DashboardEngine!A1:C13`
+//    if missing).
+// 4. Build three charts via the EmbeddedChartBuilder API:
+//      - Doughnut: income sources           (rng_dash_doughnut_income)
+//      - Doughnut: expense categories       (rng_dash_doughnut_expense)
+//      - Bar:      annual income vs expense (rng_dash_annual_bars)
+// 5. Apply the unified dark-mode theme defined by the shared `T` palette.
+//
+// Design principles
+// -----------------
+// - Modular: one helper per concern (cleanup, range wiring, theme, each chart).
+// - Defensive: every chart is built inside its own try/catch so a single
+//   failure (e.g., a renamed named range) cannot abort the rest.
+// - Idempotent: safe to re-run any number of times. Each call returns the
+//   sheet to a clean, freshly-rendered visual state.
+// - No collisions with the rest of install.gs: this section reuses the
+//   existing `T` (theme palette) and `SHEET_NAMES` (sheet-name map) constants
+//   instead of declaring duplicates.
+
+// Doughnut/bar slice palette built from the shared theme `T`. Centralising it
+// here means a single colour change in `T` propagates to every chart.
+const CHART_SLICE_PALETTE = [
+  T.paletteOrange, T.paletteBlue, T.palettePurple, T.palettePink,
+  T.accentIncome,  T.gaugeAmber,  T.accentNet,     T.gaugeLightGreen,
+];
+
+// Sheet-resolution candidates for the dashboard tab. The canonical sheet name
+// (full, used in the installer + docs) is tried first; the historical short
+// form is tried as a fallback so the function works on older workbooks where
+// the user shortened the tab name.
+const DASH_SHEET_CANDIDATES = [
+  SHEET_NAMES.dashboard,      // 'اللوحة الرئيسية والتقرير السنوي' (canonical)
+  'اللوحة الرئيسية',          // short form (legacy)
+];
+
+// Named ranges the chart builders depend on. Bar-chart range is auto-created
+// inside `ensureAnnualBarsNamedRange_` if it doesn't already exist.
+const NR = {
+  doughnutIncome:  'rng_dash_doughnut_income',   // _DashboardEngine!I1:J9
+  doughnutExpense: 'rng_dash_doughnut_expense',  // _DashboardEngine!L1:M13
+  annualBars:      'rng_dash_annual_bars',       // _DashboardEngine!A1:C13 (auto-created)
+};
+
+// -----------------------------------------------------------------------------
+// PUBLIC ENTRY POINT
+// -----------------------------------------------------------------------------
+/**
+ * Standalone runnable function. Delegates to the silent core, then surfaces
+ * a single consolidated UI alert. The installer (`installBudgetCalculator2026`)
+ * does NOT call this — it calls `automateDashboardVisualsCore_` directly so
+ * it owns its own user-facing alert.
+ */
+function automateDashboardVisuals() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  let result;
+  try {
+    result = automateDashboardVisualsCore_(ss);
+  } catch (err) {
+    ui.alert('فشل تنفيذ أتمتة الرسوم البيانية',
+      (err && err.message) ? err.message : String(err), ui.ButtonSet.OK);
+    return;
+  }
+
+  // Format the structured result into a single Arabic alert.
+  let msg = `تمت إزالة ${result.removed} رسم(ة) موجود(ة) سابقاً.\n\n` +
+            `تمّ إنشاء ${result.built.length} رسم(ات) بنجاح:\n  • ${result.built.join('\n  • ')}`;
+  if (result.failed.length) {
+    msg += `\n\nتعذّر إنشاء ${result.failed.length} رسم(ات):\n` +
+           result.failed.map(f => `  • ${f.label}: ${f.error}`).join('\n');
+  }
+  ui.alert('automateDashboardVisuals', msg, ui.ButtonSet.OK);
+}
+
+/**
+ * Silent core. Runs the full rebuild pipeline and returns a structured
+ * result object instead of showing UI. Throws if the dashboard sheet
+ * cannot be resolved (caller decides how to surface that).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @return {{removed:number, built:string[], failed:Array<{label:string,error:string}>}}
+ */
+function automateDashboardVisualsCore_(ss) {
+  // STEP 1 - Resolve the dashboard sheet (throws if unreachable).
+  const sheet = getDashboardSheet_(ss);
+
+  // STEP 2 - Cleanup: remove every existing chart on the dashboard sheet.
+  const removed = cleanupDashboardCharts_(sheet);
+
+  // STEP 3 - Make sure every named range the charts depend on actually exists.
+  ensureAnnualBarsNamedRange_(ss);
+
+  // STEP 4 - Build the three charts. Each call is independent: a failure in
+  // one does not block the others.
+  const results = [
+    buildIncomeDoughnut_(sheet, ss),
+    buildExpenseDoughnut_(sheet, ss),
+    buildAnnualBarChart_(sheet, ss),
+  ];
+
+  return {
+    removed: removed,
+    built:   results.filter(r =>  r.ok).map(r => r.label),
+    failed:  results.filter(r => !r.ok).map(r => ({ label: r.label, error: r.error })),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 1 - SHEET RESOLUTION
+// -----------------------------------------------------------------------------
+/**
+ * Returns the dashboard Sheet object. Resolution order:
+ *   1. Each name in DASH_SHEET_CANDIDATES (canonical first).
+ *   2. The currently active sheet, if its name starts with `اللوحة`.
+ * Throws a descriptive Arabic error if nothing matches.
+ */
+function getDashboardSheet_(ss) {
+  for (let i = 0; i < DASH_SHEET_CANDIDATES.length; i++) {
+    const s = ss.getSheetByName(DASH_SHEET_CANDIDATES[i]);
+    if (s) return s;
+  }
+  const active = ss.getActiveSheet();
+  if (active && active.getName().indexOf('اللوحة') === 0) return active;
+
+  throw new Error(
+    'لم يتم العثور على ورقة اللوحة الرئيسية. ' +
+    'تأكّد من أنّ اسم الورقة هو \"' + SHEET_NAMES.dashboard + '\" ' +
+    'أو فعّلها قبل تشغيل الدالة.');
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 2 - CLEANUP
+// -----------------------------------------------------------------------------
+/**
+ * Deletes every chart currently embedded in the given sheet. Returns the
+ * count of removed charts so the caller can include it in the status alert.
+ */
+function cleanupDashboardCharts_(sheet) {
+  const charts = sheet.getCharts();
+  charts.forEach(chart => sheet.removeChart(chart));
+  return charts.length;
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 3 - NAMED RANGE WIRING
+// -----------------------------------------------------------------------------
+/**
+ * Creates `rng_dash_annual_bars` if it doesn't exist. Source range is
+ * `_DashboardEngine!A1:C13` (header + 12 months × [income, expense]),
+ * which gives a natural side-by-side bar chart per month.
+ */
+function ensureAnnualBarsNamedRange_(ss) {
+  if (ss.getRangeByName(NR.annualBars)) return; // already wired
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!engine) {
+    // Engine sheet missing - skip silently. The bar-chart builder will report
+    // the failure with its own message rather than killing the whole pipeline.
+    return;
+  }
+  ss.setNamedRange(NR.annualBars, engine.getRange('A1:C13'));
+}
+
+/**
+ * Returns the Range object for a named range, or throws a translated error.
+ * Centralised so every chart builder reports missing ranges the same way.
+ */
+function requireNamedRange_(ss, name) {
+  const r = ss.getRangeByName(name);
+  if (!r) {
+    throw new Error('النطاق المُسمّى \"' + name + '\" غير معرَّف. ' +
+      'شغّل المُركِّب الرئيسي أو دالة repairDashboard2026 أوّلاً.');
+  }
+  return r;
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 4a - SHARED THEME APPLICATOR
+// -----------------------------------------------------------------------------
+/**
+ * Applies the unified dark-mode theme to any EmbeddedChartBuilder. Centralising
+ * the styling here is what guarantees visual consistency across the three
+ * charts: change a colour once and every chart updates.
+ *
+ * @param {GoogleAppsScript.Charts.EmbeddedChartBuilder} builder
+ * @param {string} title - displayed at the top of the chart
+ * @param {Object} [extra] - extra options merged on top of the base theme
+ */
+function applyDarkModeChartTheme_(builder, title, extra) {
+  const baseOptions = {
+    title: title,
+    backgroundColor: T.bgCard,
+    titleTextStyle: { color: T.fgPrimary, fontSize: 14, bold: true },
+    legend: {
+      position: 'right',
+      textStyle: { color: T.fgPrimary, fontSize: 11 },
+    },
+    chartArea: { backgroundColor: T.bgCard },
+    hAxis: {
+      textStyle: { color: T.fgMuted, fontSize: 11 },
+      gridlines: { color: T.gridline },
+      baselineColor: T.gridline,
+    },
+    vAxis: {
+      textStyle: { color: T.fgMuted, fontSize: 11 },
+      gridlines: { color: T.gridline },
+      baselineColor: T.gridline,
+    },
+  };
+
+  // Merge any chart-specific overrides on top of the base options.
+  const merged = Object.assign({}, baseOptions, extra || {});
+  Object.keys(merged).forEach(key => builder.setOption(key, merged[key]));
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 4b - CHART 1 - INCOME DOUGHNUT
+// -----------------------------------------------------------------------------
+/**
+ * Anchor: B29:G44  (per docs/07 section 4.3) -> row 29, col 2.
+ * Source: rng_dash_doughnut_income -> _DashboardEngine!I1:J9
+ */
+function buildIncomeDoughnut_(sheet, ss) {
+  const label = 'دونات أكثر مصادر الدخل';
+  try {
+    const range = requireNamedRange_(ss, NR.doughnutIncome);
+
+    const builder = sheet.newChart()
+      .setChartType(Charts.ChartType.PIE)
+      .addRange(range)
+      .setNumHeaders(1)                  // first row of the range is the header
+      .setPosition(29, 2, 0, 0)          // row 29, col B
+      .setOption('width',  600)
+      .setOption('height', 336);
+
+    applyDarkModeChartTheme_(builder, 'أكثر مصادر الدخل', {
+      pieHole: 0.6,                                    // turns pie into doughnut
+      pieSliceTextStyle: { color: T.fgPrimary, fontSize: 11 },
+      colors: CHART_SLICE_PALETTE,
+    });
+
+    sheet.insertChart(builder.build());
+    return { ok: true, label: label };
+  } catch (err) {
+    return { ok: false, label: label, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 4c - CHART 2 - EXPENSE DOUGHNUT
+// -----------------------------------------------------------------------------
+/**
+ * Anchor: H29:M44  (per docs/07 section 4.4) -> row 29, col 8.
+ * Source: rng_dash_doughnut_expense -> _DashboardEngine!L1:M13
+ */
+function buildExpenseDoughnut_(sheet, ss) {
+  const label = 'دونات أكثر فئات الإنفاق استنزافاً';
+  try {
+    const range = requireNamedRange_(ss, NR.doughnutExpense);
+
+    const builder = sheet.newChart()
+      .setChartType(Charts.ChartType.PIE)
+      .addRange(range)
+      .setNumHeaders(1)
+      .setPosition(29, 8, 0, 0)          // row 29, col H
+      .setOption('width',  600)
+      .setOption('height', 336);
+
+    applyDarkModeChartTheme_(builder, 'أكثر فئات الإنفاق استنزافاً', {
+      pieHole: 0.6,
+      pieSliceTextStyle: { color: T.fgPrimary, fontSize: 11 },
+      colors: CHART_SLICE_PALETTE,
+    });
+
+    sheet.insertChart(builder.build());
+    return { ok: true, label: label };
+  } catch (err) {
+    return { ok: false, label: label, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PHASE 4d - CHART 3 - ANNUAL SPENDING BAR CHART
+// -----------------------------------------------------------------------------
+/**
+ * Anchor: B11:M26  (the slot that previously held the Combo chart) -> row 11, col 2.
+ * Source: rng_dash_annual_bars -> _DashboardEngine!A1:C13
+ *   Col A = month (axis), Col B = actual income, Col C = actual expense.
+ *
+ * Rendered as a horizontal Bar chart (one bar per month, two series side-by-side)
+ * so income and expense are directly comparable across the year.
+ */
+function buildAnnualBarChart_(sheet, ss) {
+  const label = 'الرسم الشريطي للإنفاق السنوي';
+  try {
+    const range = requireNamedRange_(ss, NR.annualBars);
+
+    const builder = sheet.newChart()
+      .setChartType(Charts.ChartType.BAR)   // horizontal bars; use COLUMN for vertical
+      .addRange(range)
+      .setNumHeaders(1)
+      .setPosition(11, 2, 0, 0)             // row 11, col B
+      .setOption('width',  1200)
+      .setOption('height', 336);
+
+    applyDarkModeChartTheme_(builder, 'الإنفاق السنوي - مقارنة الدخل والمصروف لكل شهر', {
+      // Two-series colour binding: series 0 = income (green), series 1 = expense (red).
+      series: {
+        0: { color: T.accentIncome,  labelInLegend: 'الدخل الفعلي' },
+        1: { color: T.accentExpense, labelInLegend: 'المصروف الفعلي' },
+      },
+      bar: { groupWidth: '70%' },
+      legend: {
+        position: 'top',
+        textStyle: { color: T.fgPrimary, fontSize: 11 },
+      },
+    });
+
+    sheet.insertChart(builder.build());
+    return { ok: true, label: label };
+  } catch (err) {
+    return { ok: false, label: label, error: err && err.message ? err.message : String(err) };
+  }
+}
