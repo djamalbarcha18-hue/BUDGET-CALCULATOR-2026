@@ -75,24 +75,26 @@ Close the Apps Script tab. Your spreadsheet now has 17 tabs (including the
 hidden `_DashboardEngine`). The active tab is
 `📖 دليل الاستخدام والترحيب`.
 
-### 6. (Optional) Insert the five charts manually
+### 6. Charts are auto-injected
 
-The installer populates all chart-data anchors but does not insert the charts
-themselves, because chart styling (palette per series, subtotal flag on the
-Waterfall, gauge band ranges) is faster to tune in the GUI than in code.
-Follow [`docs/07_dashboard_architecture.md`](../docs/07_dashboard_architecture.md)
-sections 4 and 5:
+The installer automatically creates three dark-mode charts on the dashboard
+sheet as its final step (via `automateDashboardVisualsCore_`):
 
-| Chart | Anchor | Source data | Type |
+| Chart | Anchor | Named Range | Type |
 |---|---|---|---|
-| Combo (monthly comparison) | `B11:M26` | `_DashboardEngine!A1:D13` | Combo (column + line) |
-| Waterfall | `N11:Y26` | `_DashboardEngine!F1:G7` | Waterfall (mark `صافي الربح` as Subtotal) |
-| Doughnut: income | `B29:G44` | `_DashboardEngine!I1:J9` | Pie → Donut hole 60% |
-| Doughnut: expenses | `H29:M44` | `_DashboardEngine!L1:M13` | Pie → Donut hole 60% |
-| Health Gauge | `N29:S44` (replace placeholder) | `_DashboardEngine!O2` | Gauge with bands per docs/07 §5.1 |
+| Income sources doughnut | `B29:G44` | `rng_dash_doughnut_income` | Pie (60% hole) |
+| Expense categories doughnut | `H29:M44` | `rng_dash_doughnut_expense` | Pie (60% hole) |
+| Annual income vs expense | `B11:M26` | `rng_dash_annual_bars` | Bar (horizontal) |
 
-To unhide `_DashboardEngine` so you can select its data: `View → Show hidden
-sheets → _DashboardEngine`. Re-hide when done.
+The Waterfall and Health Gauge charts still require manual insertion from the
+GUI because their styling (subtotal flags, gauge band ranges) cannot be fully
+configured via the EmbeddedChartBuilder API. Follow
+[`docs/07_dashboard_architecture.md`](../docs/07_dashboard_architecture.md)
+sections 4.2 and 5.1 for those two.
+
+If you need to re-inject the three automated charts without re-running the
+full installer, pick `automateDashboardVisuals` from the function dropdown and
+click Run. It cleans up existing charts first, so duplicates are impossible.
 
 ## Re-running
 
@@ -112,8 +114,11 @@ permission to run Apps Script. Workspace admins sometimes restrict this.
 font. Install Cairo / IBM Plex Sans Arabic / Tajawal, or rely on the system
 default.
 
-**Charts didn't appear** - They're not auto-inserted; that's by design. See
-section 6 above.
+**Charts didn't appear** - The three automated charts (two doughnuts + one bar)
+are injected automatically during installation. If they're missing, run
+`automateDashboardVisuals` from the Apps Script function dropdown — it will
+rebuild them. The Waterfall and Health Gauge charts still require manual
+insertion (see section 6 above).
 
 **`#REF!` in dashboard cells** - If you ran the script before any monthly
 sheet had data, the cross-sheet references will resolve once you enter
@@ -126,7 +131,8 @@ editor (function dropdown → `defineNamedRanges` → Run).
 
 ## What the installer does NOT do
 
-- It does not insert the four charts and the gauge (manual, ~5 minutes total).
+- It does not insert the Waterfall or Health Gauge charts (manual, ~2 minutes
+  total — the three other charts are auto-injected by the installer).
 - It does not pre-fill any actual income/expense data - those rows stay empty
   for you to enter.
 - It does not refresh exchange rates (those are placeholders in
