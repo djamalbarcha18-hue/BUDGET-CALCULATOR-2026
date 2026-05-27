@@ -742,6 +742,192 @@ function ADV_buildExpenseDoughnut_(sheet, ss) {
   }
 }
 
+// =============================================================================
+// PHASE 6 - PER-MONTH RELATIVE DOUGHNUTS (PR #14)
+// =============================================================================
+//
+// Injects two doughnut charts onto EACH monthly sheet:
+//   - Income doughnut  | anchor I10  | source P1:Q9   (8 income categories)
+//   - Expense doughnut | anchor I33  | source R1:S13  (12 expense categories)
+//
+// The source ranges P:S are written by `applyMonthlyChartDataHelpers_` in
+// install.gs (helper columns are hidden after install). Each chart shows
+// the category breakdown for THAT month only - hence "relative" doughnuts -
+// in contrast to the main-dashboard doughnuts which aggregate the full year.
+//
+// Self-healing: each monthly sheet's existing charts are wiped before
+// injection, so duplicates are impossible across re-runs.
+
+/**
+ * Public entry point. Run from the Apps Script function dropdown to (re)build
+ * the per-month relative doughnut charts on every existing monthly sheet.
+ * Wraps the silent core in try/catch and surfaces a single Arabic UI alert.
+ */
+function automateMonthlyDashboardVisuals() {
+  const ui = SpreadsheetApp.getUi();
+  let report;
+  try {
+    report = automateMonthlyDashboardVisualsCore_(SpreadsheetApp.getActive());
+  } catch (err) {
+    Logger.log('automateMonthlyDashboardVisuals: fatal: ' +
+      (err && err.stack ? err.stack : err));
+    ui.alert(
+      'فشل تنفيذ أتمتة الرسوم الشهريّة',
+      (err && err.message) ? err.message : String(err),
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  const lines = [
+    'الأوراق الشهريّة المعالَجة: ' + report.totalSheets,
+    'الرسوم البيانيّة المُدرَجة بنجاح: ' + report.builtCharts,
+  ];
+  if (report.skipped.length) {
+    lines.push('');
+    lines.push('أوراق متجاوَزة (' + report.skipped.length + '):');
+    report.skipped.forEach(function (s) {
+      lines.push('  • ' + s.month + ': ' + s.reason);
+    });
+  }
+  if (report.failed.length) {
+    lines.push('');
+    lines.push('أخطاء (' + report.failed.length + '):');
+    report.failed.forEach(function (f) {
+      lines.push('  • ' + f.month + ' / ' + f.kind + ': ' + f.error);
+    });
+  }
+
+  const allOk = report.failed.length === 0;
+  ui.alert(
+    allOk ? 'تمّ إدراج الرسوم الشهريّة بنجاح' : 'تمّ التنفيذ مع تحفّظات',
+    lines.join('\n'),
+    ui.ButtonSet.OK);
+}
+
+/**
+ * Silent core. Iterates the canonical month list (resolved from install.gs's
+ * MONTHS const if available, else a bundled fallback) and injects two
+ * relative doughnuts per sheet. Returns a structured report; never throws on
+ * a per-sheet/per-chart failure (those are collected in `report.failed`).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @return {{
+ *   totalSheets:  number,
+ *   builtCharts:  number,
+ *   skipped:      Array<{month:string, reason:string}>,
+ *   failed:       Array<{month:string, kind:string, error:string}>
+ * }}
+ */
+function automateMonthlyDashboardVisualsCore_(ss) {
+  // Canonical Maghreb month list (PR #14). Fallback included so this file
+  // works as a standalone drop-in even without install.gs in the project.
+  const months = (typeof MONTHS !== 'undefined') ? MONTHS : [
+    'جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان',
+    'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  ];
+
+  const report = { totalSheets: 0, builtCharts: 0, skipped: [], failed: [] };
+
+  months.forEach(function (monthName) {
+    const sheet = ss.getSheetByName(monthName);
+    if (!sheet) {
+      report.skipped.push({ month: monthName, reason: 'الورقة غير موجودة' });
+      return;
+    }
+    report.totalSheets++;
+
+    // Self-healing cleanup: wipe existing charts on this monthly sheet so
+    // re-runs don't accumulate duplicates.
+    try {
+      sheet.getCharts().forEach(function (chart) { sheet.removeChart(chart); });
+    } catch (err) {
+      Logger.log('automateMonthlyDashboardVisualsCore_: cleanup failed for "' +
+        monthName + '": ' + err);
+    }
+
+    // Build the two doughnuts. Each is independent: a failure in one does not
+    // skip the other.
+    [
+      { kind: 'income',  source: 'P1:Q9',  position: { row: 10, col: 9 }, title: 'مصادر الدخل لهذا الشهر' },
+      { kind: 'expense', source: 'R1:S13', position: { row: 33, col: 9 }, title: 'استنزاف المصاريف لهذا الشهر' },
+    ].forEach(function (spec) {
+      const result = ADV_buildMonthlyDoughnut_(sheet, spec);
+      if (result.ok) {
+        report.builtCharts++;
+      } else if (!result.placeholder) {
+        report.failed.push({ month: monthName, kind: spec.kind, error: result.error });
+      }
+    });
+  });
+
+  return report;
+}
+
+/**
+ * Builds a single relative doughnut on a monthly sheet. Parametrised on a
+ * `spec` object so we don't duplicate this code path between income/expense -
+ * minimalist, per the project's "one chart builder, two configurations" rule.
+ *
+ * The pre-flight `ADV_validateChartData_` rejects sheets where the helper
+ * columns sum to zero (e.g., a brand-new month with no rows entered yet).
+ * Rejected sheets are silently skipped: no broken-looking empty pie shown.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet  - monthly sheet
+ * @param {{kind:string, source:string, position:{row:number,col:number}, title:string}} spec
+ * @return {{ok:boolean, placeholder?:boolean, error?:string}}
+ */
+function ADV_buildMonthlyDoughnut_(sheet, spec) {
+  const t = ADV_THEME_LINEAR;
+  const ty = ADV_TYPOGRAPHY;
+
+  try {
+    const range = sheet.getRange(spec.source);
+    const validation = ADV_validateChartData_(range);
+    if (!validation.ok) {
+      // Brand-new month with no entries yet - skip silently. Don't write an
+      // empty-state placeholder onto every monthly sheet (would clutter 12
+      // sheets with the same banner). The user sees the count in the alert.
+      return { ok: false, placeholder: true };
+    }
+
+    const builder = sheet.newChart()
+      .setChartType(Charts.ChartType.PIE)
+      .addRange(range)
+      .setNumHeaders(1)
+      .setPosition(spec.position.row, spec.position.col, 0, 0)
+      .setOption('width',  480)
+      .setOption('height', 280);
+
+    ADV_applyLinearTheme_(builder, spec.title, {
+      pieHole: 0.65,
+      pieSliceTextStyle: {
+        color:    t.fgPrimary,
+        fontSize: ty.bodySize,
+        fontName: ty.fontName,
+      },
+      colors: t.slicePalette,
+      legend: {
+        position:  'bottom',
+        alignment: 'center',
+        textStyle: {
+          color:    t.fgMuted,
+          fontSize: ty.legendSize,
+          fontName: ty.fontName,
+        },
+      },
+    });
+
+    sheet.insertChart(builder.build());
+    return { ok: true };
+
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : String(err);
+    Logger.log('ADV_buildMonthlyDoughnut_: "' + spec.kind + '" on "' +
+      sheet.getName() + '": ' + msg);
+    return { ok: false, error: msg };
+  }
+}
+
 /* ============================================================================
    HOW TO LINK THIS TO A ONE-CLICK BUTTON ON THE DASHBOARD
    ============================================================================
