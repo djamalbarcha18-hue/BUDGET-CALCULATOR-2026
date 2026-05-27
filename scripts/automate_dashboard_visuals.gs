@@ -1,108 +1,158 @@
 /**
- * BUDGET-CALCULATOR-2026 - Final dashboard visuals engine
- * =======================================================
+ * BUDGET-CALCULATOR-2026 - Visuals Engine v2 (Linear / Stripe / Apple aesthetic)
+ * =============================================================================
  *
  * Public:
  *   automateDashboardVisuals()         - runnable from menu / button / dropdown
  *   automateDashboardVisualsCore_(ss)  - silent core, returns structured report
  *
- * Charts injected (clean 3-cell grid, no overlap)
- * -----------------------------------------------
- *   1. Vertical Column chart  | top row    | B11:M26  | rng_dash_annual_columns
- *        - Series 0 (Income)   = T.accentIncome  = #10B981 (green)
- *        - Series 1 (Expense)  = T.accentExpense = #DC2626 (red)
- *        - Series 2 (Savings)  = T.accentNet     = #06B6D4 (sky blue)
- *   2. Income doughnut        | bottom-left  | B29:G44 | rng_dash_doughnut_income
- *   3. Expense doughnut       | bottom-right | H29:M44 | rng_dash_doughnut_expense
+ * Charts injected (3-cell grid, no overlap)
+ * -----------------------------------------
+ *   1. Vertical Column chart  | top, B11:M26    | rng_dash_annual_columns
+ *        - Series 0 (Income)  = #4ADE80  (green)
+ *        - Series 1 (Expense) = #F87171  (red)
+ *        - Series 2 (Savings) = #38BDF8  (sky blue, primary accent)
+ *   2. Income doughnut        | bottom-left, B29:G44 | rng_dash_doughnut_income
+ *   3. Expense doughnut       | bottom-right, H29:M44| rng_dash_doughnut_expense
  *
- * Idempotent / safe to re-run
- * ---------------------------
- *   - Step 1 deletes every existing chart on the dashboard sheet, so duplicates
- *     are impossible.
- *   - Step 2 ensures every named range required by the chart builders exists,
- *     auto-creating `rng_dash_annual_columns` (engine!A1:D13) if missing.
- *   - Step 3 builds the three charts INDEPENDENTLY inside three try/catch
- *     blocks. A failure in one chart cannot abort the others.
+ * Design system (Linear / Stripe / Apple)
+ * ---------------------------------------
+ *   Palette (Linear):     bg #09090B, card #18181B, border #27272A
+ *                         primary #38BDF8, income #4ADE80, expense #F87171
+ *   Slice palette:        ['#38BDF8', '#818CF8', '#C084FC', '#E879F9', '#FB7185']
+ *   Typography:           'Inter' / SF Pro (browser fallback to system sans)
+ *                         18px title, 12px body, 11px legend
+ *   Spacing:              24px chartArea inset, bottom legend on doughnuts
+ *
+ * Apps Script Charts API limitations - documented honestly
+ * --------------------------------------------------------
+ *   1. Chart-container rounded corners (16px radius) are NOT supported by
+ *      EmbeddedChartBuilder. The container is always rectangular. We
+ *      approximate the soft-card look via:
+ *         - tight chartArea insets (24px on every side)
+ *         - dark card surface (#18181B) matching the dashboard background
+ *         - thinner bar groupWidth (50%)
+ *      The dashboard cell behind each chart already has the rounded-feel
+ *      via background colour, which is what the eye actually reads.
+ *   2. Custom fonts ('Inter', 'SF Pro') are accepted by the API and passed
+ *      to the renderer. Whether the viewer SEES Inter depends on the
+ *      viewer's browser font cache. Falls back to the default sans-serif
+ *      gracefully when Inter isn't loaded.
+ *   3. The slice palette accepts up to 16 colors; Sheets cycles after that.
+ *      Our palette is 5 colors which covers all realistic category counts.
+ *
+ * UX guarantees
+ * -------------
+ *   - Strict sheet resolution: only the canonical name resolves; no fallback
+ *     to the active sheet. Eliminates the "charts land on wrong tab" class
+ *     of bugs that came from prefix matching.
+ *   - Pre-flight data validation: every chart's source range is checked
+ *     for #REF!/#VALUE!/empty BEFORE chart insertion. Failed validation
+ *     writes an Arabic empty-state message to the chart's anchor cell
+ *     instead of inserting a broken-looking chart.
+ *   - Self-healing cleanup: getCharts().forEach(removeChart) + flush()
+ *     ensures no orphan chart objects survive the rebuild.
+ *   - Anchor resolution by label: findAnchorCell() locates each chart by
+ *     scanning for the matching placeholder text, with hardcoded
+ *     coordinates as a fallback if the user has stripped the placeholders.
  *
  * Anti-collision design
  * ---------------------
- * Apps Script puts every .gs file in one shared global scope (this is what
- * caused the DASH_THEME SyntaxError two turns ago). Every top-level const here
- * is prefixed `ADV_`; shared symbols from install.gs (`T`, `SHEET_NAMES`) are
- * accessed via the `typeof X !== 'undefined' ? X : <fallback>` pattern. Result:
- * this file works alongside install.gs AND as a standalone drop-in.
- *
- * Linking to a one-click button
- * -----------------------------
- * See the README block at the bottom of this file (after the code).
+ * Apps Script puts every .gs file in one shared global scope. Every
+ * top-level identifier in this file is prefixed `ADV_`; shared constants
+ * from install.gs are accessed via `typeof X !== 'undefined'` guards.
  */
 
 // =============================================================================
-// LOCAL CONSTANTS  (ADV_ prefix prevents any collision with install.gs)
+// LINEAR DESIGN SYSTEM
 // =============================================================================
 
-/**
- * Theme palette resolver. Prefers `T` from install.gs (single source of truth),
- * falls back to the bundled values otherwise so this file is also usable as
- * a standalone drop-in. We expose a getter rather than a top-level const
- * because `T` may be defined LATER in the global scope at parse time, depending
- * on .gs file load order.
- */
-function ADV_theme_() {
-  if (typeof T !== 'undefined' && T && T.bgCard) {
-    return {
-      bgPage:         T.bgPage,
-      bgCard:         T.bgCard,
-      fgPrimary:      T.fgPrimary,
-      fgMuted:        T.fgMuted,
-      gridline:       T.gridline,
-      accentIncome:   T.accentIncome,    // #10B981 (green)
-      accentExpense:  T.accentExpense,   // #DC2626 (red)
-      accentSavings:  T.accentNet,       // #06B6D4 (sky blue) - mapped from accentNet
-      slicePalette: [
-        T.paletteOrange, T.paletteBlue, T.palettePurple, T.palettePink,
-        T.accentIncome,  T.gaugeAmber,  T.accentNet,     T.gaugeLightGreen,
-      ],
-    };
-  }
-  // Fallback - mirrors data/dashboard/theme_palette.csv exactly.
-  return {
-    bgPage:         '#0F172A',
-    bgCard:         '#1F2937',
-    fgPrimary:      '#F1F5F9',
-    fgMuted:        '#94A3B8',
-    gridline:       '#334155',
-    accentIncome:   '#10B981',
-    accentExpense:  '#DC2626',
-    accentSavings:  '#06B6D4',
-    slicePalette: [
-      '#F97316', '#3B82F6', '#8B5CF6', '#EC4899',
-      '#10B981', '#F59E0B', '#06B6D4', '#84CC16',
-    ],
-  };
-}
+/** Palette + slice palette - the "Linear" aesthetic. */
+const ADV_THEME_LINEAR = {
+  bgPage:       '#09090B',
+  bgCard:       '#18181B',
+  border:       '#27272A',
+  fgPrimary:    '#FAFAFA',
+  fgMuted:      '#A1A1AA',
+  gridline:     '#27272A',
+  accentSavings: '#38BDF8',
+  accentIncome:  '#4ADE80',
+  accentExpense: '#F87171',
+  slicePalette: [
+    '#38BDF8',  // sky-400 (primary)
+    '#818CF8',  // indigo-400
+    '#C084FC',  // purple-400
+    '#E879F9',  // fuchsia-400
+    '#FB7185',  // rose-400
+  ],
+};
 
-/**
- * Dashboard sheet resolution candidates - canonical name from install.gs first,
- * historical short form as a fallback so this works on legacy workbooks.
- */
-const ADV_DASHBOARD_NAME_CANDIDATES = [
-  (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.dashboard)
-    ? SHEET_NAMES.dashboard
-    : 'اللوحة الرئيسية والتقرير السنوي',
-  'اللوحة الرئيسية',                                // legacy short form
-];
+/** Typography - mirrors Linear's chart conventions. */
+const ADV_TYPOGRAPHY = {
+  fontName:    'Inter',  // browser falls back to system sans if Inter not loaded
+  titleSize:   18,
+  bodySize:    12,
+  legendSize:  11,
+};
+
+/** Internal padding inside each chart's plot area, in pixels. */
+const ADV_CHART_PADDING_PX = 24;
+
+// =============================================================================
+// SHEET / NAMED-RANGE NAMING
+// =============================================================================
+
+/** Canonical dashboard sheet name (strict — see ADV_resolveDashboardSheet_). */
+const ADV_DASHBOARD_NAME = (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.dashboard)
+  ? SHEET_NAMES.dashboard
+  : 'اللوحة الرئيسية والتقرير السنوي';
 
 /** Hidden engine sheet that backs every chart's data source. */
-const ADV_ENGINE_SHEET_NAME = (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.engine)
+const ADV_ENGINE_NAME = (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.engine)
   ? SHEET_NAMES.engine
   : '_DashboardEngine';
 
-/** Required named ranges. Bar/columns range is auto-created if absent. */
+/** Named ranges. annualColumns is auto-created if absent. */
 const ADV_NR = {
   doughnutIncome:  'rng_dash_doughnut_income',     // engine!I1:J9
   doughnutExpense: 'rng_dash_doughnut_expense',    // engine!L1:M13
   annualColumns:   'rng_dash_annual_columns',      // engine!A1:D13 (auto-created)
+};
+
+/**
+ * Anchor descriptors. Each chart is positioned by finding a label substring
+ * on the dashboard sheet first, then falling back to hardcoded (row, col)
+ * coordinates if the label is not present. See ADV_resolveAnchor_().
+ *
+ * The label substrings match the placeholder text written by `buildDashboard`
+ * in install.gs. If the user has customised the dashboard layout, the label
+ * search will fail gracefully and the fallback coordinates take over.
+ */
+const ADV_ANCHORS = {
+  annualColumns: {
+    label:          'Chart 1',
+    fallbackRow:    11,
+    fallbackCol:    2,                  // column B
+    width:          1200,
+    height:         336,
+    descriptionAr:  'الرسم العمودي السنوي',
+  },
+  incomeDoughnut: {
+    label:          'Chart 3',
+    fallbackRow:    29,
+    fallbackCol:    2,                  // column B
+    width:          600,
+    height:         336,
+    descriptionAr:  'دونات أكثر مصادر الدخل',
+  },
+  expenseDoughnut: {
+    label:          'Chart 4',
+    fallbackRow:    29,
+    fallbackCol:    8,                  // column H
+    width:          600,
+    height:         336,
+    descriptionAr:  'دونات أكثر فئات الإنفاق استنزافاً',
+  },
 };
 
 // =============================================================================
@@ -129,13 +179,24 @@ function automateDashboardVisuals() {
     return;
   }
 
-  // Arabic UI alert from the structured report.
+  // Compose the Arabic UI summary.
   const lines = [
     'تمت إزالة ' + result.removed + ' رسم(ة) موجود(ة) سابقاً.',
     '',
-    'تمّ إنشاء ' + result.built.length + ' رسم(ات) بنجاح:',
   ];
-  result.built.forEach(function (label) { lines.push('  • ' + label); });
+
+  if (result.built.length) {
+    lines.push('تمّ إنشاء ' + result.built.length + ' رسم(ات) بنجاح:');
+    result.built.forEach(function (label) { lines.push('  • ' + label); });
+  }
+
+  if (result.placeholders.length) {
+    lines.push('');
+    lines.push('تمّ عرض حالة فارغة لـ ' + result.placeholders.length + ' رسم(ات) (بيانات غير كافية):');
+    result.placeholders.forEach(function (p) {
+      lines.push('  • ' + p.label + ': ' + p.reason);
+    });
+  }
 
   if (result.failed.length) {
     lines.push('');
@@ -147,8 +208,9 @@ function automateDashboardVisuals() {
     lines.push('راجع View -> Logs في محرّر Apps Script لمزيد من التفاصيل.');
   }
 
+  const allOk = result.failed.length === 0 && result.placeholders.length === 0;
   ui.alert(
-    result.failed.length ? 'تمّ التنفيذ مع تحفّظات' : 'تمّ تركيب الرسوم البيانية بنجاح',
+    allOk ? 'تمّ تركيب الرسوم البيانية بنجاح' : 'تمّ التنفيذ مع تحفّظات',
     lines.join('\n'),
     ui.ButtonSet.OK);
 }
@@ -157,77 +219,108 @@ function automateDashboardVisuals() {
 // SILENT CORE
 // =============================================================================
 /**
- * Performs the full chart-rebuild pipeline and returns a structured result.
- * Throws ONLY on unrecoverable preconditions (missing dashboard sheet);
- * per-chart failures are collected in `result.failed` and the others continue.
+ * Performs the full chart-rebuild pipeline. Each phase is bounded:
+ *   - sheet resolution / cleanup are atomic and throw on failure
+ *   - chart construction is per-chart try/catch; one failure does not block
+ *     the others, and data-validation failures yield empty-state placeholders
+ *     instead of broken charts.
  *
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
  * @return {{
- *   removed: number,
- *   built:   string[],
- *   failed:  Array<{label:string, error:string}>
+ *   removed:      number,
+ *   built:        string[],
+ *   placeholders: Array<{label:string, reason:string}>,
+ *   failed:       Array<{label:string, error:string}>
  * }}
  */
 function automateDashboardVisualsCore_(ss) {
-  // STEP 1 - Resolve the dashboard sheet (throws on failure).
+  // STEP 1 - STRICT sheet resolution. Throws if canonical name not found.
   const sheet = ADV_resolveDashboardSheet_(ss);
 
-  // STEP 2 - Cleanup: remove every existing chart on the dashboard sheet.
+  // STEP 2 - Self-healing cleanup. Removes all charts + flushes state.
   const removed = ADV_clearAllCharts_(sheet);
 
   // STEP 3 - Make sure every named range the charts depend on exists.
   ADV_ensureAnnualColumnsRange_(ss);
 
-  // STEP 4 - Build the three charts INDEPENDENTLY. Each in its own try/catch
-  // so one failure does not block the rest. Order: column on top, then the
-  // two doughnuts side-by-side - matches the visual grid layout below.
-  const theme = ADV_theme_();
-  const results = [
-    ADV_buildAnnualColumnChart_(sheet, ss, theme),
-    ADV_buildIncomeDoughnut_(sheet, ss, theme),
-    ADV_buildExpenseDoughnut_(sheet, ss, theme),
+  // STEP 4 - Build the three charts INDEPENDENTLY.
+  const builders = [
+    function () { return ADV_buildAnnualColumnChart_(sheet, ss); },
+    function () { return ADV_buildIncomeDoughnut_(sheet, ss); },
+    function () { return ADV_buildExpenseDoughnut_(sheet, ss); },
   ];
 
+  const built        = [];
+  const placeholders = [];
+  const failed       = [];
+
+  builders.forEach(function (fn) {
+    const r = fn();
+    if (r.ok)              built.push(r.label);
+    else if (r.placeholder) placeholders.push({ label: r.label, reason: r.placeholder });
+    else                   failed.push({ label: r.label, error: r.error });
+  });
+
   return {
-    removed: removed,
-    built:   results.filter(function (r) { return  r.ok; }).map(function (r) { return r.label; }),
-    failed:  results.filter(function (r) { return !r.ok; }).map(function (r) {
-      return { label: r.label, error: r.error };
-    }),
+    removed:      removed,
+    built:        built,
+    placeholders: placeholders,
+    failed:       failed,
   };
 }
 
 // =============================================================================
-// PHASE 1 - SHEET RESOLUTION
+// PHASE 1 - STRICT SHEET RESOLUTION
 // =============================================================================
 /**
- * Tries each name in ADV_DASHBOARD_NAME_CANDIDATES (canonical first), then
- * the active sheet if its name starts with 'اللوحة'. Throws an Arabic error
- * if nothing matches.
+ * Resolves the dashboard sheet using ONLY the canonical name. No fallback to
+ * the active sheet, no prefix matching. If the user has renamed the dashboard
+ * tab, this function fails loudly with an Arabic alert telling them which
+ * sheets currently exist - so they can rename back without guessing.
+ *
+ * This is the fix for the "charts land on a duplicated dashboard tab" bug
+ * from the previous version, where any sheet name starting with 'اللوحة'
+ * could silently catch the prefix match.
+ *
+ * @throws {Error} if a sheet matching ADV_DASHBOARD_NAME does not exist.
  */
 function ADV_resolveDashboardSheet_(ss) {
-  for (var i = 0; i < ADV_DASHBOARD_NAME_CANDIDATES.length; i++) {
-    var s = ss.getSheetByName(ADV_DASHBOARD_NAME_CANDIDATES[i]);
-    if (s) return s;
-  }
-  var active = ss.getActiveSheet();
-  if (active && active.getName().indexOf('اللوحة') === 0) return active;
+  const sheet = ss.getSheetByName(ADV_DASHBOARD_NAME);
+  if (sheet) return sheet;
 
-  throw new Error('لم يتم العثور على ورقة اللوحة الرئيسية. ' +
-    'تأكّد من أنّ اسم الورقة هو \"' + ADV_DASHBOARD_NAME_CANDIDATES[0] + '\" ' +
-    'أو فعّلها قبل تشغيل الدالة.');
+  // Build a debug list of currently-existing sheet names to help the user
+  // identify the typo / rename / accidental duplication.
+  const allNames = ss.getSheets()
+    .map(function (s) { return s.getName(); })
+    .filter(function (n) { return n.indexOf('_') !== 0; });   // hide engine/internal sheets
+
+  throw new Error(
+    'لم يتم العثور على ورقة اللوحة الرئيسية بالاسم الدقيق:\n' +
+    '   "' + ADV_DASHBOARD_NAME + '"\n\n' +
+    'الأوراق الموجودة حالياً في المصنّف:\n' +
+    '   • ' + allNames.join('\n   • ') + '\n\n' +
+    'يرجى إعادة تسمية ورقة اللوحة الرئيسية لتطابق الاسم الدقيق أعلاه ثم ' +
+    'إعادة تشغيل الدالة.');
 }
 
 // =============================================================================
-// PHASE 2 - CLEANUP
+// PHASE 2 - SELF-HEALING CLEANUP
 // =============================================================================
 /**
- * Deletes every chart currently embedded in the sheet. Idempotent: safe to
- * call any number of times; returns the count for the UI summary.
+ * Removes every chart on the sheet, flushes the spreadsheet state to ensure
+ * no chart-metadata orphans survive, and returns the count for the UI report.
+ *
+ * Idempotent: safe to call any number of times.
  */
 function ADV_clearAllCharts_(sheet) {
-  var charts = sheet.getCharts();
+  const charts = sheet.getCharts();
   charts.forEach(function (chart) { sheet.removeChart(chart); });
+
+  // Force the spreadsheet engine to commit the chart deletions before we
+  // start inserting new ones. Without this, the new charts can occasionally
+  // race against the in-flight removals and end up duplicated.
+  SpreadsheetApp.flush();
+
   return charts.length;
 }
 
@@ -237,123 +330,286 @@ function ADV_clearAllCharts_(sheet) {
 /**
  * Ensures `rng_dash_annual_columns` exists. Source: `_DashboardEngine!A1:D13`,
  * which is months (col A) + income (B) + expense (C) + savings/net (D).
- * Idempotent: if the range already exists pointing anywhere, we leave it alone
- * (the user might have customised it).
+ * Idempotent.
  */
 function ADV_ensureAnnualColumnsRange_(ss) {
-  if (ss.getRangeByName(ADV_NR.annualColumns)) return;     // already wired
-  var engine = ss.getSheetByName(ADV_ENGINE_SHEET_NAME);
+  if (ss.getRangeByName(ADV_NR.annualColumns)) return;
+  const engine = ss.getSheetByName(ADV_ENGINE_NAME);
   if (!engine) {
     Logger.log('ADV_ensureAnnualColumnsRange_: engine sheet "' +
-      ADV_ENGINE_SHEET_NAME + '" not found - skipping. The column chart ' +
-      'builder will report a clear error to the user.');
+      ADV_ENGINE_NAME + '" not found - skipping. Column chart will report ' +
+      'a clear error when its builder runs.');
     return;
   }
   ss.setNamedRange(ADV_NR.annualColumns, engine.getRange('A1:D13'));
 }
 
-/**
- * Returns the Range object for a named range, or throws an Arabic error.
- * Centralised so every chart builder reports missing ranges identically.
- */
+/** Returns the Range for a named range, or throws an Arabic error. */
 function ADV_requireRange_(ss, name) {
-  var r = ss.getRangeByName(name);
+  const r = ss.getRangeByName(name);
   if (!r) {
-    throw new Error('النطاق المُسمّى \"' + name + '\" غير معرَّف. ' +
+    throw new Error('النطاق المُسمّى "' + name + '" غير معرَّف. ' +
       'شغّل المُركِّب الرئيسي أو دالة repairDashboard2026 أوّلاً.');
   }
   return r;
 }
 
 // =============================================================================
-// PHASE 4a - SHARED THEME APPLICATOR
+// PHASE 3.5 - DATA VALIDATION (pre-flight) + EMPTY-STATE PLACEHOLDER
 // =============================================================================
 /**
- * Applies the unified dark-mode theme to any EmbeddedChartBuilder. Centralising
- * the styling here is what guarantees visual consistency across the three
- * charts: change a colour once and every chart updates.
+ * Pre-flight check on a chart's source range. Returns a structured verdict
+ * that downstream code uses to decide between (a) inserting the chart vs.
+ * (b) writing an Arabic "empty state" message to the anchor cell instead.
+ *
+ * Detects:
+ *   - Range with only a header row (no data rows)
+ *   - Spreadsheet errors (#REF!, #VALUE!, #NAME?, #DIV/0!, etc.)
+ *   - All-zero numeric data (visually meaningless chart)
+ *
+ * @return {{ok:boolean, reason?:string}}
+ */
+function ADV_validateChartData_(range) {
+  const values = range.getValues();
+  if (values.length < 2) {
+    return { ok: false, reason: 'لا توجد صفوف بيانات بعد رأس الجدول' };
+  }
+
+  const ERR_TOKENS = ['#REF!', '#VALUE!', '#NAME?', '#ERROR!', '#N/A', '#DIV/0!', '#NULL!'];
+  for (let r = 0; r < values.length; r++) {
+    for (let c = 0; c < values[r].length; c++) {
+      const cellStr = String(values[r][c] == null ? '' : values[r][c]);
+      if (ERR_TOKENS.indexOf(cellStr) !== -1) {
+        return { ok: false, reason: 'يحتوي النطاق على خطأ ' + cellStr };
+      }
+    }
+  }
+
+  // Require at least one non-zero numeric value in any data row+column.
+  // Column 0 is the category/month label, so we scan from column 1 onwards.
+  let foundNumeric = false;
+  for (let r = 1; r < values.length && !foundNumeric; r++) {
+    for (let c = 1; c < values[r].length && !foundNumeric; c++) {
+      const v = values[r][c];
+      if (typeof v === 'number' && isFinite(v) && v !== 0) {
+        foundNumeric = true;
+      }
+    }
+  }
+  if (!foundNumeric) {
+    return {
+      ok: false,
+      reason: 'لا توجد قيم رقمية لعرضها — أدخل بيانات في الأشهر أوّلاً',
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Writes a styled Arabic empty-state message to the chart's anchor cell.
+ * Used when ADV_validateChartData_ rejects the source range. Visually
+ * adjacent to where the chart would have been; user sees a clear "this
+ * chart has no data yet" instead of a broken-looking chart frame.
+ */
+function ADV_writeEmptyStatePlaceholder_(sheet, descriptor, reason) {
+  try {
+    const anchor = ADV_resolveAnchor_(sheet, descriptor);
+    const cell = sheet.getRange(anchor.row, anchor.col);
+    cell.setValue('⚠ ' + descriptor.descriptionAr + ' — ' + reason)
+      .setFontStyle('italic')
+      .setFontSize(ADV_TYPOGRAPHY.bodySize)
+      .setFontColor(ADV_THEME_LINEAR.fgMuted)
+      .setBackground(ADV_THEME_LINEAR.bgCard)
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle')
+      .setWrap(true);
+  } catch (err) {
+    Logger.log('ADV_writeEmptyStatePlaceholder_: ' + err);
+    // Non-fatal - the chart was already skipped, this is just visual feedback.
+  }
+}
+
+// =============================================================================
+// PHASE 5 - ANCHOR RESOLUTION (label-based with fallback)
+// =============================================================================
+/**
+ * Locate a cell on the sheet whose value contains `labelSubstring`. Returns
+ * {row, col} (1-indexed) or null if not found. Wrapped in try/catch because
+ * createTextFinder can throw on certain protected ranges.
+ */
+function ADV_findAnchorCell_(sheet, labelSubstring) {
+  try {
+    const finder = sheet.createTextFinder(labelSubstring).matchEntireCell(false);
+    const cell = finder.findNext();
+    if (!cell) return null;
+    return { row: cell.getRow(), col: cell.getColumn() };
+  } catch (err) {
+    Logger.log('ADV_findAnchorCell_: search for "' + labelSubstring +
+      '" failed: ' + err);
+    return null;
+  }
+}
+
+/**
+ * Resolves the (row, col) where a chart should be anchored. Uses the
+ * label-based finder first; falls back to hardcoded coordinates if the
+ * placeholder text has been removed from the dashboard.
+ */
+function ADV_resolveAnchor_(sheet, descriptor) {
+  const found = ADV_findAnchorCell_(sheet, descriptor.label);
+  if (found) return found;
+  return { row: descriptor.fallbackRow, col: descriptor.fallbackCol };
+}
+
+// =============================================================================
+// PHASE 4a - SHARED LINEAR-STYLE THEME APPLICATOR
+// =============================================================================
+/**
+ * Applies the unified Linear-aesthetic theme to any EmbeddedChartBuilder.
+ * Centralising styling here is what guarantees visual consistency: change
+ * a colour or font once in ADV_THEME_LINEAR / ADV_TYPOGRAPHY and every
+ * chart picks it up.
  *
  * @param {GoogleAppsScript.Charts.EmbeddedChartBuilder} builder
  * @param {string} title - shown at the top of the chart
- * @param {Object} theme - resolved palette from ADV_theme_()
  * @param {Object} [extra] - extra options merged on top of the base theme
  */
-function ADV_applyDarkTheme_(builder, title, theme, extra) {
-  var baseOptions = {
+function ADV_applyLinearTheme_(builder, title, extra) {
+  const t = ADV_THEME_LINEAR;
+  const ty = ADV_TYPOGRAPHY;
+
+  const baseOptions = {
     title: title,
-    backgroundColor: theme.bgCard,
-    titleTextStyle: { color: theme.fgPrimary, fontSize: 14, bold: true },
-    legend: {
-      position: 'top',
-      textStyle: { color: theme.fgPrimary, fontSize: 11 },
+    backgroundColor: t.bgCard,
+
+    // 18px Inter title - matches Linear's chart heading conventions.
+    titleTextStyle: {
+      color:     t.fgPrimary,
+      fontSize:  ty.titleSize,
+      fontName:  ty.fontName,
+      bold:      true,
     },
-    chartArea: { backgroundColor: theme.bgCard },
+
+    // Default legend: top, Inter, primary foreground. Charts override
+    // (e.g., doughnuts move legend to bottom via `extra`).
+    legend: {
+      position:  'top',
+      textStyle: {
+        color:    t.fgPrimary,
+        fontSize: ty.legendSize,
+        fontName: ty.fontName,
+      },
+    },
+
+    // 24px chartArea inset on every side. This is how we approximate the
+    // 16px rounded-corner / 24px padding aesthetic given that the chart
+    // container itself can't have rounded corners in Apps Script.
+    chartArea: {
+      backgroundColor: t.bgCard,
+      left:   ADV_CHART_PADDING_PX,
+      top:    ADV_CHART_PADDING_PX,
+      right:  ADV_CHART_PADDING_PX,
+      bottom: ADV_CHART_PADDING_PX,
+    },
+
     hAxis: {
-      textStyle: { color: theme.fgMuted, fontSize: 11 },
-      gridlines: { color: theme.gridline },
-      baselineColor: theme.gridline,
+      textStyle: {
+        color:    t.fgMuted,
+        fontSize: ty.bodySize,
+        fontName: ty.fontName,
+      },
+      gridlines:     { color: t.gridline },
+      baselineColor: t.gridline,
     },
     vAxis: {
-      textStyle: { color: theme.fgMuted, fontSize: 11 },
-      gridlines: { color: theme.gridline },
-      baselineColor: theme.gridline,
+      textStyle: {
+        color:    t.fgMuted,
+        fontSize: ty.bodySize,
+        fontName: ty.fontName,
+      },
+      gridlines:     { color: t.gridline },
+      baselineColor: t.gridline,
     },
   };
 
-  // Merge any chart-specific overrides on top of the base options.
-  var merged = Object.assign({}, baseOptions, extra || {});
+  const merged = Object.assign({}, baseOptions, extra || {});
   Object.keys(merged).forEach(function (key) {
     builder.setOption(key, merged[key]);
   });
 }
 
 // =============================================================================
-// PHASE 4b - CHART 1: VERTICAL COLUMN CHART (Income / Expense / Savings)
+// PHASE 4b - CHART 1: VERTICAL COLUMN (Income / Expense / Savings)
 // =============================================================================
 /**
- * Anchor: B11:M26 (top row of the dashboard grid) -> row 11, col B (=2).
  * Source: rng_dash_annual_columns -> _DashboardEngine!A1:D13
  *   Col A  = month (axis)
- *   Col B  = actual income     | series 0 | green     #10B981
- *   Col C  = actual expense    | series 1 | red       #DC2626
- *   Col D  = net (savings)     | series 2 | sky blue  #06B6D4
+ *   Col B  = actual income     | series 0 | green     #4ADE80
+ *   Col C  = actual expense    | series 1 | red       #F87171
+ *   Col D  = net (savings)     | series 2 | sky blue  #38BDF8 (Linear primary)
  *
- * Note on the legend label for series 2: the engine column header is
- * 'صافي الربح' (Net Profit). The user requested the legend to read 'الادخار'
- * (Savings). We override via series.labelInLegend rather than touching the
- * engine sheet - keeps the engine layout untouched.
+ * Anchor: descriptor in ADV_ANCHORS.annualColumns. Uses findAnchorCell
+ * first, falls back to (row=11, col=2) if the label is not present.
+ *
+ * The legend label for series 2 is overridden to 'الادخار' so it reads as
+ * Savings rather than the engine-internal column header 'صافي الربح'.
  */
-function ADV_buildAnnualColumnChart_(sheet, ss, theme) {
-  var label = 'الرسم العمودي السنوي - الدخل والمصروف والادخار';
+function ADV_buildAnnualColumnChart_(sheet, ss) {
+  const t = ADV_THEME_LINEAR;
+  const ty = ADV_TYPOGRAPHY;
+  const desc = ADV_ANCHORS.annualColumns;
+  const label = desc.descriptionAr;
+
   try {
-    var range = ADV_requireRange_(ss, ADV_NR.annualColumns);
+    const range = ADV_requireRange_(ss, ADV_NR.annualColumns);
 
-    var builder = sheet.newChart()
-      .setChartType(Charts.ChartType.COLUMN)            // VERTICAL bars
+    // Pre-flight data validation. If the engine has #REF! / no data, skip
+    // the chart entirely and write an empty-state message at the anchor.
+    const validation = ADV_validateChartData_(range);
+    if (!validation.ok) {
+      ADV_writeEmptyStatePlaceholder_(sheet, desc, validation.reason);
+      return { ok: false, label: label, placeholder: validation.reason };
+    }
+
+    const anchor = ADV_resolveAnchor_(sheet, desc);
+
+    const builder = sheet.newChart()
+      .setChartType(Charts.ChartType.COLUMN)            // vertical bars
       .addRange(range)
-      .setNumHeaders(1)                                 // first row = header
-      .setPosition(11, 2, 0, 0)                         // row 11, col B
-      .setOption('width',  1200)
-      .setOption('height', 336);
+      .setNumHeaders(1)                                 // first row = headers
+      .setPosition(anchor.row, anchor.col, 0, 0)
+      .setOption('width',  desc.width)
+      .setOption('height', desc.height);
 
-    ADV_applyDarkTheme_(builder, 'الإنفاق السنوي - الدخل والمصروف والادخار', theme, {
+    ADV_applyLinearTheme_(builder, 'الإنفاق السنوي — الدخل والمصروف والادخار', {
+      // Series binding: each chart series gets its Linear-palette color.
+      // labelInLegend overrides the column header so 'صافي الربح' reads as
+      // 'الادخار' (Savings) in the legend.
       series: {
-        0: { color: theme.accentIncome,  labelInLegend: 'الدخل' },
-        1: { color: theme.accentExpense, labelInLegend: 'المصروف' },
-        2: { color: theme.accentSavings, labelInLegend: 'الادخار' },
+        0: { color: t.accentIncome,   labelInLegend: 'الدخل' },
+        1: { color: t.accentExpense,  labelInLegend: 'المصروف' },
+        2: { color: t.accentSavings,  labelInLegend: 'الادخار' },
       },
-      bar: { groupWidth: '70%' },                       // tighter side-by-side cluster
-      isStacked: false,                                 // explicit: side-by-side, NOT stacked
+      // Thinner bar groups - higher contrast, matches Stripe's chart density.
+      bar: { groupWidth: '50%' },
+      isStacked: false,                                 // explicit: side-by-side
       legend: {
-        position: 'top',
-        textStyle: { color: theme.fgPrimary, fontSize: 11 },
+        position:  'top',
+        alignment: 'end',                               // top-right legend
+        textStyle: {
+          color:    t.fgPrimary,
+          fontSize: ty.legendSize,
+          fontName: ty.fontName,
+        },
       },
     });
 
     sheet.insertChart(builder.build());
     return { ok: true, label: label };
+
   } catch (err) {
-    var msg = (err && err.message) ? err.message : String(err);
+    const msg = (err && err.message) ? err.message : String(err);
     Logger.log('ADV_buildAnnualColumnChart_: ' + msg);
     return { ok: false, label: label, error: msg };
   }
@@ -363,36 +619,61 @@ function ADV_buildAnnualColumnChart_(sheet, ss, theme) {
 // PHASE 4c - CHART 2: INCOME DOUGHNUT (top income sources)
 // =============================================================================
 /**
- * Anchor: B29:G44 (bottom-left of the grid) -> row 29, col B.
  * Source: rng_dash_doughnut_income -> _DashboardEngine!I1:J9
+ * Anchor: ADV_ANCHORS.incomeDoughnut (B29:G44 fallback)
+ *
+ * Style: "Ghost Legend" - legend at bottom, Linear slice palette,
+ * 65% pieHole for a thinner doughnut ring.
  */
-function ADV_buildIncomeDoughnut_(sheet, ss, theme) {
-  var label = 'دونات أكثر مصادر الدخل';
-  try {
-    var range = ADV_requireRange_(ss, ADV_NR.doughnutIncome);
+function ADV_buildIncomeDoughnut_(sheet, ss) {
+  const t = ADV_THEME_LINEAR;
+  const ty = ADV_TYPOGRAPHY;
+  const desc = ADV_ANCHORS.incomeDoughnut;
+  const label = desc.descriptionAr;
 
-    var builder = sheet.newChart()
+  try {
+    const range = ADV_requireRange_(ss, ADV_NR.doughnutIncome);
+
+    const validation = ADV_validateChartData_(range);
+    if (!validation.ok) {
+      ADV_writeEmptyStatePlaceholder_(sheet, desc, validation.reason);
+      return { ok: false, label: label, placeholder: validation.reason };
+    }
+
+    const anchor = ADV_resolveAnchor_(sheet, desc);
+
+    const builder = sheet.newChart()
       .setChartType(Charts.ChartType.PIE)
       .addRange(range)
       .setNumHeaders(1)
-      .setPosition(29, 2, 0, 0)                         // row 29, col B
-      .setOption('width',  600)
-      .setOption('height', 336);
+      .setPosition(anchor.row, anchor.col, 0, 0)
+      .setOption('width',  desc.width)
+      .setOption('height', desc.height);
 
-    ADV_applyDarkTheme_(builder, 'أكثر مصادر الدخل', theme, {
-      pieHole: 0.6,                                     // pie -> doughnut
-      pieSliceTextStyle: { color: theme.fgPrimary, fontSize: 11 },
-      colors: theme.slicePalette,
-      legend: {
-        position: 'right',
-        textStyle: { color: theme.fgPrimary, fontSize: 11 },
+    ADV_applyLinearTheme_(builder, 'أكثر مصادر الدخل', {
+      pieHole: 0.65,                                    // thinner ring than 0.6
+      pieSliceTextStyle: {
+        color:    t.fgPrimary,
+        fontSize: ty.bodySize,
+        fontName: ty.fontName,
+      },
+      colors: t.slicePalette,                           // Linear slice palette
+      legend: {                                         // "Ghost Legend" at bottom
+        position:  'bottom',
+        alignment: 'center',
+        textStyle: {
+          color:    t.fgMuted,                          // muted, ghost-like
+          fontSize: ty.legendSize,
+          fontName: ty.fontName,
+        },
       },
     });
 
     sheet.insertChart(builder.build());
     return { ok: true, label: label };
+
   } catch (err) {
-    var msg = (err && err.message) ? err.message : String(err);
+    const msg = (err && err.message) ? err.message : String(err);
     Logger.log('ADV_buildIncomeDoughnut_: ' + msg);
     return { ok: false, label: label, error: msg };
   }
@@ -402,36 +683,60 @@ function ADV_buildIncomeDoughnut_(sheet, ss, theme) {
 // PHASE 4d - CHART 3: EXPENSE DOUGHNUT (drain categories)
 // =============================================================================
 /**
- * Anchor: H29:M44 (bottom-right of the grid) -> row 29, col H (=8).
  * Source: rng_dash_doughnut_expense -> _DashboardEngine!L1:M13
+ * Anchor: ADV_ANCHORS.expenseDoughnut (H29:M44 fallback)
+ *
+ * Same Ghost-Legend style as the income doughnut for visual symmetry.
  */
-function ADV_buildExpenseDoughnut_(sheet, ss, theme) {
-  var label = 'دونات أكثر فئات الإنفاق استنزافاً';
-  try {
-    var range = ADV_requireRange_(ss, ADV_NR.doughnutExpense);
+function ADV_buildExpenseDoughnut_(sheet, ss) {
+  const t = ADV_THEME_LINEAR;
+  const ty = ADV_TYPOGRAPHY;
+  const desc = ADV_ANCHORS.expenseDoughnut;
+  const label = desc.descriptionAr;
 
-    var builder = sheet.newChart()
+  try {
+    const range = ADV_requireRange_(ss, ADV_NR.doughnutExpense);
+
+    const validation = ADV_validateChartData_(range);
+    if (!validation.ok) {
+      ADV_writeEmptyStatePlaceholder_(sheet, desc, validation.reason);
+      return { ok: false, label: label, placeholder: validation.reason };
+    }
+
+    const anchor = ADV_resolveAnchor_(sheet, desc);
+
+    const builder = sheet.newChart()
       .setChartType(Charts.ChartType.PIE)
       .addRange(range)
       .setNumHeaders(1)
-      .setPosition(29, 8, 0, 0)                         // row 29, col H
-      .setOption('width',  600)
-      .setOption('height', 336);
+      .setPosition(anchor.row, anchor.col, 0, 0)
+      .setOption('width',  desc.width)
+      .setOption('height', desc.height);
 
-    ADV_applyDarkTheme_(builder, 'أكثر فئات الإنفاق استنزافاً', theme, {
-      pieHole: 0.6,
-      pieSliceTextStyle: { color: theme.fgPrimary, fontSize: 11 },
-      colors: theme.slicePalette,
+    ADV_applyLinearTheme_(builder, 'أكثر فئات الإنفاق استنزافاً', {
+      pieHole: 0.65,
+      pieSliceTextStyle: {
+        color:    t.fgPrimary,
+        fontSize: ty.bodySize,
+        fontName: ty.fontName,
+      },
+      colors: t.slicePalette,
       legend: {
-        position: 'right',
-        textStyle: { color: theme.fgPrimary, fontSize: 11 },
+        position:  'bottom',
+        alignment: 'center',
+        textStyle: {
+          color:    t.fgMuted,
+          fontSize: ty.legendSize,
+          fontName: ty.fontName,
+        },
       },
     });
 
     sheet.insertChart(builder.build());
     return { ok: true, label: label };
+
   } catch (err) {
-    var msg = (err && err.message) ? err.message : String(err);
+    const msg = (err && err.message) ? err.message : String(err);
     Logger.log('ADV_buildExpenseDoughnut_: ' + msg);
     return { ok: false, label: label, error: msg };
   }
@@ -446,20 +751,18 @@ function ADV_buildExpenseDoughnut_(sheet, ss, theme) {
    1. Open the dashboard sheet ('اللوحة الرئيسية والتقرير السنوي').
    2. Insert -> Drawing.
    3. Draw a rectangle. Add the text "تحديث الرسوم البيانية" inside it.
-      Suggested style: fill #06B6D4 (sky blue, matches the savings series),
-      text colour #FFFFFF.
+      Suggested style: fill #38BDF8 (sky-400, the new Linear primary),
+      text colour #FAFAFA, weight 500.
    4. Click "Save and close" - the drawing appears on the sheet.
    5. Click the drawing once to select it. Click the three-dot menu in
       the upper-right of the drawing -> "Assign script".
    6. Type exactly:  automateDashboardVisuals
-      (NO parentheses, NO leading/trailing spaces.)
    7. Click OK. The first click after assignment will prompt for
       authorisation - approve.
-   8. From now on, one click on the drawing rebuilds all three charts.
 
-   Option B - Custom menu item (one-click from the menu bar):
-   ----------------------------------------------------------
-   If your project does NOT yet have an `onOpen` function, add this:
+   Option B - Custom menu item:
+   ---------------------------
+   If your project does NOT yet have an `onOpen`, add this:
 
        function onOpen() {
          SpreadsheetApp.getUi()
@@ -468,8 +771,8 @@ function ADV_buildExpenseDoughnut_(sheet, ss, theme) {
            .addToUi();
        }
 
-   If your project ALREADY has an `onOpen`, just add the three middle lines
-   to your existing onOpen body.
+   If your project ALREADY has an `onOpen`, just add the menu lines
+   inside your existing onOpen body.
 
    Option C - Run directly from the editor:
    ----------------------------------------
