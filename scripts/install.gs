@@ -107,10 +107,52 @@ const EXPENSE_CATEGORIES = [
 
 const PAYMENT_METHODS = ['نقداً', 'بطاقة بنكية', 'تحويل الكتروني', 'أخرى'];
 
+// Maghreb (North African / Algerian-Tunisian) month naming, per project spec.
+// 5 months are identical between Maghreb and Mashreq dialects (مارس, سبتمبر,
+// أكتوبر, نوفمبر, ديسمبر); the other 7 differ. See MASHREQ_MAGHREB_MAP for the
+// full migration table used by migrateMonthNames_().
 const MONTHS = [
-  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  'جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان',
+  'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
 ];
+
+// Soft pastel background per month - inspired by Tailwind's 50-shade palette.
+// Applied to the entire monthly sheet (A1:Z100) before headers/data zones get
+// re-overlaid in white. Each shade is light enough that black/dark text remains
+// fully readable on top of it.
+const MONTH_PALETTE = {
+  'جانفي':   '#F1F5F9',  // slate-100
+  'فيفري':   '#FDF2F8',  // pink-50
+  'مارس':    '#F0FDF4',  // green-50
+  'أفريل':   '#FFFBEB',  // amber-50
+  'ماي':     '#EFF6FF',  // blue-50
+  'جوان':    '#FAF5FF',  // purple-50
+  'جويلية':  '#FEF2F2',  // red-50
+  'أوت':     '#FFF7ED',  // orange-50
+  'سبتمبر':  '#F0F9FF',  // sky-50
+  'أكتوبر':  '#FDF4FF',  // fuchsia-50
+  'نوفمبر':  '#ECFDF5',  // emerald-50
+  'ديسمبر':  '#EEF2FF',  // indigo-50
+};
+
+// Migration table: legacy Mashreq month name -> new Maghreb month name. Used
+// by migrateMonthNames_() to rename existing sheets in-place on workbooks that
+// were installed with the previous naming. Identicals are listed for
+// completeness; migrateMonthNames_ skips them to avoid no-op rename calls.
+const MASHREQ_MAGHREB_MAP = {
+  'يناير':   'جانفي',
+  'فبراير':  'فيفري',
+  'مارس':    'مارس',
+  'أبريل':   'أفريل',
+  'مايو':    'ماي',
+  'يونيو':   'جوان',
+  'يوليو':   'جويلية',
+  'أغسطس':   'أوت',
+  'سبتمبر':  'سبتمبر',
+  'أكتوبر':  'أكتوبر',
+  'نوفمبر':  'نوفمبر',
+  'ديسمبر':  'ديسمبر',
+};
 
 const GOALS_SEED = [
   ['شراء سيارة',         80000,   12000, '', new Date('2027-12-31'), '', '', '', ''],
@@ -150,6 +192,13 @@ function installBudgetCalculator2026() {
     if (r !== ui.Button.YES) return;
   }
 
+  // PRE-FLIGHT: migrate any legacy Mashreq-named month sheets to the new
+  // Maghreb naming. This is a NON-DESTRUCTIVE rename: data and formulas
+  // referencing the old sheet names are auto-tracked by Sheets when the
+  // sheet is renamed. Running on a brand-new workbook is a silent no-op.
+  // See migrateMonthNames_() for the full table.
+  migrateMonthNames_(ss);
+
   // PRE-FLIGHT: create every sheet as an empty stub BEFORE any formula is written.
   // This guarantees that every cross-sheet reference (e.g. `'اللوحة الرئيسية والتقرير
   // السنوي'!B5` written from the engine builder) can be resolved by Apps Script at
@@ -176,11 +225,79 @@ function installBudgetCalculator2026() {
   const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
   ss.setActiveSheet(welcome);
 
-  ui.alert(
-    'تم تركيب القالب بنجاح',
-    'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
-    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
-    ui.ButtonSet.OK);
+  // ---------------------------------------------------------------------------
+  // FINAL STEP: programmatic chart injection.
+  // We call the silent core (`automateDashboardVisualsCore_`) defined in the
+  // sibling file `automate_dashboard_visuals.gs`. The `typeof` guard makes
+  // this safe even if that file is not present in the project - the installer
+  // will simply skip the chart step and surface a manual-fallback message.
+  // Wrapped in try/catch so any chart failure cannot abort the installer.
+  // ---------------------------------------------------------------------------
+  let visualsResult = null;
+  let visualsError  = null;
+  if (typeof automateDashboardVisualsCore_ === 'function') {
+    try {
+      visualsResult = automateDashboardVisualsCore_(ss);
+    } catch (err) {
+      visualsError = (err && err.message) ? err.message : String(err);
+    }
+  }
+
+  // Per-month relative doughnuts (PR #14). Same typeof-guard pattern: the
+  // installer doesn't hard-depend on the file being present in the project.
+  let monthlyVisualsResult = null;
+  let monthlyVisualsError  = null;
+  if (typeof automateMonthlyDashboardVisualsCore_ === 'function') {
+    try {
+      monthlyVisualsResult = automateMonthlyDashboardVisualsCore_(ss);
+    } catch (err) {
+      monthlyVisualsError = (err && err.message) ? err.message : String(err);
+    }
+  }
+
+  const visualsOk = visualsResult
+                 && !visualsError
+                 && visualsResult.failed.length === 0;
+
+  if (visualsOk) {
+    // Compose the success message and append a monthly-visuals line if it ran.
+    var successBody = 'تمّ تركيب النظام، وإعادة بناء هياكل البيانات، وإدراج الرسوم البيانية الثلاثة بنجاح.';
+    if (monthlyVisualsResult && !monthlyVisualsError) {
+      successBody += '\n\nالرسوم الشهريّة النسبيّة: تمّ إدراج ' +
+        monthlyVisualsResult.builtCharts + ' رسم(ات) موزّعة على ' +
+        monthlyVisualsResult.totalSheets + ' ورقة شهريّة.';
+    } else if (monthlyVisualsError) {
+      successBody += '\n\nملاحظة: فشل إدراج الرسوم الشهريّة النسبيّة (' +
+        monthlyVisualsError + '). أعد تشغيل automateMonthlyDashboardVisuals يدوياً.';
+    }
+    ui.alert(
+      'تم تركيب القالب بنجاح',
+      successBody,
+      ui.ButtonSet.OK);
+  } else if (visualsResult || visualsError) {
+    // Chart code ran but had partial/total failure - surface details.
+    const issues = [];
+    if (visualsError) {
+      issues.push('فشل تنفيذ أتمتة الرسوم البيانية: ' + visualsError);
+    } else if (visualsResult && visualsResult.failed.length) {
+      visualsResult.failed.forEach(function (f) {
+        issues.push('فشل إدراج \"' + f.label + '\": ' + f.error);
+      });
+    }
+    ui.alert(
+      'تم تركيب القالب مع تحفّظات على الرسوم البيانية',
+      'تمّ تركيب النظام بنجاح، ولكن بعض الرسوم البيانية لم يكتمل إدراجها:\n\n' +
+      '  • ' + issues.join('\n  • ') + '\n\n' +
+      'يمكنك إعادة المحاولة يدوياً بتشغيل الدالة automateDashboardVisuals من قائمة Apps Script.',
+      ui.ButtonSet.OK);
+  } else {
+    // automate_dashboard_visuals.gs is not in the project at all.
+    ui.alert(
+      'تم تركيب القالب بنجاح',
+      'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
+      'لتفعيل الإدراج التلقائي للرسوم البيانية الثلاثة (عمودي + دونات الدخل + دونات المصاريف) أضف الملف automate_dashboard_visuals.gs إلى مشروع Apps Script ثم شغّل الدالة automateDashboardVisuals.',
+      ui.ButtonSet.OK);
+  }
 }
 
 // ============================================================================
@@ -299,6 +416,107 @@ function precreateAllSheetStubs(ss) {
 function paintSheet(s, fg, bg) {
   s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns())
     .setBackground(bg).setFontColor(fg);
+}
+
+/**
+ * Renames legacy Mashreq-named month sheets to the new Maghreb naming
+ * in-place. Cross-sheet formulas referencing the old names are auto-tracked
+ * by Sheets when a sheet is renamed, so this is non-destructive.
+ *
+ * Returns the number of sheets actually renamed (0 on a fresh workbook
+ * or a workbook that was already migrated). Logs each rename to View->Logs.
+ *
+ *  - If only the OLD sheet exists -> rename it to the NEW name.
+ *  - If only the NEW sheet exists -> nothing to do (already migrated).
+ *  - If BOTH exist -> log a warning and skip; the user must manually
+ *    consolidate. Never auto-merges to avoid silent data loss.
+ *  - If NEITHER exists -> the installer will create it later via stub.
+ */
+function migrateMonthNames_(ss) {
+  let renamed = 0;
+  Object.keys(MASHREQ_MAGHREB_MAP).forEach(function (oldName) {
+    const newName = MASHREQ_MAGHREB_MAP[oldName];
+    if (oldName === newName) return;                   // identical, skip
+    const oldSheet = ss.getSheetByName(oldName);
+    const newSheet = ss.getSheetByName(newName);
+    if (oldSheet && !newSheet) {
+      oldSheet.setName(newName);
+      Logger.log('migrateMonthNames_: renamed "' + oldName + '" -> "' + newName + '"');
+      renamed++;
+    } else if (oldSheet && newSheet) {
+      Logger.log('migrateMonthNames_: BOTH "' + oldName + '" and "' + newName +
+        '" exist; user must consolidate manually. Skipping.');
+    }
+  });
+  return renamed;
+}
+
+/**
+ * Apply the visual polish (gridlines, pastel background, white data zones)
+ * to a monthly sheet AFTER its content has been written. Called as the last
+ * step of buildMonth(). Idempotent.
+ */
+function applyMonthlyAesthetics_(s, monthName) {
+  // 1) Hide the spreadsheet gridlines for a "high-end app" look.
+  s.setHideGridlines(true);
+
+  // 2) Paint the entire visible canvas with the per-month pastel.
+  const pastel = MONTH_PALETTE[monthName] || '#FFFFFF';
+  s.getRange('A1:Z100').setBackground(pastel);
+
+  // 3) Re-overlay WHITE on the data-entry / KPI zones so they read as cards
+  //    floating above the pastel page. The dark headers (#374151) at row 6,
+  //    9, 32 remain dark by their own setBackground call in buildMonth - we
+  //    do not touch those rows here.
+  ['A2:F5',         // KPI panel
+   'A10:G28',       // income data rows
+   'A29:G29',       // income totals
+   'A33:H62',       // expense data rows
+   'A63:H63',       // expense totals
+  ].forEach(function (a1) {
+    s.getRange(a1).setBackground('#FFFFFF');
+  });
+
+  // 4) Standardise the date column UI: dd/mm/yyyy format. The DataValidation
+  //    rule that turns this into a clickable Date Picker is set in
+  //    applyMonthlyValidations(), which runs after buildMonth.
+  s.getRange('A10:A28').setNumberFormat('dd/mm/yyyy');
+  s.getRange('A33:A62').setNumberFormat('dd/mm/yyyy');
+}
+
+/**
+ * Write hidden chart-data helper columns on a monthly sheet:
+ *   P:Q  income  category sums (per this month only)
+ *   R:S  expense category sums (per this month only)
+ *
+ * These power the per-month relative doughnut charts injected by
+ * automateMonthlyDashboardVisuals (in automate_dashboard_visuals.gs).
+ * Columns P:S are hidden after writing so they don't visually leak into
+ * the user-facing layout.
+ */
+function applyMonthlyChartDataHelpers_(s) {
+  // P:Q - income relative chart data (8 categories)
+  s.getRange('P1:Q1').setValues([['فئة الدخل', 'الإجمالي']])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+  for (let i = 0; i < INCOME_CATEGORIES.length; i++) {
+    const row = i + 2;
+    s.getRange('P' + row).setValue(INCOME_CATEGORIES[i]);
+    s.getRange('Q' + row).setFormula('=IFERROR(SUMIF(B10:B28, P' + row + ', E10:E28), 0)');
+  }
+
+  // R:S - expense relative chart data (12 categories)
+  s.getRange('R1:S1').setValues([['فئة المصاريف', 'الإجمالي']])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
+    const row = i + 2;
+    s.getRange('R' + row).setValue(EXPENSE_CATEGORIES[i]);
+    s.getRange('S' + row).setFormula('=IFERROR(SUMIF(B33:B62, R' + row + ', E33:E62), 0)');
+  }
+
+  // Hide P:S so the helper data doesn't visually clutter the monthly sheet.
+  // Charts can read from hidden columns - the data binding uses range coords,
+  // not visual visibility.
+  s.hideColumns(16, 4);  // P=16, hide 4 columns (P, Q, R, S)
 }
 
 function mergeAndStyle(s, a1, value, opts) {
@@ -540,6 +758,15 @@ function buildMonth(ss, monthName) {
 
   s.setFrozenRows(6);
   s.autoResizeColumns(1, 8);
+
+  // ===== Visual polish layer (PR #14) =====
+  // Applied AFTER all content is written so headers / KPI / data zones are
+  // already in place. The aesthetic call paints over them with the per-month
+  // pastel + white-card overlay; the chart-data helper writes hidden helper
+  // columns P:S that back the per-month relative doughnuts injected by
+  // automateMonthlyDashboardVisuals().
+  applyMonthlyAesthetics_(s, monthName);
+  applyMonthlyChartDataHelpers_(s);
 }
 
 // ============================================================================
@@ -908,7 +1135,7 @@ function buildWelcome(ss) {
   // Quick start cards (3 columns of 5 each)
   const cards = [
     { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
+    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'جانفي', accent: T.accentIncome, link: '📅 افتح ورقة جانفي' },
     { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
   ];
 
@@ -983,6 +1210,7 @@ function defineNamedRanges(ss) {
   setEng('rng_dash_waterfall',        'F1:G7');    // Chart 2 - Waterfall (cash flow)
   setEng('rng_dash_doughnut_income',  'I1:J9');    // Chart 3 - Doughnut (income sources)
   setEng('rng_dash_doughnut_expense', 'L1:M13');   // Chart 4 - Doughnut (expense categories)
+  setEng('rng_dash_annual_columns',   'A1:D13');   // Chart 5 - Vertical Column (income / expense / savings)
 
   // Now apply data validations that depend on named ranges (categories, payment methods)
   applyMonthlyValidations(ss);
@@ -998,6 +1226,14 @@ function applyMonthlyValidations(ss) {
   const payDv = SpreadsheetApp.newDataValidation()
     .requireValueInRange(ss.getRangeByName('rng_PaymentMethods'), true)
     .setAllowInvalid(false).build();
+  // Date Picker UI for the date columns (PR #14). requireDate() is what
+  // makes Sheets render the calendar-icon picker on hover; the dd/mm/yyyy
+  // number format is set separately in applyMonthlyAesthetics_.
+  const dateDv = SpreadsheetApp.newDataValidation()
+    .requireDate()
+    .setAllowInvalid(false)
+    .setHelpText('اختر التاريخ من المنتقي.')
+    .build();
 
   for (const m of MONTHS) {
     const s = ss.getSheetByName(m);
@@ -1005,6 +1241,8 @@ function applyMonthlyValidations(ss) {
     s.getRange('B33:B62').setDataValidation(expenseCatDv);
     s.getRange('G10:G28').setDataValidation(payDv);
     s.getRange('G33:G62').setDataValidation(payDv);
+    s.getRange('A10:A28').setDataValidation(dateDv);
+    s.getRange('A33:A62').setDataValidation(dateDv);
   }
 }
 
