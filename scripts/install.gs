@@ -107,9 +107,13 @@ const EXPENSE_CATEGORIES = [
 
 const PAYMENT_METHODS = ['نقداً', 'بطاقة بنكية', 'تحويل الكتروني', 'أخرى'];
 
+// Algerian / Maghrebi Arabic month names. This is the single source of truth
+// for every monthly sheet name AND every cross-sheet formula token in the
+// engine (e.g. `'${m}'!E10:E28`). Changing this array re-localises the entire
+// workbook on the next install run; no other constant needs to be touched.
 const MONTHS = [
-  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  'جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان',
+  'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
 ];
 
 const GOALS_SEED = [
@@ -163,6 +167,7 @@ function installBudgetCalculator2026() {
   for (let i = 0; i < MONTHS.length; i++) buildMonth(ss, MONTHS[i]);
   buildDashboard(ss);          // <-- moved BEFORE the engine: card cells now exist
   buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
+  buildAnnualColumnChart(ss);  // <-- AFTER the engine: chart reads cols A/B/C/E from it.
   buildWelcome(ss);
 
   defineNamedRanges(ss);
@@ -250,10 +255,13 @@ function repairDashboard2026() {
   dash.getRange('V7').setFormula(buildTrendFormula('H7', 'I7'));
 
   // 6) Re-bind the four chart named ranges (idempotent — safe to re-run).
-  ss.setNamedRange('rng_dash_monthly_grid',     engine.getRange('A1:D13'));
+  ss.setNamedRange('rng_dash_monthly_grid',     engine.getRange('A1:E13'));
   ss.setNamedRange('rng_dash_waterfall',        engine.getRange('F1:G7'));
   ss.setNamedRange('rng_dash_doughnut_income',  engine.getRange('I1:J9'));
   ss.setNamedRange('rng_dash_doughnut_expense', engine.getRange('L1:M13'));
+
+  // 7) Re-insert the programmatic annual COLUMN chart (idempotent).
+  buildAnnualColumnChart(ss);
 
   SpreadsheetApp.flush();
   ui.alert(
@@ -444,6 +452,124 @@ function buildGoals(ss) {
 }
 
 // ============================================================================
+// MONTHLY AESTHETICS — modular, defensive, expandable
+// ----------------------------------------------------------------------------
+// Mirrors the design language already established in install.gs:
+//   * reads colours from the central `T` palette
+//   * applies to every monthly sheet listed in `MONTHS`
+//   * fails closed (logs + skips) instead of aborting the installer
+//
+// HISTORY: the original ad-hoc aesthetic block called the non-existent
+// `Sheet.setHideGridlines(...)` and threw `TypeError` mid-install. The fix is
+// the correct API `setHiddenGridlines(true)`, plus a defensive duck-typed
+// guard so a wrong-typed argument can never re-introduce the same crash.
+// ============================================================================
+
+/**
+ * Duck-typed Sheet check. Apps Script does not export the Sheet constructor,
+ * so `instanceof` is unusable; we instead verify the methods we intend to
+ * call are present. This single check kills the
+ *   `TypeError: s.setXxx is not a function`
+ * family of crashes — including the original `setHideGridlines` typo.
+ */
+function _isSheet(s) {
+  return !!s
+      && typeof s.getRange           === 'function'
+      && typeof s.setHiddenGridlines === 'function'
+      && typeof s.getSheetId         === 'function';
+}
+
+/**
+ * Invoke a Sheet method by name with full diagnostics.
+ * Returns true on success, false on any kind of failure, and writes a
+ * structured line to the execution log so the failing step is identifiable
+ * without re-running the whole installer.
+ */
+function _safeApply(s, methodName, ...args) {
+  if (!_isSheet(s) || typeof s[methodName] !== 'function') {
+    Logger.log('[aesthetics] skipped ' + methodName +
+               ' — target is not a Sheet or method is unavailable in this runtime.');
+    return false;
+  }
+  try {
+    s[methodName].apply(s, args);
+    return true;
+  } catch (err) {
+    Logger.log('[aesthetics] ' + methodName + ' threw: ' + (err && err.message));
+    return false;
+  }
+}
+
+// ---- Atomic aesthetic steps ------------------------------------------------
+// Each helper does ONE thing on ONE sheet. New visual rules are added by
+// writing a new `_step*` function and appending it to the pipeline in
+// `_applyMonthlyAesthetics` below. Existing steps stay untouched.
+
+function _stepHideGridlines(s) {
+  // FIX: the correct Apps Script API is `setHiddenGridlines(hidden)`. The
+  // previous `setHideGridlines` does not exist on the Sheet class.
+  return _safeApply(s, 'setHiddenGridlines', true);
+}
+
+function _stepPaintBackground(s) {
+  if (!_isSheet(s)) return false;
+  s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns())
+    .setBackground(T.bgPage)
+    .setFontColor(T.fgPrimary);
+  return true;
+}
+
+function _stepEnableRtl(s)        { return _safeApply(s, 'setRightToLeft', true); }
+function _stepFreezeKpiHeader(s)  { return _safeApply(s, 'setFrozenRows', 6); }
+
+/**
+ * Apply the full aesthetic pass on a single monthly sheet.
+ * The orchestrator is intentionally a thin pipeline of single-purpose steps
+ * so future polish (banded ranges, custom row heights, header tinting, …) can
+ * be added by appending one entry to the array below — existing logic and
+ * its defensive guards stay untouched.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} s — a live monthly sheet.
+ * @return {{applied:number, skipped:number}} per-run summary for diagnostics.
+ */
+function _applyMonthlyAesthetics(s) {
+  if (!_isSheet(s)) {
+    Logger.log('[aesthetics] _applyMonthlyAesthetics called with a non-Sheet — abort.');
+    return { applied: 0, skipped: 0 };
+  }
+
+  // Pipeline of single-purpose steps. APPEND new aesthetics here.
+  const pipeline = [
+    _stepHideGridlines,
+    _stepPaintBackground,
+    _stepEnableRtl,
+    _stepFreezeKpiHeader,
+  ];
+
+  let applied = 0, skipped = 0;
+  pipeline.forEach(step => { step(s) ? applied++ : skipped++; });
+  return { applied, skipped };
+}
+
+/**
+ * Convenience: run the aesthetic pass across all 12 monthly sheets.
+ * Safe to call repeatedly — every step is idempotent.
+ */
+function applyAestheticsToAllMonths(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+  const summary = { applied: 0, skipped: 0, missing: [] };
+  MONTHS.forEach(m => {
+    const s = ss.getSheetByName(m);
+    if (!_isSheet(s)) { summary.missing.push(m); return; }
+    const r = _applyMonthlyAesthetics(s);
+    summary.applied += r.applied;
+    summary.skipped += r.skipped;
+  });
+  Logger.log('[aesthetics] summary: ' + JSON.stringify(summary));
+  return summary;
+}
+
+// ============================================================================
 // PHASE 2: A SINGLE MONTHLY SHEET
 // ============================================================================
 function buildMonth(ss, monthName) {
@@ -538,8 +664,14 @@ function buildMonth(ss, monthName) {
       .setBackground('#27AE60').setFontColor(T.white).setRanges([hRange]).build());
   s.setConditionalFormatRules(rules);
 
-  s.setFrozenRows(6);
   s.autoResizeColumns(1, 8);
+
+  // Final visual passes — both fail closed, neither aborts the install:
+  //   1) modular aesthetic pipeline (gridlines / dark page / RTL / freeze)
+  //   2) modular per-sheet analytics (Column + Pie). Stashes data in cols
+  //      Q-S and inserts charts at J5 and J20.
+  _applyMonthlyAesthetics(s);
+  addMonthlyCharts(s);
 }
 
 // ============================================================================
@@ -548,8 +680,13 @@ function buildMonth(ss, monthName) {
 function buildDashboardEngine(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.engine);
 
-  // A:D - Monthly comparison grid (per docs/07 section 8.1)
-  s.getRange('A1:D1').setValues([['الشهر', 'الدخل الفعلي', 'المصروف الفعلي', 'صافي الربح']])
+  // A:E - Monthly comparison grid (per docs/07 section 8.1)
+  // Column E (الادخار) is the new dedicated savings series for the annual
+  // column chart. It mirrors column D mathematically (income - expense), but
+  // exposing it as its own column lets the chart legend read "الادخار"
+  // directly from the header cell — without overloading the existing
+  // "صافي الربح" semantics that O5 and I5 still depend on.
+  s.getRange('A1:E1').setValues([['الشهر', 'الدخل الفعلي', 'المصروف الفعلي', 'صافي الربح', 'الادخار']])
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
   for (let i = 0; i < 12; i++) {
     const m = MONTHS[i];
@@ -558,6 +695,7 @@ function buildDashboardEngine(ss) {
     s.getRange('B' + row).setFormula(`=SUM('${m}'!E10:E28)`);
     s.getRange('C' + row).setFormula(`=SUM('${m}'!E33:E62)`);
     s.getRange('D' + row).setFormula(`=B${row}-C${row}`);
+    s.getRange('E' + row).setFormula(`=B${row}-C${row}`);   // الادخار (savings series)
   }
 
   // O5: cumulative net surplus (used by Card K4)
@@ -674,6 +812,240 @@ function buildCategorySumFormula(category, expense, negate, refCell) {
   let f = '=' + parts.join(' + ');
   if (negate) f = '=-1 * (' + parts.join(' + ') + ')';
   return f;
+}
+
+// ============================================================================
+// DASHBOARD CHARTS — programmatic, defensive, idempotent
+// ----------------------------------------------------------------------------
+// Until now the dashboard has been shipped with manual chart anchors so the
+// user could pick palette + subtotal flags in the native chart editor. This
+// module replaces Chart 1 (the annual income / expense / savings comparison)
+// with a programmatic VERTICAL COLUMN chart that respects the project theme.
+//
+// Design rules:
+//   * Every chart / formatting call is wrapped in `_safeRun` so a single
+//     Spreadsheet quirk (protection, filter, locale, transient flush) cannot
+//     abort the installer mid-build. The `setHideGridlines` TypeError class
+//     of bug is impossible here by construction — we never call deprecated
+//     or non-existent Sheet APIs.
+//   * Idempotent: any pre-existing chart with the same title is removed
+//     before insertion so re-runs of the installer do not accumulate
+//     duplicate charts.
+//   * Theme-aware: column colours come from the central `T` palette plus
+//     one new sky-blue token for the savings series.
+// ============================================================================
+
+const T_SAVINGS_BAR    = '#87CEEB';                                   // Sky Blue — savings series
+const CHART_TITLE_ANNUAL = 'المقارنة الشهرية: الدخل / المصروف / الادخار';
+
+/**
+ * Run an arbitrary Spreadsheet operation with full error capture. Returns the
+ * function's result on success, undefined on failure. Failures are logged
+ * with a `[charts]` tag so the operator can grep the execution log when
+ * something silently degrades.
+ */
+function _safeRun(label, fn) {
+  try {
+    return fn();
+  } catch (err) {
+    Logger.log('[charts] ' + label + ' failed: ' + (err && err.message));
+    return undefined;
+  }
+}
+
+/**
+ * Remove any existing chart on `sheet` whose title matches `title`.
+ * Lets `installBudgetCalculator2026` and `repairDashboard2026` be re-run
+ * without piling up duplicate charts.
+ */
+function _removeChartByTitle(sheet, title) {
+  if (!sheet || typeof sheet.getCharts !== 'function') return 0;
+  let removed = 0;
+  sheet.getCharts().forEach(c => {
+    _safeRun('removeChart', () => {
+      const opts = c.getOptions && c.getOptions();
+      const t    = opts && opts.get && opts.get('title');
+      if (t === title) { sheet.removeChart(c); removed++; }
+    });
+  });
+  return removed;
+}
+
+/**
+ * Build the vertical COLUMN chart for the annual comparison.
+ *   X axis  : months (engine column A)
+ *   Series 0: الدخل الفعلي    (engine column B)  — green (T.accentIncome)
+ *   Series 1: المصروف الفعلي  (engine column C)  — red   (T.accentExpense)
+ *   Series 2: الادخار         (engine column E)  — sky blue (#87CEEB)
+ *
+ * Engine column D (صافي الربح) is intentionally excluded from the chart to
+ * keep the legend legible; it remains computed for `O5` and `I5`.
+ *
+ * The chart anchors at row 11 / column B (the existing "Chart 1" stub on
+ * the dashboard sheet) so the dark card background already painted there
+ * shows through any transparent gaps.
+ */
+function buildAnnualColumnChart(ss) {
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!dash || !engine) {
+    Logger.log('[charts] buildAnnualColumnChart: dashboard or engine missing — skipped.');
+    return;
+  }
+
+  // Idempotency: drop any prior copy of this exact chart.
+  _safeRun('removeStaleAnnualChart', () => _removeChartByTitle(dash, CHART_TITLE_ANNUAL));
+
+  _safeRun('insertAnnualColumnChart', () => {
+    const builder = dash.newChart()
+      .asColumnChart()                                        // ← vertical Column chart
+      .addRange(engine.getRange('A1:A13'))                    // months (with header)
+      .addRange(engine.getRange('B1:B13'))                    // الدخل الفعلي
+      .addRange(engine.getRange('C1:C13'))                    // المصروف الفعلي
+      .addRange(engine.getRange('E1:E13'))                    // الادخار
+      .setNumHeaders(1)
+      .setOption('title',           CHART_TITLE_ANNUAL)
+      .setOption('titleTextStyle',  { color: T.fgPrimary, bold: true, fontSize: 14 })
+      .setOption('backgroundColor', T.bgCard)
+      .setOption('legend',          { position: 'bottom', textStyle: { color: T.fgPrimary } })
+      .setOption('hAxis',           { textStyle: { color: T.fgPrimary }, slantedText: true, slantedTextAngle: 30 })
+      .setOption('vAxis',           { textStyle: { color: T.fgPrimary }, gridlines: { color: T.gridline } })
+      .setOption('series', {
+        0: { color: T.accentIncome  },                        // الدخل
+        1: { color: T.accentExpense },                        // المصروف
+        2: { color: T_SAVINGS_BAR   },                        // الادخار — Sky Blue #87CEEB
+      })
+      .setPosition(11, 2, 0, 0)                               // anchor at B11 (the Chart 1 stub)
+      .build();
+
+    dash.insertChart(builder);
+  });
+
+  // Commit the chart + any concurrent formula writes before the next phase
+  // touches the same sheet (named-range binding, protection, sheet hide).
+  _safeRun('flushAnnualChart', () => SpreadsheetApp.flush());
+}
+
+// ============================================================================
+// MONTHLY CHARTS — per-sheet column + pie analytics
+// ----------------------------------------------------------------------------
+// Two analytical charts on every monthly sheet:
+//   * Chart 1 (Column) at J5  — المصروفات vs الادخار side by side
+//   * Chart 2 (Pie)    at J20 — توزيع المصاريف حسب الفئة (SUMIF aggregated)
+//
+// Both share the robustness primitives `_safeRun` and `_removeChartByTitle`
+// from the DASHBOARD CHARTS module. Re-running install or `addMonthlyCharts`
+// removes any prior chart with the same title before re-inserting → fully
+// idempotent. Failures inside any single step log with a `[charts]` tag and
+// do NOT abort the install pipeline.
+//
+// Data stashes for the charts live in columns Q-S (well outside the visible
+// monthly layout, which uses A-H). Formulas update dynamically as the user
+// edits the monthly grid.
+// ============================================================================
+
+const CHART_TITLE_MONTH_BARS = 'المصروفات مقابل الادخار';
+const CHART_TITLE_MONTH_PIE  = 'توزيع المصاريف حسب الفئة';
+
+/**
+ * Write the two small data stashes the monthly charts read from. Idempotent:
+ * re-writing identical formulas over identical cells is a no-op.
+ *
+ *   Q1:S2          — column-chart data (Expenses + Savings as 2 series)
+ *   Q5:R(5+N)      — pie-chart data (N expense categories + SUMIF amounts)
+ */
+function _writeMonthlyChartStashes(s) {
+  if (!_isSheet(s)) return false;
+
+  // Column-chart stash: one category row, two value columns.
+  // Two SERIES so each bar can carry its own colour via `series` options.
+  s.getRange('Q1:S1').setValues([['', 'المصروفات', 'الادخار']])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+  s.getRange('Q2').setValue('الشهر الحالي');
+  s.getRange('R2').setFormula('=IFERROR(D4, 0)');         // total actual expenses (KPI cell)
+  s.getRange('S2').setFormula('=IFERROR(B5, 0)');         // net surplus = income - expense
+
+  // Pie-chart stash: one row per expense category, with SUMIF over the
+  // current monthly expense block (B33:E62).
+  s.getRange('Q5:R5').setValues([['الفئة', 'إجمالي المصروف']])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
+    const row = 6 + i;
+    s.getRange('Q' + row).setValue(EXPENSE_CATEGORIES[i]);
+    s.getRange('R' + row).setFormula(`=IFERROR(SUMIF(B33:B62, Q${row}, E33:E62), 0)`);
+  }
+
+  return true;
+}
+
+/**
+ * Add the two analytical charts to a single monthly sheet.
+ *
+ *   Chart 1 — vertical Column chart at J5  (Expenses vs Savings)
+ *   Chart 2 — Pie chart at J20             (Expense Distribution by Category)
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet — a live monthly sheet.
+ */
+function addMonthlyCharts(sheet) {
+  if (!_isSheet(sheet)) {
+    Logger.log('[charts] addMonthlyCharts: target is not a Sheet — skipped.');
+    return;
+  }
+  const tag = (sheet.getName && sheet.getName()) || '?';
+
+  // 1) Stage data the charts read from. Errors log + skip; we still attempt
+  //    chart insertion so partial failures degrade gracefully.
+  _safeRun('stash:' + tag, () => _writeMonthlyChartStashes(sheet));
+
+  // 2) Idempotency: drop any prior copies of these exact charts.
+  _safeRun('removeStaleBars:' + tag, () => _removeChartByTitle(sheet, CHART_TITLE_MONTH_BARS));
+  _safeRun('removeStalePie:'  + tag, () => _removeChartByTitle(sheet, CHART_TITLE_MONTH_PIE));
+
+  // 3) Chart 1 — vertical Column: Expenses vs Savings (2 series → 2 bars).
+  _safeRun('insertBars:' + tag, () => {
+    const chart = sheet.newChart()
+      .asColumnChart()                                          // ← vertical Column chart
+      .addRange(sheet.getRange('Q1:S2'))
+      .setNumHeaders(1)
+      .setOption('title',           CHART_TITLE_MONTH_BARS)
+      .setOption('titleTextStyle',  { color: T.fgPrimary, bold: true, fontSize: 13 })
+      .setOption('backgroundColor', T.bgCard)
+      .setOption('legend',          { position: 'bottom', textStyle: { color: T.fgPrimary } })
+      .setOption('hAxis',           { textStyle: { color: T.fgPrimary } })
+      .setOption('vAxis',           { textStyle: { color: T.fgPrimary }, gridlines: { color: T.gridline } })
+      .setOption('series', {
+        0: { color: T.accentExpense },                          // المصروفات (red)
+        1: { color: T_SAVINGS_BAR   },                          // الادخار   (#87CEEB sky blue)
+      })
+      .setOption('width',  480)
+      .setOption('height', 280)
+      .setPosition(5, 10, 0, 0)                                 // anchor at J5
+      .build();
+    sheet.insertChart(chart);
+  });
+
+  // 4) Chart 2 — Pie: Expense Distribution by Category.
+  _safeRun('insertPie:' + tag, () => {
+    const lastRow = 5 + EXPENSE_CATEGORIES.length;              // header row 5 + N cats
+    const chart = sheet.newChart()
+      .asPieChart()
+      .addRange(sheet.getRange('Q5:R' + lastRow))
+      .setNumHeaders(1)
+      .setOption('title',             CHART_TITLE_MONTH_PIE)
+      .setOption('titleTextStyle',    { color: T.fgPrimary, bold: true, fontSize: 13 })
+      .setOption('backgroundColor',   T.bgCard)
+      .setOption('legend',            { position: 'right', textStyle: { color: T.fgPrimary } })
+      .setOption('pieSliceTextStyle', { color: T.white })
+      .setOption('width',  480)
+      .setOption('height', 320)
+      .setPosition(20, 10, 0, 0)                                // anchor at J20
+      .build();
+    sheet.insertChart(chart);
+  });
+
+  // 5) Flush so charts + their underlying formulas commit before any later
+  //    step (protection, named-range binding, sheet hide) touches the sheet.
+  _safeRun('flush:' + tag, () => SpreadsheetApp.flush());
 }
 
 // ============================================================================
@@ -826,7 +1198,7 @@ function buildDashboard(ss) {
   // The named ranges are stable across rebuilds, so the chart never needs to be
   // re-bound when the engine sheet is rebuilt or moved.
   paintCard(s, 'B11:M26');
-  mergeAndStyle(s, 'B11:M11', 'Chart 1: المقارنة الشهريّة (أدرجه يدوياً من النطاق المُسمَّى rng_dash_monthly_grid)',
+  mergeAndStyle(s, 'B11:M11', 'Chart 1: المقارنة الشهريّة (يُدرَج آلياً عبر buildAnnualColumnChart — لا حاجة لإدراج يدوي)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'N11:Y26');
   mergeAndStyle(s, 'N11:Y11', 'Chart 2: Waterfall - تدفّق النقد (أدرجه يدوياً من النطاق المُسمَّى rng_dash_waterfall)',
@@ -908,7 +1280,7 @@ function buildWelcome(ss) {
   // Quick start cards (3 columns of 5 each)
   const cards = [
     { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
+    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'جانفي', accent: T.accentIncome, link: '📅 افتح ورقة جانفي' },
     { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
   ];
 
@@ -979,7 +1351,7 @@ function defineNamedRanges(ss) {
   // edited — no manual rewiring of chart sources needed.
   const engine = ss.getSheetByName(SHEET_NAMES.engine);
   const setEng = (name, a1) => ss.setNamedRange(name, engine.getRange(a1));
-  setEng('rng_dash_monthly_grid',     'A1:D13');   // Chart 1 - Combo (monthly comparison)
+  setEng('rng_dash_monthly_grid',     'A1:E13');   // Chart 1 - Column (income / expense / savings)
   setEng('rng_dash_waterfall',        'F1:G7');    // Chart 2 - Waterfall (cash flow)
   setEng('rng_dash_doughnut_income',  'I1:J9');    // Chart 3 - Doughnut (income sources)
   setEng('rng_dash_doughnut_expense', 'L1:M13');   // Chart 4 - Doughnut (expense categories)
