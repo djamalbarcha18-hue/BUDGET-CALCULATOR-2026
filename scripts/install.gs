@@ -131,10 +131,9 @@ const SHEET_NAMES = {
   engine:   '_DashboardEngine',
 };
 
-const WARN_BRANDING   = 'هذه الكتلة جزء من الهويّة البصريّة للقالب. التعديل غير مرغوب.';
-const WARN_SETTINGS   = 'هذه الورقة هي مصدر الحقيقة الوحيد للإعدادات. التعديل قد يكسر كل المصنّف.';
-const WARN_CALC_CELL  = 'هذه الخلية محسوبة آلياً، لا تُعدَّل يدوياً.';
-const WARN_ENGINE     = 'هذه الورقة جزء من المحرك الخلفي للوحة المعلومات. التعديل قد يكسر الصيغ والرسوم البيانية.';
+// WARN_* constants + `_applySecurity` + `applyProtection` live in scripts/
+// security.gs. Apps Script flattens every .gs file into one global scope, so
+// they're directly callable from this file with no import needed.
 
 // ============================================================================
 // MAIN ENTRY POINT
@@ -1957,30 +1956,8 @@ function _buildWelcomePage(ss) {
   ]);
 }
 
-/**
- * Generic protection helper. Applies warning-only `protect()` to a list of
- * A1 ranges on a single sheet, with full error capture so a corrupt range
- * cannot abort the installer mid-build.
- *
- * "warning-only" means edits prompt a confirmation dialog but are still
- * allowed — entry-cell sheets remain open while branded UI regions are
- * protected from accidental modification.
- *
- * @param {GoogleAppsScript.Spreadsheet.Sheet} s     target sheet
- * @param {Array<string>}                      ranges  A1 ranges to protect
- */
-function _applySecurity(s, ranges) {
-  if (!s || !Array.isArray(ranges)) return;
-  ranges.forEach(function (a1) {
-    try {
-      s.getRange(a1).protect()
-        .setDescription(WARN_BRANDING)
-        .setWarningOnly(true);
-    } catch (err) {
-      Logger.log('[security] protect(' + a1 + ') threw: ' + (err && err.message));
-    }
-  });
-}
+// `_applySecurity` lives in scripts/security.gs (Apps Script flattens every
+// .gs file into one global scope, so it's directly callable from here).
 
 // ============================================================================
 // NAMED RANGES - wires the workbook together
@@ -2037,56 +2014,9 @@ function applyMonthlyValidations(ss) {
   }
 }
 
-// ============================================================================
-// PROTECTION (Soft-Lock layer)
-// ============================================================================
-function applyProtection(ss) {
-  // Engine sheet (whole-sheet protection)
-  const engine = ss.getSheetByName(SHEET_NAMES.engine);
-  engine.protect().setDescription(WARN_ENGINE).setWarningOnly(true);
-
-  // Welcome branding regions are protected directly by `_applySecurity`
-  // inside `_buildWelcomePage` — keeping the ownership of the welcome
-  // sheet's protection rules co-located with its layout builder.
-  // (Previous direct calls on B2:O4 / B26:O29 referenced the legacy
-  // pre-SmartBudget layout and have been removed.)
-
-  // Dashboard regions (KPI cards + chart anchors + ledger)
-  const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
-  ['B5:E10', 'F5:I10', 'J5:M10', 'N5:Q10', 'R5:U10', 'V5:Y10',
-   'B11:M26', 'N11:Y26', 'B29:G44', 'H29:M44',
-   'N29:S44', 'T29:Y44',
-   'B47:I60', 'J47:Q60', 'R47:Y60'].forEach(r => {
-    dash.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
-  });
-
-  // Settings sheet - protect everything except B3 + C7:C20 + F7:H18
-  const settings = ss.getSheetByName(SHEET_NAMES.settings);
-  const settingsProtect = settings.protect()
-    .setDescription(WARN_SETTINGS).setWarningOnly(true);
-  // Allow editing within these ranges
-  settingsProtect.setUnprotectedRanges([
-    settings.getRange('B3'),
-    settings.getRange('C7:C20'),
-    settings.getRange('F7:F14'),
-    settings.getRange('G7:G18'),
-    settings.getRange('H7:H10'),
-  ]);
-
-  // Goals sheet - protect calculated columns (D, F, G, H, I from rows 7..26)
-  const goals = ss.getSheetByName(SHEET_NAMES.goals);
-  ['D7:D26', 'F7:F26', 'G7:G26', 'H7:H26', 'I7:I26'].forEach(r => {
-    goals.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
-  });
-
-  // Monthly sheets - protect KPI panel + alert column + totals
-  for (const m of MONTHS) {
-    const s = ss.getSheetByName(m);
-    ['A1:G6', 'F10:F28', 'H33:H62', 'A29:G29', 'A63:H63'].forEach(r => {
-      s.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
-    });
-  }
-}
+// `applyProtection` lives in scripts/security.gs — see that file for the full
+// soft-lock protection layer (engine sheet, dashboard, settings, goals, all
+// 12 monthly sheets).
 
 // ============================================================================
 // TAB ORDER - welcome first, engine last (and hidden)
