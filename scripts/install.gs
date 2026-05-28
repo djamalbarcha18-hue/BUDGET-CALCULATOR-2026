@@ -169,7 +169,7 @@ function installBudgetCalculator2026() {
   buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
   buildAnnualColumnChart(ss);  // <-- AFTER the engine: chart reads cols A/B/C/E from it.
   buildVisualInsights(ss);     // <-- AFTER the engine: comparison + category donut.
-  buildWelcome(ss);
+  _buildWelcomePage(ss);       // <-- SmartBudget welcome cover (replaces buildWelcome).
 
   defineNamedRanges(ss);
   applyProtection(ss);
@@ -1761,75 +1761,213 @@ function buildTrendFormula(curCell, priCell) {
 
 // ============================================================================
 // PHASE 5: WELCOME / ONBOARDING SHEET
+// ----------------------------------------------------------------------------
+// `_buildWelcomePage` is the SmartBudget welcome cover. It owns the entire
+// landing layout (hero, tagline, "Why SmartBudget?", Quick Start, credits)
+// and is fully idempotent — `breakApart()` + `clear()` at the top wipe any
+// prior state, so re-installs over an old workbook never leave stale merges
+// or labels behind.
+//
+// PALETTE (Premium Fintech, deep dark mode):
+//   * PAGE_BG  = #111827   page background (deeper than T.bgPage)
+//   * CARD_BG  = T.bgCard  card surface
+//   * TEXT     = T.fgPrimary
+//   * MUTED    = T.fgMuted
+//   * ACCENT   = T.accentNet  cyan, used for section headers
+//   * EMERALD  = T.accentIncome, used for icons / step numbers
+//   * BORDER   = T.gridline
+//
+// LAYOUT (rows 1-40, cols A-P; cards span B..P with A and Q-onwards as
+// breathing margins):
+//   3-6   Hero header   B3:P6     "SmartBudget — الميزانية الذكية"
+//   8-10  Tagline       B8:P10    'نظامك المالي المتكامل لإدارة أصولك…'
+//   12-13 Section 1     B12:P13   "لماذا الميزانية الذكية؟"
+//   14-19 3 feature cards (5-col each: B-F / G-K / L-P)
+//   21-22 Section 2     B21:P22   "كيف تبدأ في 3 خطوات بسيطة؟"
+//   23-28 3 step cards  + HYPERLINK to the relevant sheet
+//   31-34 Credits card  B31:P34   developer + email
+//
+// SECURITY: `_applySecurity(s, ranges)` is called at the end to protect every
+// branded region of this sheet (warning-only protection — users can still
+// edit if absolutely needed). The user's data-entry sheets stay open.
 // ============================================================================
-function buildWelcome(ss) {
+
+function _buildWelcomePage(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.welcome);
 
-  // Page background and increase row heights
-  s.getRange(1, 1, 40, 16).setBackground(T.bgPage).setFontColor(T.fgPrimary);
+  // ---- Idempotency: clear everything before re-building. ----
+  // `breakApart()` is a no-op on un-merged cells, so it's safe whether we're
+  // installing fresh or re-installing over a prior layout.
+  const fullRange = s.getRange(1, 1, Math.max(s.getMaxRows(), 40), Math.max(s.getMaxColumns(), 16));
+  fullRange.breakApart();
+  s.clear();
+
+  // ---- Palette ----
+  const PAGE_BG = '#111827';            // deep navy (one shade darker than T.bgPage)
+  const CARD_BG = T.bgCard;             // #1F2937
+  const TEXT    = T.fgPrimary;          // #F1F5F9
+  const MUTED   = T.fgMuted;            // #94A3B8
+  const ACCENT  = T.accentNet;          // #06B6D4 (cyan)
+  const EMERALD = T.accentIncome;       // #10B981
+  const BORDER  = T.gridline;           // #334155
+
+  // ---- Page background + row sizing ----
+  s.getRange(1, 1, 40, 16).setBackground(PAGE_BG).setFontColor(TEXT);
   for (let i = 1; i <= 40; i++) s.setRowHeight(i, 24);
-  for (let i = 2; i <= 4; i++) s.setRowHeight(i, 60);
+  // Taller rows for the hero so the title gets its premium presence.
+  for (let i = 3; i <= 6; i++) s.setRowHeight(i, 36);
 
-  // Hero header
-  const hero = s.getRange('B2:O4');
-  hero.merge();
-  hero.setValue('نظام ميزان المالي الذكي\nBUDGET CALCULATOR 2026')
-    .setBackground(T.bgCard).setFontColor(T.fgPrimary)
-    .setFontSize(20).setFontWeight('bold')
-    .setHorizontalAlignment('center').setVerticalAlignment('middle')
-    .setWrap(true);
+  // ---- 1. Hero header (SmartBudget — الميزانية الذكية) ----
+  paintCard(s, 'B3:P6');
+  s.getRange('B3:P6').setBorder(true, true, true, true, false, false,
+                                BORDER, SpreadsheetApp.BorderStyle.SOLID);
+  mergeAndStyle(s, 'B3:P6',
+    'SmartBudget — الميزانية الذكية',
+    { bg: CARD_BG, fg: TEXT, size: 28, bold: true,
+      align: 'center', vAlign: 'middle' });
 
-  // Tagline
-  mergeAndStyle(s, 'B6:O9',
-    'نظام ميزان المالي الذكي قالب فنتك عربي احترافي مبني على Google Sheets، يجمع محرّك عملات متعدّد، 12 ورقة شهريّة بمحرّك تنبيهات ذكي، نظام أهداف وادّخار مع توصيات آليّة، ولوحة معلومات فاخرة بوضع داكن وتحليلات سنويّة.',
-    { bg: T.bgPage, fg: T.fgMuted, size: 13, align: 'center', wrap: true });
+  // ---- 2. Tagline ----
+  paintCard(s, 'B8:P10');
+  s.getRange('B8:P10').setBorder(true, true, true, true, false, false,
+                                 BORDER, SpreadsheetApp.BorderStyle.SOLID);
+  mergeAndStyle(s, 'B8:P10',
+    'نظامك المالي المتكامل لإدارة أصولك وعملاتك بذكاء.',
+    { bg: CARD_BG, fg: MUTED, size: 14,
+      align: 'center', vAlign: 'middle', wrap: true });
 
-  // Quick start cards (3 columns of 5 each)
-  const cards = [
-    { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'جانفي', accent: T.accentIncome, link: '📅 افتح ورقة جانفي' },
-    { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
+  // ---- 3. Section 1 — Why SmartBudget? ----
+  mergeAndStyle(s, 'B12:P13',
+    '◆ لماذا الميزانية الذكية؟',
+    { bg: PAGE_BG, fg: ACCENT, size: 16, bold: true,
+      align: 'center', vAlign: 'middle' });
+
+  const whyCards = [
+    { col: 'B', endCol: 'F', icon: '⚡',  title: 'أتمتة كاملة',
+      body: 'معالجة بياناتك لحظياً وبدقة عالية دون أخطاء يدوية.' },
+    { col: 'G', endCol: 'K', icon: '🌙',  title: 'تصميم Fintech',
+      body: 'واجهة مظلمة مريحة للعين، مصممة للتركيز التام.' },
+    { col: 'L', endCol: 'P', icon: '📊',  title: 'رؤية شاملة',
+      body: 'تحليلات دقيقة لمصاريفك عبر مختلف الفئات والعملات.' },
   ];
 
-  const cardCols = [['B', 'F'], ['G', 'K'], ['L', 'P']];
-  for (let i = 0; i < cards.length; i++) {
-    const c = cards[i];
-    const [colStart, colEnd] = cardCols[i];
-    paintCard(s, `${colStart}11:${colEnd}23`);
-    // Top accent border (Apps Script doesn't expose top-only-border with custom width well, so use a narrow row)
-    s.getRange(`${colStart}11:${colEnd}11`).setBackground(c.accent);
-    mergeAndStyle(s, `${colStart}12:${colEnd}13`, c.id,
-      { bg: T.bgCard, fg: c.accent, size: 30, bold: true, align: 'right' });
-    mergeAndStyle(s, `${colStart}14:${colEnd}15`, c.title,
-      { bg: T.bgCard, fg: T.fgPrimary, size: 16, bold: true, align: 'right' });
-    mergeAndStyle(s, `${colStart}16:${colEnd}22`, c.body,
-      { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right', wrap: true });
-    // Hyperlink
-    const target = ss.getSheetByName(c.target);
+  whyCards.forEach(function (c) {
+    const range = c.col + '14:' + c.endCol + '19';
+    paintCard(s, range);
+    s.getRange(range).setBorder(true, true, true, true, false, false,
+                                BORDER, SpreadsheetApp.BorderStyle.SOLID);
+    mergeAndStyle(s, c.col + '14:' + c.endCol + '15', c.icon + '  ' + c.title,
+      { bg: CARD_BG, fg: EMERALD, size: 14, bold: true,
+        align: 'center', vAlign: 'middle' });
+    mergeAndStyle(s, c.col + '16:' + c.endCol + '19', c.body,
+      { bg: CARD_BG, fg: TEXT, size: 11,
+        align: 'center', vAlign: 'middle', wrap: true });
+  });
+
+  // ---- 4. Section 2 — Quick Start Guide ----
+  mergeAndStyle(s, 'B21:P22',
+    '◆ كيف تبدأ في 3 خطوات بسيطة؟',
+    { bg: PAGE_BG, fg: ACCENT, size: 16, bold: true,
+      align: 'center', vAlign: 'middle' });
+
+  // Note: target sheet names use the actual workbook structure (Maghrebi
+  // months from PR #15, settings as the initial-setup entry point — the
+  // "DashboardEngine" referenced in the brief is hidden by design and is
+  // not where the user enters initial balance).
+  const steps = [
+    { col: 'B', endCol: 'F', n: '01', title: 'الإعدادات',
+      body: 'ادخل رصيدك الابتدائي في ورقة \'الإعدادات\'.',
+      target: SHEET_NAMES.settings,
+      link: '📘 افتح ورقة الإعدادات' },
+    { col: 'G', endCol: 'K', n: '02', title: 'الأشهر',
+      body: 'سجل مصاريفك اليومية في أوراق الأشهر (من جانفي إلى ديسمبر).',
+      target: 'جانفي',
+      link: '📅 افتح ورقة جانفي' },
+    { col: 'L', endCol: 'P', n: '03', title: 'اللوحة الرئيسية',
+      body: 'افتح صفحة \'اللوحة الرئيسية\' لمشاهدة الرسوم البيانية ومؤشرات النمو التلقائية.',
+      target: SHEET_NAMES.dashboard,
+      link: '📊 افتح اللوحة الرئيسية' },
+  ];
+
+  steps.forEach(function (step) {
+    const range = step.col + '23:' + step.endCol + '28';
+    paintCard(s, range);
+    s.getRange(range).setBorder(true, true, true, true, false, false,
+                                BORDER, SpreadsheetApp.BorderStyle.SOLID);
+
+    // Step number — large accent
+    mergeAndStyle(s, step.col + '23:' + step.endCol + '24', step.n,
+      { bg: CARD_BG, fg: ACCENT, size: 24, bold: true,
+        align: 'center', vAlign: 'middle' });
+
+    // Step title
+    mergeAndStyle(s, step.col + '25:' + step.endCol + '25', step.title,
+      { bg: CARD_BG, fg: TEXT, size: 12, bold: true, align: 'center' });
+
+    // Step description
+    mergeAndStyle(s, step.col + '26:' + step.endCol + '27', step.body,
+      { bg: CARD_BG, fg: MUTED, size: 10,
+        align: 'center', wrap: true });
+
+    // Hyperlink — resolves to the live sheet's gid at install time so the
+    // link survives sheet-rename / position changes.
+    const target = ss.getSheetByName(step.target);
     if (target) {
       const gid = target.getSheetId();
-      mergeAndStyle(s, `${colStart}23:${colEnd}23`, '', { bg: T.bgCard, align: 'right' });
-      s.getRange(`${colStart}23`).setFormula(`=HYPERLINK("#gid=${gid}", "${c.link}")`)
-        .setFontColor(T.accentIncome).setFontSize(11);
+      mergeAndStyle(s, step.col + '28:' + step.endCol + '28', '',
+        { bg: CARD_BG, align: 'center' });
+      s.getRange(step.col + '28')
+        .setFormula('=HYPERLINK("#gid=' + gid + '", "' + step.link + '")')
+        .setFontColor(EMERALD).setFontSize(11);
     }
-  }
+  });
 
-  // Developer signature card
-  paintCard(s, 'B26:O29');
-  mergeAndStyle(s, 'B26:O27', '💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس',
-    { bg: T.bgCard, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
-  mergeAndStyle(s, 'B28:O29', '📩 للتواصل والدعم الفني: boulahdiddjamaleddine',
-    { bg: T.bgCard, fg: T.fgMuted, size: 12, align: 'center', vAlign: 'middle' });
+  // ---- 5. Developer credits ----
+  paintCard(s, 'B31:P34');
+  s.getRange('B31:P34').setBorder(true, true, true, true, false, false,
+                                  BORDER, SpreadsheetApp.BorderStyle.SOLID);
+  mergeAndStyle(s, 'B31:P32',
+    '💎 تم التطوير بواسطة: BOULAHDID DJAMAL EDDINE',
+    { bg: CARD_BG, fg: TEXT, size: 13, bold: true,
+      align: 'center', vAlign: 'middle' });
+  mergeAndStyle(s, 'B33:P34',
+    '📩 للتواصل: boulahdiddjamaleddine@gmail.com',
+    { bg: CARD_BG, fg: MUTED, size: 11,
+      align: 'center', vAlign: 'middle' });
 
-  // Footer
-  mergeAndStyle(s, 'B32:O32', 'الإصدار: 1.0.0 (Phase 6/13 - Apps Script Installer) - مايو 2026',
-    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
-  mergeAndStyle(s, 'B33:O33',
-    'قالب احترافي مفتوح للتخصيص. أسعار الصرف مؤشّرات إرشاديّة - يجب على المستخدم تحديثها قبل أيّ استخدام محاسبي فعلي.',
-    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
-  mergeAndStyle(s, 'B34:O34',
-    'Premium Arabic Fintech Template - All formulas built for Google Sheets compatibility (XLOOKUP, ARRAYFORMULA, IFS, QUERY, SPARKLINE).',
-    { bg: T.bgPage, fg: T.fgMuted, size: 9, align: 'center' });
+  // ---- 6. Apply security to the welcome page (warning-only protection
+  //         on every branded region; entry-cell sheets stay fully open). ----
+  _applySecurity(s, [
+    'B3:P6',     // Hero header
+    'B8:P10',    // Tagline
+    'B12:P19',   // "Why SmartBudget?" header + 3 feature cards
+    'B21:P28',   // "Quick Start" header + 3 step cards
+    'B31:P34',   // Developer credits
+  ]);
+}
+
+/**
+ * Generic protection helper. Applies warning-only `protect()` to a list of
+ * A1 ranges on a single sheet, with full error capture so a corrupt range
+ * cannot abort the installer mid-build.
+ *
+ * "warning-only" means edits prompt a confirmation dialog but are still
+ * allowed — entry-cell sheets remain open while branded UI regions are
+ * protected from accidental modification.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} s     target sheet
+ * @param {Array<string>}                      ranges  A1 ranges to protect
+ */
+function _applySecurity(s, ranges) {
+  if (!s || !Array.isArray(ranges)) return;
+  ranges.forEach(function (a1) {
+    try {
+      s.getRange(a1).protect()
+        .setDescription(WARN_BRANDING)
+        .setWarningOnly(true);
+    } catch (err) {
+      Logger.log('[security] protect(' + a1 + ') threw: ' + (err && err.message));
+    }
+  });
 }
 
 // ============================================================================
@@ -1895,10 +2033,11 @@ function applyProtection(ss) {
   const engine = ss.getSheetByName(SHEET_NAMES.engine);
   engine.protect().setDescription(WARN_ENGINE).setWarningOnly(true);
 
-  // Welcome branding regions
-  const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
-  welcome.getRange('B2:O4').protect().setDescription(WARN_BRANDING).setWarningOnly(true);
-  welcome.getRange('B26:O29').protect().setDescription(WARN_BRANDING).setWarningOnly(true);
+  // Welcome branding regions are protected directly by `_applySecurity`
+  // inside `_buildWelcomePage` — keeping the ownership of the welcome
+  // sheet's protection rules co-located with its layout builder.
+  // (Previous direct calls on B2:O4 / B26:O29 referenced the legacy
+  // pre-SmartBudget layout and have been removed.)
 
   // Dashboard regions (KPI cards + chart anchors + ledger)
   const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
