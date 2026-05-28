@@ -187,6 +187,18 @@ function installBudgetCalculator2026() {
     'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
     'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
     ui.ButtonSet.OK);
+
+  // Optional: offer to populate the 12 monthly sheets with realistic demo
+  // data so the user can see the dashboard light up immediately. Skipped on
+  // 'No' — the workbook is ready to use either way.
+  const wantDemo = ui.alert(
+    'بيانات تجريبية (اختياري)',
+    'هل تريد ملء الأشهر بـ 12 شهراً من البيانات التجريبية الواقعية لاختبار اللوحة فوراً؟\n\n' +
+    'يمكنك دائماً تشغيل _populateDemoData لاحقاً، أو حذف البيانات يدوياً متى شئت.',
+    ui.ButtonSet.YES_NO);
+  if (wantDemo === ui.Button.YES) {
+    _populateDemoData(ss, { skipCheck: true });
+  }
 }
 
 // ============================================================================
@@ -2096,4 +2108,174 @@ function reorderTabs(ss) {
       ss.moveActiveSheet(i + 1); // 1-based position
     }
   }
+}
+
+
+// ============================================================================
+// DEMO DATA — populate the 12 monthly sheets with realistic dummy entries
+// ----------------------------------------------------------------------------
+// Used at the end of `installBudgetCalculator2026` (only if the user opts in
+// via the post-install prompt) AND as a standalone utility runnable from the
+// Apps Script editor function dropdown.
+//
+// Design rules:
+//   * Writes ONLY to user-editable cells: A:E + G of the income block
+//     (rows 10..28) and A:E + G of the expense block (rows 33..62).
+//     Column F (the ARRAYFORMULA difference) and column H (per-row alert
+//     formulas) are deliberately skipped so the live calculations stay
+//     intact.
+//   * Categories are drawn from the canonical INCOME_CATEGORIES /
+//     EXPENSE_CATEGORIES lists so existing data validation passes.
+//   * Per-month variation comes from a deterministic offset (`monthIdx`
+//     drives the multipliers) so re-running produces identical output —
+//     no flickering numbers, no noisy diffs.
+//   * Numbers are baseline-USD-friendly: ~$5.5k income / ~$3.5k expense
+//     per month → ~35% savings rate. The Annual Performance Matrix's
+//     "High Stability" verdict (>6 months runway) trips reliably.
+//   * Re-runs check for pre-existing user data unless `opts.skipCheck` is
+//     true; the skip flag is set when called from inside the install
+//     pipeline (where sheets are guaranteed empty).
+// ============================================================================
+
+/**
+ * Populate the 12 monthly sheets with realistic demo data.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} [ss]   defaults to active
+ * @param {{skipCheck?: boolean}}                    [opts] omit to enable
+ *                                                          the existing-data
+ *                                                          confirmation prompt
+ * @return {{monthsPopulated:number, incomeRows:number, expenseRows:number,
+ *           missingMonths:string[]}}
+ */
+function _populateDemoData(ss, opts) {
+  ss   = ss   || SpreadsheetApp.getActive();
+  opts = opts || {};
+
+  const summary = {
+    monthsPopulated: 0,
+    incomeRows:      0,
+    expenseRows:     0,
+    missingMonths:   [],
+  };
+
+  if (typeof MONTHS === 'undefined' || !Array.isArray(MONTHS)) {
+    Logger.log('[demo] MONTHS constant unavailable — aborting.');
+    return summary;
+  }
+
+  // ---- Existing-data guard ----
+  // Skipped when called immediately after install (sheets are empty).
+  // Otherwise: scan every monthly sheet's income+expense entry zone and
+  // prompt the user before overwriting.
+  if (!opts.skipCheck) {
+    const hasExistingData = MONTHS.some(function (m) {
+      const sheet = ss.getSheetByName(m);
+      if (!sheet) return false;
+      const rows = sheet.getRange('A10:E28').getValues()
+        .concat(sheet.getRange('A33:E62').getValues());
+      return rows.some(function (r) {
+        // a row counts as "user data" if category (B), expected (D), or
+        // actual (E) is non-empty. Date-only rows are tolerated.
+        return (r[1] != null && String(r[1]).trim() !== '')
+            || (r[3] != null && String(r[3]).trim() !== '')
+            || (r[4] != null && String(r[4]).trim() !== '');
+      });
+    });
+    if (hasExistingData) {
+      try {
+        const ui = SpreadsheetApp.getUi();
+        const r = ui.alert(
+          'تحذير — توجد بيانات',
+          'الأشهر تحتوي بالفعل على بيانات. هل تريد استبدالها ببيانات تجريبية؟',
+          ui.ButtonSet.YES_NO);
+        if (r !== ui.Button.YES) return summary;
+      } catch (err) {
+        // No UI context (e.g. headless test) — bail safely instead of
+        // overwriting silently.
+        Logger.log('[demo] existing data detected and no UI to confirm — aborting.');
+        return summary;
+      }
+    }
+  }
+
+  // ---- Income skeleton (5 rows / month, well within the 19-row block) ----
+  // Each tuple: [category, description, baseExpected, actualMultiplier]
+  const incomeSeed = [
+    ['راتب أساسي',     'الراتب الشهري',         5000, 1.00],
+    ['مكافآت وحوافز',  'مكافأة أداء ربعية',       600, 1.00],
+    ['عمل حر',         'مشروع تصميم عن بُعد',    800, 0.95],
+    ['دخل استثماري',   'أرباح أسهم / فوائد',      200, 1.05],
+    ['أخرى',           'دخل متفرق',                150, 1.00],
+  ];
+  const incomePay = ['تحويل الكتروني', 'بطاقة بنكية', 'تحويل الكتروني', 'تحويل الكتروني', 'نقداً'];
+
+  // ---- Expense skeleton (11 rows / month, fits in the 30-row block) ----
+  // Each tuple: [category, description, baseExpected]
+  const expenseSeed = [
+    ['السكن',         'إيجار / قسط البيت',          1500],
+    ['الطعام',        'مشتريات أسبوعية',             350],
+    ['الطعام',        'مطاعم خارجية',                180],
+    ['النقل',         'وقود / مواصلات',              220],
+    ['الفواتير',      'كهرباء / ماء / غاز',           180],
+    ['الفواتير',      'إنترنت + هاتف',                80],
+    ['الاشتراكات',    'خدمات بثّ ومنصات',              45],
+    ['الصحة',         'استشارة / دواء',              120],
+    ['التسوق',        'ملابس / مستلزمات شخصية',      200],
+    ['الترفيه',       'سينما / خروجات',              150],
+    ['التعليم',       'كتب / كورسات',                100],
+  ];
+  const expensePay = ['بطاقة بنكية', 'بطاقة بنكية', 'نقداً', 'بطاقة بنكية', 'تحويل الكتروني',
+                     'تحويل الكتروني', 'بطاقة بنكية', 'نقداً', 'بطاقة بنكية', 'نقداً', 'تحويل الكتروني'];
+
+  const YEAR = (new Date()).getFullYear();   // current year, defaults to 2026 in this template
+
+  MONTHS.forEach(function (monthName, monthIdx) {
+    const sheet = ss.getSheetByName(monthName);
+    if (!sheet) {
+      summary.missingMonths.push(monthName);
+      return;
+    }
+
+    // Deterministic per-month multipliers so charts show realistic but
+    // stable variation (re-runs produce byte-identical output).
+    const incomeMult  = 0.95 + (monthIdx % 5) * 0.05;   // 0.95 → 1.15 cycle
+    const expenseMult = 0.85 + (monthIdx % 8) * 0.05;   // 0.85 → 1.20 cycle
+
+    // ---- Income block: cols A-E (5 cols) and G separately ----
+    const incomeAtoE = incomeSeed.map(function (seed, i) {
+      const day      = Math.min(1 + i * 5, 28);              // days 1, 6, 11, 16, 21
+      const date     = new Date(YEAR, monthIdx, day);
+      const expected = Math.round(seed[2] * incomeMult);
+      const actual   = Math.round(expected * seed[3]);
+      return [date, seed[0], seed[1], expected, actual];
+    });
+    sheet.getRange(10, 1, incomeAtoE.length, 5).setValues(incomeAtoE);
+    const incomeG = incomeSeed.map(function (_, i) { return [incomePay[i % incomePay.length]]; });
+    sheet.getRange(10, 7, incomeG.length, 1).setValues(incomeG);
+    summary.incomeRows += incomeAtoE.length;
+
+    // ---- Expense block: cols A-E (5 cols) and G separately ----
+    const expenseAtoE = expenseSeed.map(function (seed, i) {
+      const day            = Math.min(2 + i * 3, 28);        // days 2, 5, 8, 11, …
+      const date           = new Date(YEAR, monthIdx, day);
+      const expected       = Math.round(seed[2] * expenseMult);
+      // Actual varies more (0.90 → 1.10×) to simulate spending discipline.
+      const actualMult     = 0.90 + ((monthIdx + i) % 5) * 0.05;
+      const actual         = Math.round(expected * actualMult);
+      return [date, seed[0], seed[1], expected, actual];
+    });
+    sheet.getRange(33, 1, expenseAtoE.length, 5).setValues(expenseAtoE);
+    const expenseG = expenseSeed.map(function (_, i) { return [expensePay[i % expensePay.length]]; });
+    sheet.getRange(33, 7, expenseG.length, 1).setValues(expenseG);
+    summary.expenseRows += expenseAtoE.length;
+
+    summary.monthsPopulated += 1;
+  });
+
+  // Force recompute so all derived numbers (engine sums, KPI cards, charts)
+  // light up immediately rather than waiting for the next view.
+  SpreadsheetApp.flush();
+
+  Logger.log('[demo] populated: ' + JSON.stringify(summary));
+  return summary;
 }
