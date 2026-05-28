@@ -168,6 +168,7 @@ function installBudgetCalculator2026() {
   buildDashboard(ss);          // <-- moved BEFORE the engine: card cells now exist
   buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
   buildAnnualColumnChart(ss);  // <-- AFTER the engine: chart reads cols A/B/C/E from it.
+  buildVisualInsights(ss);     // <-- AFTER the engine: comparison + category donut.
   buildWelcome(ss);
 
   defineNamedRanges(ss);
@@ -238,21 +239,13 @@ function repairDashboard2026() {
   engine.getRange('O2').setFormula(
     `=ROUND(40 * MAX(0, MIN(1, IFERROR((H2 - H3) / H2, 0))) + 30 * MAX(0, MIN(1, IFERROR(1 - (H3 / SUM(${monthlyExpectedExpenseSum})), 0))) + 30 * IFERROR('${SHEET_NAMES.goals}'!F2, 0), 0)`);
 
-  // 4) Repoint the dashboard KPI big-numbers at the engine.
-  dash.getRange('B5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H2, 0)`);
-  dash.getRange('F5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H3, 0)`);
-  dash.getRange('J5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H4, 0)`);
-  dash.getRange('N5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H5, 0)`);
-  dash.getRange('R5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H6, 0)`);
-  dash.getRange('V5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H7, 0)`).setNumberFormat('0.0%');
-
-  // 5) Rewrite the six trend cells with the bulletproof formula.
-  dash.getRange('B7').setFormula(buildTrendFormula('H2', 'I2'));
-  dash.getRange('F7').setFormula(buildTrendFormula('H3', 'I3'));
-  dash.getRange('J7').setFormula(buildTrendFormula('H4', 'I4'));
-  dash.getRange('N7').setFormula(buildTrendFormula('H5', 'I5'));
-  dash.getRange('R7').setFormula(buildTrendFormula('H6', 'I6'));
-  dash.getRange('V7').setFormula(buildTrendFormula('H7', 'I7'));
+  // 4) Re-render the 6 KPI cards via the extracted module — one call covers
+  //    big-number formulas, trend cells, the new vs-last-year sub-label,
+  //    border framing, and CF on trend arrows. Idempotent: re-running over
+  //    the legacy B4:Y8 layout cleanly migrates to B5:Y10.
+  const rules = dash.getConditionalFormatRules();
+  _buildKpiCards(dash, rules);
+  dash.setConditionalFormatRules(rules);
 
   // 6) Re-bind the four chart named ranges (idempotent — safe to re-run).
   ss.setNamedRange('rng_dash_monthly_grid',     engine.getRange('A1:E13'));
@@ -262,6 +255,9 @@ function repairDashboard2026() {
 
   // 7) Re-insert the programmatic annual COLUMN chart (idempotent).
   buildAnnualColumnChart(ss);
+
+  // 8) Re-insert the Visual Insights pair (Comparison + Donut). Idempotent.
+  buildVisualInsights(ss);
 
   SpreadsheetApp.flush();
   ui.alert(
@@ -505,6 +501,27 @@ function _safeApply(s, methodName, ...args) {
 // writing a new `_step*` function and appending it to the pipeline in
 // `_applyMonthlyAesthetics` below. Existing steps stay untouched.
 
+const T_DATE_FADED = '#CCCCCC';   // light grey — faded date cells (subtle metadata)
+
+// 12 subtle, professional pastels (Material-Design "lightest" tints) cycled
+// against the MONTHS array so each monthly sheet carries its own visual
+// identity within a unified premium aesthetic. Index 0 → جانفي, … index 11
+// → ديسمبر, matching the canonical January-to-December order.
+const MONTH_PASTELS = [
+  '#F8F9FA',   //  جانفي  — neutral whisper
+  '#E8F5E9',   //  فيفري  — green tint
+  '#E3F2FD',   //  مارس   — blue tint
+  '#FFF3E0',   //  أفريل  — orange tint
+  '#FCE4EC',   //  ماي    — pink tint
+  '#F3E5F5',   //  جوان   — violet tint
+  '#E0F7FA',   //  جويلية — cyan tint
+  '#FFFDE7',   //  أوت    — yellow tint
+  '#FBE9E7',   //  سبتمبر — coral tint
+  '#ECEFF1',   //  أكتوبر — slate tint
+  '#F1F8E9',   //  نوفمبر — lime tint
+  '#E1F5FE',   //  ديسمبر — sky tint
+];
+
 function _stepHideGridlines(s) {
   // FIX: the correct Apps Script API is `setHiddenGridlines(hidden)`. The
   // previous `setHideGridlines` does not exist on the Sheet class.
@@ -523,6 +540,92 @@ function _stepEnableRtl(s)        { return _safeApply(s, 'setRightToLeft', true)
 function _stepFreezeKpiHeader(s)  { return _safeApply(s, 'setFrozenRows', 6); }
 
 /**
+ * Format every date cell on a monthly sheet to the international ISO
+ * standard `yyyy-mm-dd` and mute its colour to a faded grey, so calendar
+ * metadata recedes visually behind the primary financial figures (cols B-G).
+ *
+ * Date cells live in column A of the income block (A10:A28) and the expense
+ * block (A33:A62). Both ranges share the same format and colour.
+ *
+ * RTL note: ISO dates are numeric and Bidi-renders left-to-right inside the
+ * cell regardless of sheet direction. We explicitly right-align the cells so
+ * the date hugs the leading edge in an RTL sheet (rightmost in the cell),
+ * matching the natural reading flow of the surrounding Arabic content. The
+ * alignment is also a sensible default in LTR mode, so the step does not
+ * need to branch on direction. Each range is wrapped individually so a
+ * failure on one block does not skip the other.
+ */
+function _stepFormatDates(s) {
+  if (!_isSheet(s)) return false;
+  const dateRanges = ['A10:A28', 'A33:A62'];   // income dates, expense dates
+  let success = true;
+  dateRanges.forEach(a1 => {
+    try {
+      s.getRange(a1)
+        .setNumberFormat('yyyy-mm-dd')
+        .setFontColor(T_DATE_FADED)
+        .setHorizontalAlignment('right');
+    } catch (err) {
+      Logger.log('[aesthetics] _stepFormatDates(' + a1 + ') threw: ' + (err && err.message));
+      success = false;
+    }
+  });
+  return success;
+}
+
+/**
+ * Pastel-tint the body of a single monthly sheet with one of the 12 colours
+ * from `MONTH_PASTELS`. The colour is selected by matching the sheet name
+ * against `MONTHS` and looking up the same index in `MONTH_PASTELS`.
+ *
+ * Painting is restricted to the user-facing layout (cols A-H, data rows
+ * only) so that:
+ *   1. Header bands (row 9 = income header, row 32 = expense header) keep
+ *      their explicit dark fill from `buildMonth`, providing strong contrast
+ *      against the pastel content rows.
+ *   2. Empty rows beyond row 63 stay tinted by `_stepPaintBackground`'s
+ *      dark theme, so newly-added user rows show the workbook frame instead
+ *      of "leaking" pastel.
+ *   3. Cell editability and protection state are completely untouched —
+ *      `setBackground` is a pure-cosmetic call. The sheet stays editable
+ *      and expandable (the user can add rows past row 63 without inheriting
+ *      pastel formatting).
+ *
+ * RTL: the step uses A1-style ranges that are layout-agnostic; the sheet's
+ * `setRightToLeft` flag (applied by `_stepEnableRtl`) handles visual
+ * mirroring without any special handling here.
+ *
+ * Each body sub-range is wrapped in its own try/catch so a failure on one
+ * group does not skip the others — consistent with `_safeApply` semantics.
+ */
+function _stepApplyMonthPastel(s) {
+  if (!_isSheet(s)) return false;
+  const idx = MONTHS.indexOf(s.getName ? s.getName() : '');
+  if (idx < 0) return false;                       // not a monthly sheet → silent skip
+  const color = MONTH_PASTELS[idx];
+  if (!color) return false;
+
+  // Body row groups for the standard monthly layout (per docs/03 §2):
+  //    1- 8 : title + KPI panel + breathing space
+  //   10-29 : income block + totals (row 9 header excluded)
+  //   30-31 : spacer
+  //   33-63 : expense block + totals (row 32 header excluded)
+  const bodyRanges = ['A1:H8', 'A10:H29', 'A30:H31', 'A33:H63'];
+  let success = true;
+  bodyRanges.forEach(a1 => {
+    try {
+      s.getRange(a1).setBackground(color);
+    } catch (err) {
+      Logger.log('[aesthetics] _stepApplyMonthPastel(' +
+                 (s.getName && s.getName()) + '/' + a1 + ') threw: ' +
+                 (err && err.message));
+      success = false;
+    }
+  });
+  return success;
+}
+
+/**
  * Apply the full aesthetic pass on a single monthly sheet.
  * The orchestrator is intentionally a thin pipeline of single-purpose steps
  * so future polish (banded ranges, custom row heights, header tinting, …) can
@@ -539,11 +642,19 @@ function _applyMonthlyAesthetics(s) {
   }
 
   // Pipeline of single-purpose steps. APPEND new aesthetics here.
+  // ORDER MATTERS:
+  //   * `_stepPaintBackground` lays the dark theme on every cell first
+  //     (the "void" outside the data region).
+  //   * `_stepApplyMonthPastel` then paints the per-month pastel ON TOP of
+  //     the body rows only, leaving header bands (rows 9 / 32) and the
+  //     empty grid (rows 64+) dark.
   const pipeline = [
     _stepHideGridlines,
     _stepPaintBackground,
+    _stepApplyMonthPastel,
     _stepEnableRtl,
     _stepFreezeKpiHeader,
+    _stepFormatDates,
   ];
 
   let applied = 0, skipped = 0;
@@ -552,18 +663,29 @@ function _applyMonthlyAesthetics(s) {
 }
 
 /**
- * Convenience: run the aesthetic pass across all 12 monthly sheets.
- * Safe to call repeatedly — every step is idempotent.
+ * Convenience: run the aesthetic pass across all 12 monthly sheets, cycling
+ * the per-month pastel from `MONTH_PASTELS` as we go. The cycling itself is
+ * driven by `_stepApplyMonthPastel` (which looks the colour up by sheet
+ * name) — this orchestrator surfaces it in the diagnostic summary so the
+ * operator can see at a glance which tint was applied to which month.
+ *
+ * Safe to call repeatedly: every step in `_applyMonthlyAesthetics` is
+ * idempotent (re-painting an identical colour is a no-op).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} [ss] — defaults to the
+ *        active spreadsheet.
+ * @return {{applied:number, skipped:number, missing:string[], pastels:Object}}
  */
 function applyAestheticsToAllMonths(ss) {
   ss = ss || SpreadsheetApp.getActive();
-  const summary = { applied: 0, skipped: 0, missing: [] };
-  MONTHS.forEach(m => {
+  const summary = { applied: 0, skipped: 0, missing: [], pastels: {} };
+  MONTHS.forEach((m, idx) => {
     const s = ss.getSheetByName(m);
     if (!_isSheet(s)) { summary.missing.push(m); return; }
     const r = _applyMonthlyAesthetics(s);
-    summary.applied += r.applied;
-    summary.skipped += r.skipped;
+    summary.applied   += r.applied;
+    summary.skipped   += r.skipped;
+    summary.pastels[m] = MONTH_PASTELS[idx] || null;   // cycle log: month → tint
   });
   Logger.log('[aesthetics] summary: ' + JSON.stringify(summary));
   return summary;
@@ -741,6 +863,14 @@ function buildDashboardEngine(ss) {
   s.getRange('I6').setFormula(`=IFERROR('${SHEET_NAMES.goals}'!B3 * 11, 0)`);                     // Liabilities (prior)
   s.getRange('H7').setFormula('=IFERROR((H2-H3)/H2, 0)');                                         // Savings rate (current)
   s.getRange('I7').setFormula('=IFERROR((I2-I3)/I2, 0)');                                         // Savings rate (prior)
+
+  // P1:P7 — Last-year snapshot for the dashboard's vs-last-year sub-label.
+  // Empty by default — the user populates these manually on workbook
+  // rollover (or via PropertiesService at end-of-Dec). Empty cells trigger
+  // the neutral "— مقابل العام الماضي" branch in `buildVsLastYearFormula`.
+  // Layout mirrors the H column 1:1 so the operator can copy-paste.
+  s.getRange('P1').setValue('السنة الماضية')
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
 
   // I:J - Income source doughnut (per docs/07 section 4.3)
   s.getRange('I1:J1').setValues([['فئة الدخل', 'الإجمالي']])
@@ -927,6 +1057,191 @@ function buildAnnualColumnChart(ss) {
 }
 
 // ============================================================================
+// VISUAL INSIGHTS — Comparison + Category Donut (programmatic, idempotent)
+// ----------------------------------------------------------------------------
+// Replaces the two manual "Chart 3" and "Chart 4" doughnut stubs at
+// B29:G44 and H29:M44 with a pair of side-by-side analytical charts that
+// consume `getAnnualData()` and the engine's category aggregates:
+//
+//   * _createComparisonChart  — vertical Column chart at B29 — comparing
+//     Total Income to the Top 3 expense categories (income in emerald,
+//     expense bars in soft coral; deliberately NO bright red).
+//   * _createCategoryDonut    — Donut (Pie with hole) at H29 — full
+//     percentage breakdown of all 12 expense categories. Slice colours
+//     are pulled from MONTH_PASTELS so the dashboard inherits the same
+//     premium palette already cycling on the monthly sheets.
+//
+// Both reuse the robustness primitives `_safeRun` and `_removeChartByTitle`
+// from the DASHBOARD CHARTS module. Re-running install or repair drops any
+// prior chart with the same title and re-inserts at the same anchor →
+// fully idempotent.
+//
+// Live-update behaviour: the Comparison chart's category SET is captured
+// at install time (the top-3 categories on that day). Their VALUES are
+// refreshed live via VLOOKUP into the engine sheet, so day-to-day data
+// edits keep the chart current without needing a re-install. Re-running
+// install picks a new top-3 if the spending mix has shifted significantly.
+// The Donut chart binds straight to engine `L1:M13` so it auto-refreshes
+// on every category change.
+// ============================================================================
+
+const T_CORAL          = '#FB7185';   // soft coral — Tailwind rose-400, no bright red
+const T_AXIS           = '#9CA3AF';   // axis labels / muted chart text — Tailwind gray-400
+const T_PANEL_DARK     = '#111827';   // chart panel bg — Tailwind gray-900
+
+const CHART_TITLE_COMPARISON = 'الدخل مقابل أعلى 3 فئات إنفاق';
+const CHART_TITLE_DONUT      = 'توزيع المصاريف حسب الفئة';
+
+/**
+ * Write the data stash for the Comparison chart.
+ *
+ * Layout: AA1:AE2 (5 cols × 2 rows), well outside the visible dashboard
+ * grid (which uses cols A-Y), so the user never accidentally sees or
+ * edits the stash.
+ *
+ *   Row 1 (headers / series names): ['', 'الدخل', cat1, cat2, cat3]
+ *   Row 2 (single x-axis category): ['السنة الحالية', incomeSum, v1, v2, v3]
+ *
+ * The chart binds to AA1:AE2 with setNumHeaders(1), giving 4 series with
+ * one data point each — that lets us colour each bar independently via
+ * the `series` option (single-series charts cannot do per-bar colours).
+ */
+function _writeComparisonStash(s, top3Names) {
+  if (!_isSheet(s)) return false;
+  const safe = function (i) { return (top3Names && top3Names[i]) ? top3Names[i] : '—'; };
+
+  s.getRange('AA1:AE1')
+    .setValues([['', 'الدخل', safe(0), safe(1), safe(2)]])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+
+  s.getRange('AA2').setValue('السنة الحالية');
+  s.getRange('AB2').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H2, 0)`);   // Total income (engine H2)
+
+  const cells = ['AC2', 'AD2', 'AE2'];
+  for (let i = 0; i < 3; i++) {
+    const cat = safe(i);
+    if (cat === '—') {
+      s.getRange(cells[i]).setValue(0);
+    } else {
+      // Look up the category's current annual sum in engine's L:M expense
+      // doughnut block (already populated by buildDashboardEngine).
+      s.getRange(cells[i]).setFormula(
+        `=IFERROR(VLOOKUP("${cat}", ${SHEET_NAMES.engine}!L2:M13, 2, FALSE), 0)`);
+    }
+  }
+  return true;
+}
+
+/**
+ * Insert the Income-vs-Top-3-Expenses Column chart at B29.
+ * Anchored over the legacy "Chart 3" stub (which was a manual doughnut).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ */
+function _createComparisonChart(ss) {
+  const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (!_isSheet(dash)) {
+    Logger.log('[charts] _createComparisonChart: dashboard sheet missing — skipped.');
+    return;
+  }
+
+  // Determine the current top-3 expense categories from the JS engine.
+  // Falls back to '—' placeholders if the engine is unreachable.
+  let top3 = ['—', '—', '—'];
+  _safeRun('getAnnualData:comparison', () => {
+    if (typeof getAnnualData !== 'function') return;
+    const data = getAnnualData();
+    const sorted = Object.keys(data.categoryTotals)
+      .map(function (k) { return [k, data.categoryTotals[k]]; })
+      .sort(function (a, b) { return b[1] - a[1]; });
+    top3 = [
+      (sorted[0] && sorted[0][0]) || '—',
+      (sorted[1] && sorted[1][0]) || '—',
+      (sorted[2] && sorted[2][0]) || '—',
+    ];
+  });
+
+  _safeRun('removeStaleComparison', () => _removeChartByTitle(dash, CHART_TITLE_COMPARISON));
+  _safeRun('writeComparisonStash', () => _writeComparisonStash(dash, top3));
+
+  _safeRun('insertComparisonChart', () => {
+    const chart = dash.newChart()
+      .asColumnChart()                                          // ← vertical Column
+      .addRange(dash.getRange('AA1:AE2'))
+      .setNumHeaders(1)
+      .setOption('title',           CHART_TITLE_COMPARISON)
+      .setOption('titleTextStyle',  { color: T.fgPrimary, bold: true, fontSize: 13 })
+      .setOption('backgroundColor', T_PANEL_DARK)
+      .setOption('legend',          { position: 'bottom', textStyle: { color: T_AXIS } })
+      .setOption('hAxis',           { textStyle: { color: T_AXIS } })
+      .setOption('vAxis',           { textStyle: { color: T_AXIS }, gridlines: { color: T.gridline } })
+      .setOption('series', {
+        0: { color: T.accentIncome },     // الدخل  — soft emerald
+        1: { color: T_CORAL         },     // top cat 1 — soft coral
+        2: { color: T_CORAL         },     // top cat 2
+        3: { color: T_CORAL         },     // top cat 3
+      })
+      .setPosition(29, 2, 0, 0)                                 // anchor at B29
+      .build();
+    dash.insertChart(chart);
+  });
+
+  _safeRun('flushComparison', () => SpreadsheetApp.flush());
+}
+
+/**
+ * Insert the expense-category Donut chart at H29.
+ * Binds straight to engine L1:M13 so the chart auto-refreshes whenever
+ * any monthly expense changes (no per-edit re-install needed).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ */
+function _createCategoryDonut(ss) {
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!_isSheet(dash) || !_isSheet(engine)) {
+    Logger.log('[charts] _createCategoryDonut: dashboard or engine missing — skipped.');
+    return;
+  }
+
+  _safeRun('removeStaleDonut', () => _removeChartByTitle(dash, CHART_TITLE_DONUT));
+
+  _safeRun('insertCategoryDonut', () => {
+    const chart = dash.newChart()
+      .asPieChart()
+      .addRange(engine.getRange('L1:M13'))                       // categories + sums
+      .setNumHeaders(1)
+      .setOption('title',             CHART_TITLE_DONUT)
+      .setOption('titleTextStyle',    { color: T.fgPrimary, bold: true, fontSize: 13 })
+      .setOption('backgroundColor',   T_PANEL_DARK)
+      .setOption('legend',            { position: 'right',
+                                        alignment: 'center',
+                                        textStyle: { color: T_AXIS } })
+      .setOption('pieHole',           0.5)                        // ← donut hole
+      .setOption('pieSliceText',      'percentage')
+      .setOption('pieSliceTextStyle', { color: T.white, fontSize: 11 })
+      .setOption('colors',            MONTH_PASTELS)              // 12 pastels for 12 cats
+      .setPosition(29, 8, 0, 0)                                   // anchor at H29
+      .build();
+    dash.insertChart(chart);
+  });
+
+  _safeRun('flushDonut', () => SpreadsheetApp.flush());
+}
+
+/**
+ * Orchestrator: insert both Visual Insights charts. Called once during
+ * install (after buildDashboardEngine) and once during repairDashboard2026.
+ * Fully idempotent — safe to call repeatedly.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ */
+function buildVisualInsights(ss) {
+  _createComparisonChart(ss);
+  _createCategoryDonut(ss);
+}
+
+// ============================================================================
 // MONTHLY CHARTS — per-sheet column + pie analytics
 // ----------------------------------------------------------------------------
 // Two analytical charts on every monthly sheet:
@@ -1069,78 +1384,11 @@ function buildDashboard(ss) {
   // entire class of "the engine and the card disagree" bugs, and keeps every
   // formula short enough to fit in one log line during debugging.
   //
-  // Card 1: إجمالي الدخل (B4:E8)
-  paintCard(s, 'B4:E8');
-  mergeAndStyle(s, 'B4:E4', 'إجمالي الدخل', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
-  mergeAndStyle(s, 'B5:E6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('B5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H2, 0)`);
-  mergeAndStyle(s, 'B7:E7', '', { bg: T.bgCard, size: 12, align: 'right' });
-  s.getRange('B7').setFormula(buildTrendFormula('H2', 'I2'));
-  mergeAndStyle(s, 'B8:E8', 'إجمالي الدخل الفعلي السنوي عبر 12 شهراً.',
-    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
-
-  // Card 2: إجمالي المصروفات (F4:I8)
-  paintCard(s, 'F4:I8');
-  mergeAndStyle(s, 'F4:I4', 'إجمالي المصروفات', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
-  mergeAndStyle(s, 'F5:I6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('F5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H3, 0)`);
-  mergeAndStyle(s, 'F7:I7', '', { bg: T.bgCard, size: 12, align: 'right' });
-  s.getRange('F7').setFormula(buildTrendFormula('H3', 'I3'));
-  mergeAndStyle(s, 'F8:I8', 'إجمالي المصروف الفعلي السنوي عبر 12 شهراً.',
-    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
-
-  // Card 3: صافي الربح (J4:M8)
-  paintCard(s, 'J4:M8');
-  mergeAndStyle(s, 'J4:M4', 'صافي الربح', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
-  mergeAndStyle(s, 'J5:M6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('J5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H4, 0)`);
-  mergeAndStyle(s, 'J7:M7', '', { bg: T.bgCard, size: 12, align: 'right' });
-  s.getRange('J7').setFormula(buildTrendFormula('H4', 'I4'));
-  mergeAndStyle(s, 'J8:M8', 'الفرق بين إجمالي الدخل وإجمالي المصروفات.',
-    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
-
-  // Card 4: إجمالي الأصول (N4:Q8)
-  paintCard(s, 'N4:Q8');
-  mergeAndStyle(s, 'N4:Q4', 'إجمالي الأصول', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
-  mergeAndStyle(s, 'N5:Q6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('N5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H5, 0)`);
-  mergeAndStyle(s, 'N7:Q7', '', { bg: T.bgCard, size: 12, align: 'right' });
-  s.getRange('N7').setFormula(buildTrendFormula('H5', 'I5'));
-  mergeAndStyle(s, 'N8:Q8', 'المبالغ المدّخرة في الأهداف + الفائض المتراكم.',
-    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
-
-  // Card 5: إجمالي الالتزامات (R4:U8)
-  paintCard(s, 'R4:U8');
-  mergeAndStyle(s, 'R4:U4', 'إجمالي الالتزامات', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
-  mergeAndStyle(s, 'R5:U6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('R5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H6, 0)`);
-  mergeAndStyle(s, 'R7:U7', '', { bg: T.bgCard, size: 12, align: 'right' });
-  s.getRange('R7').setFormula(buildTrendFormula('H6', 'I6'));
-  mergeAndStyle(s, 'R8:U8', 'الأقساط الشهريّة المطلوبة × 12 (تقدير سنوي).',
-    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
-
-  // Card 6: معدل الادخار % (V4:Y8)
-  paintCard(s, 'V4:Y8');
-  mergeAndStyle(s, 'V4:Y4', 'معدل الادخار %', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
-  mergeAndStyle(s, 'V5:Y6', '', { bg: T.bgCard, fg: T.fgPrimary, size: 24, bold: true, align: 'right' });
-  s.getRange('V5').setFormula(`=IFERROR(${SHEET_NAMES.engine}!H7, 0)`).setNumberFormat('0.0%');
-  mergeAndStyle(s, 'V7:Y7', '', { bg: T.bgCard, size: 12, align: 'right' });
-  s.getRange('V7').setFormula(buildTrendFormula('H7', 'I7'));
-  mergeAndStyle(s, 'V8:Y8', '(الدخل - المصروفات) / الدخل.',
-    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
-
-  // Conditional formatting on trend cells (▲ green / ▼ red)
+  // The card layout has been extracted into `_buildKpiCards` so the same
+  // 6-card strip can be re-rendered (e.g. by a "refresh dashboard" entry
+  // point) without re-running the entire `buildDashboard` pipeline.
   const rules = s.getConditionalFormatRules();
-  ['B7', 'F7', 'J7', 'N7', 'R7', 'V7'].forEach(cell => {
-    const rng = s.getRange(cell);
-    rules.push(
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied(`=LEFT($${cell},1)="▲"`)
-        .setBackground(T.accentIncome).setFontColor(T.white).setRanges([rng]).build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied(`=LEFT($${cell},1)="▼"`)
-        .setBackground(T.accentTrendDown).setFontColor(T.white).setRanges([rng]).build());
-  });
+  _buildKpiCards(s, rules);
 
   // ---- Module 3: Health gauge display (text under where the chart goes) ----
   paintCard(s, 'N29:S44');
@@ -1172,24 +1420,15 @@ function buildDashboard(ss) {
       .setHorizontalAlignment('center');
   }
 
-  // ---- Module 3: Latest 5 transactions ledger ----
-  paintCard(s, 'H47:N56');
-  const ledgerHdr = ['الشهر', 'التاريخ', 'النوع', 'الفئة', 'الوصف', 'المبلغ', 'طريقة الدفع'];
-  s.getRange('H47:N47').setValues([ledgerHdr])
-    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary)
-    .setHorizontalAlignment('center');
-  s.getRange('H48').setFormula(
-    `=IFERROR(QUERY(${SHEET_NAMES.engine}!Q2:W, "select * where Col2 is not null order by Col2 desc limit 5", 0), "")`);
-
-  // CF on the type column (J48:J52)
-  const jRange = s.getRange('J48:J52');
-  rules.push(
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$J48="دخل"')
-      .setBackground(T.accentIncome).setFontColor(T.white).setRanges([jRange]).build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$J48="مصروف"')
-      .setBackground(T.accentExpense).setFontColor(T.white).setRanges([jRange]).build());
+  // ---- Module 4: Annual Performance Matrix (replaces Latest Transactions) ----
+  // Three side-by-side panels in the bottom strip (rows 47-60):
+  //   * B47:I60 — كفاءة الادخار الشهرية   (savings sparkline)
+  //   * J47:Q60 — ملخّص الصحّة المالية    (avg income / avg expense / surplus)
+  //   * R47:Y60 — النظرة المستقبلية       (months-of-runway projection)
+  // Layout is rendered by a dedicated builder for separation of concerns;
+  // CF rules for the verdict text are appended to the in-flight `rules`
+  // array and committed in one batch immediately afterwards.
+  buildAnnualPerformanceMatrix(s, rules);
   s.setConditionalFormatRules(rules);
 
   // Stub anchors for the four charts (visible card backgrounds the user can drop charts onto).
@@ -1204,15 +1443,283 @@ function buildDashboard(ss) {
   mergeAndStyle(s, 'N11:Y11', 'Chart 2: Waterfall - تدفّق النقد (أدرجه يدوياً من النطاق المُسمَّى rng_dash_waterfall)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'B29:G44');
-  mergeAndStyle(s, 'B29:G29', 'Chart 3: دونات الدخل (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_income)',
+  mergeAndStyle(s, 'B29:G29',
+    'Chart 3: مقارنة الدخل بأعلى الفئات (يُدرَج آلياً عبر _createComparisonChart)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'H29:M44');
-  mergeAndStyle(s, 'H29:M29', 'Chart 4: دونات المصاريف (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_expense)',
+  mergeAndStyle(s, 'H29:M29',
+    'Chart 4: توزيع المصاريف (يُدرَج آلياً عبر _createCategoryDonut)',
     { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
+}
+
+// ============================================================================
+// KPI CARDS — extracted module that owns the 6-card top strip (B5:Y10).
+// ----------------------------------------------------------------------------
+// Each card mirrors one field of `getAnnualData()` from engine.gs, so the
+// JS-side aggregation and the on-sheet presentation stay in lockstep:
+//
+//   Card 1 — إجمالي الدخل           → engine!H2 ↔ getAnnualData().totalIncome
+//   Card 2 — إجمالي المصروفات        → engine!H3 ↔ getAnnualData().totalExpenses
+//   Card 3 — صافي الربح              → engine!H4 ↔ getAnnualData().netProfit
+//   Card 4 — إجمالي الأصول           → engine!H5 ↔ getAnnualData().totalAssets
+//   Card 5 — إجمالي الالتزامات       → engine!H6 ↔ getAnnualData().totalLiabilities
+//   Card 6 — معدل الادخار %          → engine!H7 ↔ getAnnualData().savingsRate
+//
+// Each card has SIX rows (5..10) + four merged columns:
+//   row 5  — title (small, muted, T.fgMuted 11pt)
+//   rows 6-7 — big number (large, bold, T.fgPrimary 26pt) bound to engine!H_n
+//   row 8  — short-term trend "▲ x%" / "▼ x%" / "—" (period-over-period
+//            within the current year, fed by engine!I_n)
+//   row 9  — vs-last-year sub-label (NEW). Reads engine!P_n which the user
+//            populates manually with last-year totals on workbook rollover.
+//            Empty cell → neutral indicator "— مقابل العام الماضي".
+//   row 10 — description caption (small grey, 9pt)
+//
+// The cards bind to engine cells via formulas (live updates) rather than
+// baked setValue() calls, so day-to-day data edits flow through to the
+// dashboard without any re-install. JS-side consumers (sidebar widgets,
+// exports, integration tests) should call `getAnnualData()` instead — both
+// pipelines reach the same underlying monthly cells, so the numbers are
+// guaranteed identical.
+//
+// VISUAL NOTE on rounded corners: Apps Script has no native rounded-corner
+// API for spreadsheet cells (cells are always rectangles). The closest
+// premium-card approximation is a thin solid border in T.gridline (#334155)
+// around each card's full range, which `_buildKpiCards` applies after paint.
+// ============================================================================
+
+const _KPI_CARD_SPECS = [
+  { range: 'B5:E10', col: 'B', endCol: 'E', title: 'إجمالي الدخل',         engineCell: 'H2', priCell: 'I2', lyCell: 'P2', desc: 'إجمالي الدخل الفعلي السنوي عبر 12 شهراً.',     percent: false },
+  { range: 'F5:I10', col: 'F', endCol: 'I', title: 'إجمالي المصروفات',     engineCell: 'H3', priCell: 'I3', lyCell: 'P3', desc: 'إجمالي المصروف الفعلي السنوي عبر 12 شهراً.',  percent: false },
+  { range: 'J5:M10', col: 'J', endCol: 'M', title: 'صافي الربح',           engineCell: 'H4', priCell: 'I4', lyCell: 'P4', desc: 'الفرق بين إجمالي الدخل وإجمالي المصروفات.',     percent: false },
+  { range: 'N5:Q10', col: 'N', endCol: 'Q', title: 'إجمالي الأصول',        engineCell: 'H5', priCell: 'I5', lyCell: 'P5', desc: 'المبالغ المدّخرة في الأهداف + الفائض المتراكم.', percent: false },
+  { range: 'R5:U10', col: 'R', endCol: 'U', title: 'إجمالي الالتزامات',    engineCell: 'H6', priCell: 'I6', lyCell: 'P6', desc: 'الأقساط الشهريّة المطلوبة × 12 (تقدير سنوي).',  percent: false },
+  { range: 'V5:Y10', col: 'V', endCol: 'Y', title: 'معدل الادخار %',       engineCell: 'H7', priCell: 'I7', lyCell: 'P7', desc: '(الدخل - المصروفات) / الدخل.',                  percent: true  },
+];
+
+/**
+ * Build the cell formula for the "vs last year" sub-label.
+ * Reads engine!P_n (manually populated last-year snapshot, blank by default).
+ * Empty / zero cells return the neutral indicator "— مقابل العام الماضي" so
+ * first-time users never see a misleading 100% drop or div-by-zero spike.
+ *
+ * @param {string} curCell — current-period engine cell (e.g. 'H2')
+ * @param {string} lyCell  — last-year snapshot engine cell (e.g. 'P2')
+ * @return {string} the cell formula
+ */
+function buildVsLastYearFormula(curCell, lyCell) {
+  const cur = `IFERROR(${SHEET_NAMES.engine}!${curCell}+0, 0)`;
+  const ly  = `IFERROR(${SHEET_NAMES.engine}!${lyCell}+0, 0)`;
+  return (
+    '=IFERROR(LET(' +
+    `cur, ${cur}, ` +
+    `ly, ${ly}, ` +
+    'IF(ly=0, "— مقابل العام الماضي", ' +
+      'IF(cur >= ly, "▲ ", "▼ ") & TEXT((cur-ly)/ly, "0.0%") & " مقابل العام الماضي")), ' +
+    '"— مقابل العام الماضي")'
+  );
+}
+
+/**
+ * Render the 6-card KPI strip across the top of the dashboard (B5:Y10).
+ *
+ * Idempotency contract: the function is safe to re-run over any prior
+ * layout. Before painting, it un-merges and clears the FULL super-region
+ * `B4:Y10` (covers both the legacy B4:Y8 layout and the current B5:Y10
+ * layout) so re-installs over old workbooks never leave orphaned merges,
+ * stale labels on row 4, or dangling formulas.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} s     dashboard sheet
+ * @param {Array}                              rules CF-rule accumulator (mutated)
+ */
+function _buildKpiCards(s, rules) {
+  // ---- Idempotent guard ----
+  // breakApart() is a no-op on un-merged cells per Apps Script docs, so the
+  // call is safe whether we're installing fresh or re-installing over an
+  // older B4:Y8 layout.
+  const guardRange = s.getRange('B4:Y10');
+  guardRange.breakApart();
+  guardRange.clearContent();
+
+  _KPI_CARD_SPECS.forEach(function (c) {
+    paintCard(s, c.range);
+
+    // Soft "rounded card" simulation: thin solid border in T.gridline
+    // around the full card range (Apps Script has no native rounded
+    // corners on cells, this is the closest visual approximation).
+    s.getRange(c.range).setBorder(
+      true, true, true, true, false, false,
+      T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+
+    // Row 5 — title (small, muted, RTL leading-edge aligned)
+    mergeAndStyle(s, c.col + '5:' + c.endCol + '5', c.title,
+      { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right' });
+
+    // Rows 6-7 — big number (large, bold). Live formula bound to engine!H_n.
+    mergeAndStyle(s, c.col + '6:' + c.endCol + '7', '',
+      { bg: T.bgCard, fg: T.fgPrimary, size: 26, bold: true, align: 'right' });
+    const valueCell = s.getRange(c.col + '6')
+      .setFormula('=IFERROR(' + SHEET_NAMES.engine + '!' + c.engineCell + ', 0)');
+    if (c.percent) valueCell.setNumberFormat('0.0%');
+
+    // Row 8 — short-term trend (period-over-period within current data)
+    mergeAndStyle(s, c.col + '8:' + c.endCol + '8', '',
+      { bg: T.bgCard, size: 12, align: 'right' });
+    s.getRange(c.col + '8').setFormula(buildTrendFormula(c.engineCell, c.priCell));
+
+    // Row 9 — vs-last-year sub-label (NEW). Falls back to neutral indicator
+    // when engine!P_n is empty (the default state — user opts in by
+    // populating last-year totals on workbook rollover).
+    mergeAndStyle(s, c.col + '9:' + c.endCol + '9', '',
+      { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'right' });
+    s.getRange(c.col + '9').setFormula(buildVsLastYearFormula(c.engineCell, c.lyCell));
+
+    // Row 10 — description (small caption)
+    mergeAndStyle(s, c.col + '10:' + c.endCol + '10', c.desc,
+      { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
+
+    // CF on the trend cell — green for ▲, red for ▼ (existing visual contract)
+    const trendCell  = c.col + '8';
+    const trendRange = s.getRange(trendCell);
+    rules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LEFT($' + trendCell + ',1)="▲"')
+        .setBackground(T.accentIncome).setFontColor(T.white).setRanges([trendRange]).build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LEFT($' + trendCell + ',1)="▼"')
+        .setBackground(T.accentTrendDown).setFontColor(T.white).setRanges([trendRange]).build());
+  });
 }
 
 function paintCard(s, a1) {
   s.getRange(a1).setBackground(T.bgCard).setFontColor(T.fgPrimary);
+}
+
+// ============================================================================
+// ANNUAL PERFORMANCE MATRIX — three-panel summary that replaces the legacy
+// "Latest Transactions" ledger.
+// ----------------------------------------------------------------------------
+// PALETTE: a deliberately narrow Premium-Fintech subset with NO bright red:
+//   * NAVY    — T.bgPage   #0F172A   page / header band
+//   * CARD    — T.bgCard   #1F2937   panel surface
+//   * EMERALD — #34D399    soft emerald (Tailwind emerald-400) for positives
+//   * COOL    — T.fgMuted  #94A3B8   cool-gray for muted labels / negatives
+//   * GRID    — T.gridline #334155   thin module borders
+//
+// LAYOUT (bottom strip rows 47-60, three side-by-side cards):
+//   B47:I60 — Module 1 — كفاءة الادخار الشهرية (savings rate sparkline)
+//   J47:Q60 — Module 2 — ملخّص الصحّة المالية   (avg income / expense / surplus)
+//   R47:Y60 — Module 3 — النظرة المستقبلية      (months-of-runway projection)
+//
+// All numeric aggregates are computed inline against `_DashboardEngine!B/C/D`
+// (12 monthly rows already populated by `buildDashboardEngine`). No new
+// engine cells are required, which keeps the engine surface unchanged.
+// ============================================================================
+function buildAnnualPerformanceMatrix(s, rules) {
+  const NAVY    = T.bgPage;
+  const CARD    = T.bgCard;
+  const EMERALD = '#34D399';
+  const COOL    = T.fgMuted;
+  const GRID    = T.gridline;
+
+  // -- Module 1 — Savings Efficiency --------------------------------------
+  // Inline SPARKLINE column chart that reads engine D/B per month.
+  // `negcolor` paints any negative-savings month in cool-gray (instead of
+  // red) to satisfy the no-bright-red constraint while still being legible.
+  paintCard(s, 'B47:I60');
+  s.getRange('B47:I60').setBorder(true, true, true, true, false, false,
+                                  GRID, SpreadsheetApp.BorderStyle.SOLID);
+  mergeAndStyle(s, 'B47:I48', 'كفاءة الادخار الشهرية',
+    { bg: CARD, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
+  mergeAndStyle(s, 'B49:I49', 'نسبة الادخار لكل شهر عبر 12 شهراً',
+    { bg: CARD, fg: COOL, size: 10, align: 'center' });
+  mergeAndStyle(s, 'B50:I57', '', { bg: CARD });
+  s.getRange('B50').setFormula(
+    `=SPARKLINE(ARRAYFORMULA(IFERROR(${SHEET_NAMES.engine}!D2:D13 / ${SHEET_NAMES.engine}!B2:B13, 0)), ` +
+    `{"charttype","column"; "color1","${EMERALD}"; "negcolor","${COOL}"; "empty","zero"})`);
+  mergeAndStyle(s, 'B58:I60',
+    'الأعمدة الرماديّة تشير إلى أشهر سالبة الادخار (مصروف يفوق الدخل).',
+    { bg: CARD, fg: COOL, size: 9, align: 'center', wrap: true, vAlign: 'top' });
+
+  // -- Module 2 — Financial Health Summary --------------------------------
+  // Three-row table: avg income, avg expense, net surplus. Labels on the
+  // RTL-leading edge (right) in cool-gray; values centred in emerald.
+  paintCard(s, 'J47:Q60');
+  s.getRange('J47:Q60').setBorder(true, true, true, true, false, false,
+                                  GRID, SpreadsheetApp.BorderStyle.SOLID);
+  mergeAndStyle(s, 'J47:Q48', 'ملخّص الصحّة المالية',
+    { bg: CARD, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
+
+  // Header band
+  mergeAndStyle(s, 'J50:M51', 'البيان',
+    { bg: NAVY, fg: COOL, size: 11, bold: true, align: 'right',  vAlign: 'middle' });
+  mergeAndStyle(s, 'N50:Q51', 'القيمة',
+    { bg: NAVY, fg: COOL, size: 11, bold: true, align: 'center', vAlign: 'middle' });
+
+  // Row 1 — متوسط الدخل الشهري
+  mergeAndStyle(s, 'J52:M53', 'متوسط الدخل الشهري',
+    { bg: CARD, fg: T.fgPrimary, size: 11, align: 'right',  vAlign: 'middle' });
+  mergeAndStyle(s, 'N52:Q53', '',
+    { bg: CARD, fg: EMERALD,     size: 13, bold: true, align: 'center', vAlign: 'middle' });
+  s.getRange('N52').setFormula(`=IFERROR(AVERAGE(${SHEET_NAMES.engine}!B2:B13), 0)`);
+
+  // Row 2 — متوسط المصروف الشهري
+  mergeAndStyle(s, 'J54:M55', 'متوسط المصروف الشهري',
+    { bg: CARD, fg: T.fgPrimary, size: 11, align: 'right',  vAlign: 'middle' });
+  mergeAndStyle(s, 'N54:Q55', '',
+    { bg: CARD, fg: T.fgPrimary, size: 13, bold: true, align: 'center', vAlign: 'middle' });
+  s.getRange('N54').setFormula(`=IFERROR(AVERAGE(${SHEET_NAMES.engine}!C2:C13), 0)`);
+
+  // Row 3 — الفائض الصافي
+  mergeAndStyle(s, 'J56:M57', 'الفائض الصافي',
+    { bg: CARD, fg: T.fgPrimary, size: 11, align: 'right',  vAlign: 'middle' });
+  mergeAndStyle(s, 'N56:Q57', '',
+    { bg: CARD, fg: EMERALD,     size: 13, bold: true, align: 'center', vAlign: 'middle' });
+  s.getRange('N56').setFormula('=IFERROR(N52-N54, 0)');
+
+  mergeAndStyle(s, 'J58:Q60',
+    'متوسطات حسابية على الـ 12 شهراً النشطة.',
+    { bg: CARD, fg: COOL, size: 9, align: 'center', wrap: true, vAlign: 'top' });
+
+  // -- Module 3 — Financial Outlook ---------------------------------------
+  // Big number = months of runway (TotalSavings / AvgExpense). Verdict text
+  // is emerald for "high stability", cool-gray for "needs optimization" —
+  // explicitly avoiding red, as required by the brief.
+  paintCard(s, 'R47:Y60');
+  s.getRange('R47:Y60').setBorder(true, true, true, true, false, false,
+                                  GRID, SpreadsheetApp.BorderStyle.SOLID);
+  mergeAndStyle(s, 'R47:Y48', 'النظرة المستقبلية',
+    { bg: CARD, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
+
+  // Months-of-runway big number
+  mergeAndStyle(s, 'R50:Y52', '',
+    { bg: CARD, fg: EMERALD, size: 28, bold: true, align: 'center', vAlign: 'middle' });
+  s.getRange('R50').setFormula(
+    `=IFERROR(ROUND(${SHEET_NAMES.engine}!O5 / IFERROR(AVERAGE(${SHEET_NAMES.engine}!C2:C13), 1), 1) ` +
+    `& " شهر", "—")`);
+
+  // Verdict text (CF-driven colour). The cell text itself carries the
+  // semantic state; CF then paints emerald or cool-gray accordingly.
+  mergeAndStyle(s, 'R53:Y55', '',
+    { bg: CARD, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
+  s.getRange('R53').setFormula(
+    `=IF(IFERROR(${SHEET_NAMES.engine}!O5 / IFERROR(AVERAGE(${SHEET_NAMES.engine}!C2:C13), 1), 0) > 6, ` +
+    `"استقرار مالي مرتفع", "بحاجة إلى تحسين")`);
+
+  const verdictRange = s.getRange('R53:Y55');
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$R$53="استقرار مالي مرتفع"')
+      .setFontColor(EMERALD).setBackground(CARD).setBold(true)
+      .setRanges([verdictRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$R$53="بحاجة إلى تحسين"')
+      .setFontColor(COOL).setBackground(CARD).setBold(true)
+      .setRanges([verdictRange]).build());
+
+  mergeAndStyle(s, 'R56:Y60',
+    'الاستقرار المرتفع: إجمالي الادخار يغطّي 6 أشهر من المصروفات أو أكثر.',
+    { bg: CARD, fg: COOL, size: 9, align: 'center', wrap: true, vAlign: 'top' });
 }
 
 function buildAnnualSum(income) {
@@ -1395,9 +1902,10 @@ function applyProtection(ss) {
 
   // Dashboard regions (KPI cards + chart anchors + ledger)
   const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
-  ['B4:E8', 'F4:I8', 'J4:M8', 'N4:Q8', 'R4:U8', 'V4:Y8',
+  ['B5:E10', 'F5:I10', 'J5:M10', 'N5:Q10', 'R5:U10', 'V5:Y10',
    'B11:M26', 'N11:Y26', 'B29:G44', 'H29:M44',
-   'N29:S44', 'T29:Y44', 'H47:N56'].forEach(r => {
+   'N29:S44', 'T29:Y44',
+   'B47:I60', 'J47:Q60', 'R47:Y60'].forEach(r => {
     dash.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
   });
 
