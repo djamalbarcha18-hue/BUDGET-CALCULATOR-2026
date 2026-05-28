@@ -666,11 +666,12 @@ function buildMonth(ss, monthName) {
 
   s.autoResizeColumns(1, 8);
 
-  // Final step: apply the modular aesthetic pass (hide gridlines, paint dark
-  // background, RTL, freeze KPI header). Pipeline lives in the
-  // "MONTHLY AESTHETICS" section above and is fully defensive — a missing or
-  // renamed Apps Script API will be logged and skipped, never crash.
+  // Final visual passes — both fail closed, neither aborts the install:
+  //   1) modular aesthetic pipeline (gridlines / dark page / RTL / freeze)
+  //   2) modular per-sheet analytics (Column + Pie). Stashes data in cols
+  //      Q-S and inserts charts at J5 and J20.
   _applyMonthlyAesthetics(s);
+  addMonthlyCharts(s);
 }
 
 // ============================================================================
@@ -919,6 +920,132 @@ function buildAnnualColumnChart(ss) {
 
     dash.insertChart(builder);
   });
+
+  // Commit the chart + any concurrent formula writes before the next phase
+  // touches the same sheet (named-range binding, protection, sheet hide).
+  _safeRun('flushAnnualChart', () => SpreadsheetApp.flush());
+}
+
+// ============================================================================
+// MONTHLY CHARTS — per-sheet column + pie analytics
+// ----------------------------------------------------------------------------
+// Two analytical charts on every monthly sheet:
+//   * Chart 1 (Column) at J5  — المصروفات vs الادخار side by side
+//   * Chart 2 (Pie)    at J20 — توزيع المصاريف حسب الفئة (SUMIF aggregated)
+//
+// Both share the robustness primitives `_safeRun` and `_removeChartByTitle`
+// from the DASHBOARD CHARTS module. Re-running install or `addMonthlyCharts`
+// removes any prior chart with the same title before re-inserting → fully
+// idempotent. Failures inside any single step log with a `[charts]` tag and
+// do NOT abort the install pipeline.
+//
+// Data stashes for the charts live in columns Q-S (well outside the visible
+// monthly layout, which uses A-H). Formulas update dynamically as the user
+// edits the monthly grid.
+// ============================================================================
+
+const CHART_TITLE_MONTH_BARS = 'المصروفات مقابل الادخار';
+const CHART_TITLE_MONTH_PIE  = 'توزيع المصاريف حسب الفئة';
+
+/**
+ * Write the two small data stashes the monthly charts read from. Idempotent:
+ * re-writing identical formulas over identical cells is a no-op.
+ *
+ *   Q1:S2          — column-chart data (Expenses + Savings as 2 series)
+ *   Q5:R(5+N)      — pie-chart data (N expense categories + SUMIF amounts)
+ */
+function _writeMonthlyChartStashes(s) {
+  if (!_isSheet(s)) return false;
+
+  // Column-chart stash: one category row, two value columns.
+  // Two SERIES so each bar can carry its own colour via `series` options.
+  s.getRange('Q1:S1').setValues([['', 'المصروفات', 'الادخار']])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+  s.getRange('Q2').setValue('الشهر الحالي');
+  s.getRange('R2').setFormula('=IFERROR(D4, 0)');         // total actual expenses (KPI cell)
+  s.getRange('S2').setFormula('=IFERROR(B5, 0)');         // net surplus = income - expense
+
+  // Pie-chart stash: one row per expense category, with SUMIF over the
+  // current monthly expense block (B33:E62).
+  s.getRange('Q5:R5').setValues([['الفئة', 'إجمالي المصروف']])
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
+  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
+    const row = 6 + i;
+    s.getRange('Q' + row).setValue(EXPENSE_CATEGORIES[i]);
+    s.getRange('R' + row).setFormula(`=IFERROR(SUMIF(B33:B62, Q${row}, E33:E62), 0)`);
+  }
+
+  return true;
+}
+
+/**
+ * Add the two analytical charts to a single monthly sheet.
+ *
+ *   Chart 1 — vertical Column chart at J5  (Expenses vs Savings)
+ *   Chart 2 — Pie chart at J20             (Expense Distribution by Category)
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet — a live monthly sheet.
+ */
+function addMonthlyCharts(sheet) {
+  if (!_isSheet(sheet)) {
+    Logger.log('[charts] addMonthlyCharts: target is not a Sheet — skipped.');
+    return;
+  }
+  const tag = (sheet.getName && sheet.getName()) || '?';
+
+  // 1) Stage data the charts read from. Errors log + skip; we still attempt
+  //    chart insertion so partial failures degrade gracefully.
+  _safeRun('stash:' + tag, () => _writeMonthlyChartStashes(sheet));
+
+  // 2) Idempotency: drop any prior copies of these exact charts.
+  _safeRun('removeStaleBars:' + tag, () => _removeChartByTitle(sheet, CHART_TITLE_MONTH_BARS));
+  _safeRun('removeStalePie:'  + tag, () => _removeChartByTitle(sheet, CHART_TITLE_MONTH_PIE));
+
+  // 3) Chart 1 — vertical Column: Expenses vs Savings (2 series → 2 bars).
+  _safeRun('insertBars:' + tag, () => {
+    const chart = sheet.newChart()
+      .asColumnChart()                                          // ← vertical Column chart
+      .addRange(sheet.getRange('Q1:S2'))
+      .setNumHeaders(1)
+      .setOption('title',           CHART_TITLE_MONTH_BARS)
+      .setOption('titleTextStyle',  { color: T.fgPrimary, bold: true, fontSize: 13 })
+      .setOption('backgroundColor', T.bgCard)
+      .setOption('legend',          { position: 'bottom', textStyle: { color: T.fgPrimary } })
+      .setOption('hAxis',           { textStyle: { color: T.fgPrimary } })
+      .setOption('vAxis',           { textStyle: { color: T.fgPrimary }, gridlines: { color: T.gridline } })
+      .setOption('series', {
+        0: { color: T.accentExpense },                          // المصروفات (red)
+        1: { color: T_SAVINGS_BAR   },                          // الادخار   (#87CEEB sky blue)
+      })
+      .setOption('width',  480)
+      .setOption('height', 280)
+      .setPosition(5, 10, 0, 0)                                 // anchor at J5
+      .build();
+    sheet.insertChart(chart);
+  });
+
+  // 4) Chart 2 — Pie: Expense Distribution by Category.
+  _safeRun('insertPie:' + tag, () => {
+    const lastRow = 5 + EXPENSE_CATEGORIES.length;              // header row 5 + N cats
+    const chart = sheet.newChart()
+      .asPieChart()
+      .addRange(sheet.getRange('Q5:R' + lastRow))
+      .setNumHeaders(1)
+      .setOption('title',             CHART_TITLE_MONTH_PIE)
+      .setOption('titleTextStyle',    { color: T.fgPrimary, bold: true, fontSize: 13 })
+      .setOption('backgroundColor',   T.bgCard)
+      .setOption('legend',            { position: 'right', textStyle: { color: T.fgPrimary } })
+      .setOption('pieSliceTextStyle', { color: T.white })
+      .setOption('width',  480)
+      .setOption('height', 320)
+      .setPosition(20, 10, 0, 0)                                // anchor at J20
+      .build();
+    sheet.insertChart(chart);
+  });
+
+  // 5) Flush so charts + their underlying formulas commit before any later
+  //    step (protection, named-range binding, sheet hide) touches the sheet.
+  _safeRun('flush:' + tag, () => SpreadsheetApp.flush());
 }
 
 // ============================================================================
