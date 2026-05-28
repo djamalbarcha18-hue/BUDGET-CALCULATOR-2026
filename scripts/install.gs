@@ -444,6 +444,124 @@ function buildGoals(ss) {
 }
 
 // ============================================================================
+// MONTHLY AESTHETICS — modular, defensive, expandable
+// ----------------------------------------------------------------------------
+// Mirrors the design language already established in install.gs:
+//   * reads colours from the central `T` palette
+//   * applies to every monthly sheet listed in `MONTHS`
+//   * fails closed (logs + skips) instead of aborting the installer
+//
+// HISTORY: the original ad-hoc aesthetic block called the non-existent
+// `Sheet.setHideGridlines(...)` and threw `TypeError` mid-install. The fix is
+// the correct API `setHiddenGridlines(true)`, plus a defensive duck-typed
+// guard so a wrong-typed argument can never re-introduce the same crash.
+// ============================================================================
+
+/**
+ * Duck-typed Sheet check. Apps Script does not export the Sheet constructor,
+ * so `instanceof` is unusable; we instead verify the methods we intend to
+ * call are present. This single check kills the
+ *   `TypeError: s.setXxx is not a function`
+ * family of crashes — including the original `setHideGridlines` typo.
+ */
+function _isSheet(s) {
+  return !!s
+      && typeof s.getRange           === 'function'
+      && typeof s.setHiddenGridlines === 'function'
+      && typeof s.getSheetId         === 'function';
+}
+
+/**
+ * Invoke a Sheet method by name with full diagnostics.
+ * Returns true on success, false on any kind of failure, and writes a
+ * structured line to the execution log so the failing step is identifiable
+ * without re-running the whole installer.
+ */
+function _safeApply(s, methodName, ...args) {
+  if (!_isSheet(s) || typeof s[methodName] !== 'function') {
+    Logger.log('[aesthetics] skipped ' + methodName +
+               ' — target is not a Sheet or method is unavailable in this runtime.');
+    return false;
+  }
+  try {
+    s[methodName].apply(s, args);
+    return true;
+  } catch (err) {
+    Logger.log('[aesthetics] ' + methodName + ' threw: ' + (err && err.message));
+    return false;
+  }
+}
+
+// ---- Atomic aesthetic steps ------------------------------------------------
+// Each helper does ONE thing on ONE sheet. New visual rules are added by
+// writing a new `_step*` function and appending it to the pipeline in
+// `_applyMonthlyAesthetics` below. Existing steps stay untouched.
+
+function _stepHideGridlines(s) {
+  // FIX: the correct Apps Script API is `setHiddenGridlines(hidden)`. The
+  // previous `setHideGridlines` does not exist on the Sheet class.
+  return _safeApply(s, 'setHiddenGridlines', true);
+}
+
+function _stepPaintBackground(s) {
+  if (!_isSheet(s)) return false;
+  s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns())
+    .setBackground(T.bgPage)
+    .setFontColor(T.fgPrimary);
+  return true;
+}
+
+function _stepEnableRtl(s)        { return _safeApply(s, 'setRightToLeft', true); }
+function _stepFreezeKpiHeader(s)  { return _safeApply(s, 'setFrozenRows', 6); }
+
+/**
+ * Apply the full aesthetic pass on a single monthly sheet.
+ * The orchestrator is intentionally a thin pipeline of single-purpose steps
+ * so future polish (banded ranges, custom row heights, header tinting, …) can
+ * be added by appending one entry to the array below — existing logic and
+ * its defensive guards stay untouched.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} s — a live monthly sheet.
+ * @return {{applied:number, skipped:number}} per-run summary for diagnostics.
+ */
+function _applyMonthlyAesthetics(s) {
+  if (!_isSheet(s)) {
+    Logger.log('[aesthetics] _applyMonthlyAesthetics called with a non-Sheet — abort.');
+    return { applied: 0, skipped: 0 };
+  }
+
+  // Pipeline of single-purpose steps. APPEND new aesthetics here.
+  const pipeline = [
+    _stepHideGridlines,
+    _stepPaintBackground,
+    _stepEnableRtl,
+    _stepFreezeKpiHeader,
+  ];
+
+  let applied = 0, skipped = 0;
+  pipeline.forEach(step => { step(s) ? applied++ : skipped++; });
+  return { applied, skipped };
+}
+
+/**
+ * Convenience: run the aesthetic pass across all 12 monthly sheets.
+ * Safe to call repeatedly — every step is idempotent.
+ */
+function applyAestheticsToAllMonths(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+  const summary = { applied: 0, skipped: 0, missing: [] };
+  MONTHS.forEach(m => {
+    const s = ss.getSheetByName(m);
+    if (!_isSheet(s)) { summary.missing.push(m); return; }
+    const r = _applyMonthlyAesthetics(s);
+    summary.applied += r.applied;
+    summary.skipped += r.skipped;
+  });
+  Logger.log('[aesthetics] summary: ' + JSON.stringify(summary));
+  return summary;
+}
+
+// ============================================================================
 // PHASE 2: A SINGLE MONTHLY SHEET
 // ============================================================================
 function buildMonth(ss, monthName) {
@@ -538,8 +656,13 @@ function buildMonth(ss, monthName) {
       .setBackground('#27AE60').setFontColor(T.white).setRanges([hRange]).build());
   s.setConditionalFormatRules(rules);
 
-  s.setFrozenRows(6);
   s.autoResizeColumns(1, 8);
+
+  // Final step: apply the modular aesthetic pass (hide gridlines, paint dark
+  // background, RTL, freeze KPI header). Pipeline lives in the
+  // "MONTHLY AESTHETICS" section above and is fully defensive — a missing or
+  // renamed Apps Script API will be logged and skipped, never crash.
+  _applyMonthlyAesthetics(s);
 }
 
 // ============================================================================
