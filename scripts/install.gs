@@ -526,14 +526,14 @@ function buildMonth(ss, monthName, monthIndex) {
     '=IF(OR(D3="", D4="", D3=0), "", IF(D4 > D3, "🔴 تجاوز الميزانية", IF(D4 >= 0.9 * D3, "🟡 اقتراب من الحد", "🟢 أداء مالي ممتاز")))');
 
   s.getRange('A3').setValue('إجمالي الدخل المتوقع');
-  s.getRange('B3').setFormula('=SUM(D10:D28)');
+  s.getRange('B3').setFormula('=SUM(E10:E28)');
   s.getRange('C3').setValue('إجمالي المصروف المتوقع');
   s.getRange('D3').setFormula('=SUM(D33:D62)');
   s.getRange('E3').setValue('نسبة الادخار');
   s.getRange('F3').setFormula('=IFERROR((B4-D4)/B4, 0)').setNumberFormat('0.0%');
 
   s.getRange('A4').setValue('إجمالي الدخل الفعلي');
-  s.getRange('B4').setFormula('=SUM(E10:E28)');
+  s.getRange('B4').setFormula('=SUM(F10:F28)');
   s.getRange('C4').setValue('إجمالي المصروف الفعلي');
   s.getRange('D4').setFormula('=SUM(E33:E62)');
   s.getRange('E4').setValue('نسبة الإنفاق');
@@ -548,21 +548,30 @@ function buildMonth(ss, monthName, monthIndex) {
   s.getRange('F5').setFormula(
     '=IFERROR(MAX(ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62))), 0)');
 
-  // Income block header row 9
-  const incomeHdr = ['التاريخ', 'الفئة', 'الوصف', 'الدخل المتوقع', 'الدخل الفعلي', 'الفرق', 'طريقة الدفع'];
-  s.getRange('A9:G9').setValues([incomeHdr])
+  // Income block header row 9.
+  // المداخيل (Revenue Source) is the new column A — a free-text label
+  // identifying the specific revenue stream for each row (e.g. "راتب شركة س",
+  // "عميل عمل حر ص"). It complements the existing الفئة dropdown which
+  // categorizes the row at a higher level. Adding this column shifted every
+  // existing income column one position to the right (A→B, B→C, … G→H).
+  const incomeHdr = ['المداخيل', 'التاريخ', 'الفئة', 'الوصف',
+    'الدخل المتوقع', 'الدخل الفعلي', 'الفرق', 'طريقة الدفع'];
+  s.getRange('A9:H9').setValues([incomeHdr])
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary)
     .setHorizontalAlignment('center');
 
-  // Income difference column F10:F28 (ARRAYFORMULA in F10)
-  s.getRange('F10').setFormula(
-    '=ARRAYFORMULA(IF((D10:D28="")+(E10:E28="")>0, "", E10:E28 - D10:D28))');
+  // Income difference column G10:G28 (ARRAYFORMULA in G10).
+  // Formula reads expected (E) and actual (F), writes the gap into G.
+  // Previously this lived in F (with refs to D/E) — the new المداخيل column
+  // shifted everything right by one.
+  s.getRange('G10').setFormula(
+    '=ARRAYFORMULA(IF((E10:E28="")+(F10:F28="")>0, "", F10:F28 - E10:E28))');
 
   // Income totals row 29
   s.getRange('A29').setValue('الإجمالي').setFontWeight('bold');
-  s.getRange('D29').setFormula('=SUM(D10:D28)');
-  s.getRange('E29').setFormula('=SUM(E10:E28)');
-  s.getRange('F29').setFormula('=E29-D29');
+  s.getRange('E29').setFormula('=SUM(E10:E28)');   // expected
+  s.getRange('F29').setFormula('=SUM(F10:F28)');   // actual
+  s.getRange('G29').setFormula('=F29-E29');        // diff
 
   // Expense block header row 32
   const expenseHdr = ['التاريخ', 'الفئة', 'الوصف', 'المصروف المتوقع', 'المصروف الفعلي', 'الفرق', 'طريقة الدفع', 'حالة التنبيه'];
@@ -605,22 +614,24 @@ function buildMonth(ss, monthName, monthIndex) {
   // sheet's native gridlines hidden (see getOrCreateSheet), these explicit
   // borders are what gives each cell its "designed table" outline. We also
   // band the data-row backgrounds with two near-white shades so the eye can
-  // track a row across 7-8 columns without the help of gridlines.
-  const incomeBlock  = s.getRange('A9:G29');
+  // track a row across all 8 columns without the help of gridlines.
+  // Income block is now A9:H29 (8 cols) thanks to the new المداخيل column.
+  const incomeBlock  = s.getRange('A9:H29');
   const expenseBlock = s.getRange('A32:H63');
   [incomeBlock, expenseBlock].forEach(blk => {
     blk.setBorder(true, true, true, true, true, true, TINT_BORDER,
       SpreadsheetApp.BorderStyle.SOLID);
   });
-  // Banded rows on income (10..28) and expense (33..62)
+  // Banded rows on income (10..28, 8 cols) and expense (33..62, 7 cols —
+  // the 8th col H carries the alert CF, which paints over any banded gray)
   for (let r = 10; r <= 28; r++) {
-    s.getRange(r, 1, 1, 7).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+    s.getRange(r, 1, 1, 8).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
   }
   for (let r = 33; r <= 62; r++) {
     s.getRange(r, 1, 1, 7).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
   }
   // Totals rows lift slightly with the active tint at low opacity
-  s.getRange('A29:G29').setBackground(tint).setFontWeight('bold').setFontColor(TINT_FG);
+  s.getRange('A29:H29').setBackground(tint).setFontWeight('bold').setFontColor(TINT_FG);
   s.getRange('A63:H63').setBackground(tint).setFontWeight('bold').setFontColor(TINT_FG);
 
   s.setFrozenRows(6);
@@ -640,7 +651,7 @@ function buildDashboardEngine(ss) {
     const m = MONTHS[i];
     const row = i + 2;
     s.getRange('A' + row).setValue(m);
-    s.getRange('B' + row).setFormula(`=SUM('${m}'!E10:E28)`);
+    s.getRange('B' + row).setFormula(`=SUM('${m}'!F10:F28)`);
     s.getRange('C' + row).setFormula(`=SUM('${m}'!E33:E62)`);
     s.getRange('D' + row).setFormula(`=B${row}-C${row}`);
   }
@@ -727,13 +738,24 @@ function buildDashboardEngine(ss) {
   let row = 2;
   for (let i = 0; i < MONTHS.length; i++) {
     const m = MONTHS[i];
-    s.getRange('Q' + row).setFormula(`=ARRAYFORMULA(IF('${m}'!A10:A28="", "", "${m}"))`);
-    s.getRange('R' + row).setFormula(`=ARRAYFORMULA('${m}'!A10:A28)`);
-    s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF('${m}'!A10:A28="", "", "دخل"))`);
-    s.getRange('T' + row).setFormula(`=ARRAYFORMULA('${m}'!B10:B28)`);
-    s.getRange('U' + row).setFormula(`=ARRAYFORMULA('${m}'!C10:C28)`);
-    s.getRange('V' + row).setFormula(`=ARRAYFORMULA('${m}'!E10:E28)`);
-    s.getRange('W' + row).setFormula(`=ARRAYFORMULA('${m}'!G10:G28)`);
+    // Sentinel for "row has data" is now the DATE column at B10:B28 (it was
+    // A10:A28 before المداخيل was added at A). Date is the most reliable
+    // sentinel — users may leave a revenue source blank but always enter a
+    // date when logging actual income.
+    s.getRange('Q' + row).setFormula(`=ARRAYFORMULA(IF('${m}'!B10:B28="", "", "${m}"))`);
+    s.getRange('R' + row).setFormula(`=ARRAYFORMULA('${m}'!B10:B28)`);                      // date
+    s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF('${m}'!B10:B28="", "", "دخل"))`);
+    s.getRange('T' + row).setFormula(`=ARRAYFORMULA('${m}'!C10:C28)`);                      // category
+    // Description column surfaces both المداخيل (revenue source, col A) and
+    // الوصف (description, col D) so the user sees the new revenue stream
+    // label in the dashboard ledger without losing the existing description.
+    // Format: "<revenue source> — <description>" when both are present;
+    //         "<description>" when revenue source is blank.
+    s.getRange('U' + row).setFormula(
+      `=ARRAYFORMULA(IF('${m}'!B10:B28="", "", ` +
+      `IF('${m}'!A10:A28="", '${m}'!D10:D28, '${m}'!A10:A28 & " — " & '${m}'!D10:D28)))`);
+    s.getRange('V' + row).setFormula(`=ARRAYFORMULA('${m}'!F10:F28)`);                      // actual income
+    s.getRange('W' + row).setFormula(`=ARRAYFORMULA('${m}'!H10:H28)`);                      // payment method
     row += 19;
   }
   for (let i = 0; i < MONTHS.length; i++) {
@@ -753,8 +775,10 @@ function buildCategorySumFormula(category, expense, negate, refCell) {
   // If refCell is provided, the formula references that cell for the category;
   // otherwise it inlines the category as a string literal.
   const catRef = refCell || `"${category}"`;
-  const cats = expense ? 'B33:B62' : 'B10:B28';
-  const amts = expense ? 'E33:E62' : 'E10:E28';
+  // Income side now lives at C (category) and F (amount) thanks to the new
+  // المداخيل column at A. Expense side is unchanged at B (category) / E (amount).
+  const cats = expense ? 'B33:B62' : 'C10:C28';
+  const amts = expense ? 'E33:E62' : 'F10:F28';
   const parts = MONTHS.map(m => `SUMIF('${m}'!${cats}, ${catRef}, '${m}'!${amts})`);
   let f = '=' + parts.join(' + ');
   if (negate) f = '=-1 * (' + parts.join(' + ') + ')';
@@ -1094,7 +1118,9 @@ function buildDashboardCharts(ss) {
 }
 
 function buildAnnualSum(income) {
-  const block = income ? 'E10:E28' : 'E33:E62';
+  // Income amounts now live at F10:F28 after the المداخيل column was added.
+  // Expense amounts remain at E33:E62.
+  const block = income ? 'F10:F28' : 'E33:E62';
   return '=SUM(' + MONTHS.map(m => `'${m}'!${block}`).join(', ') + ')';
 }
 
@@ -1158,7 +1184,7 @@ function buildWelcome(ss) {
   // Quick start cards (3 columns of 5 each)
   const cards = [
     { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
+    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:H28 (مع عمود المداخيل الجديد) وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
     { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
   ];
 
@@ -1251,9 +1277,11 @@ function applyMonthlyValidations(ss) {
 
   for (const m of MONTHS) {
     const s = ss.getSheetByName(m);
-    s.getRange('B10:B28').setDataValidation(incomeCatDv);
+    // Income block: category dropdown shifted from B to C, payment method
+    // shifted from G to H (المداخيل column took A on the income side).
+    s.getRange('C10:C28').setDataValidation(incomeCatDv);
     s.getRange('B33:B62').setDataValidation(expenseCatDv);
-    s.getRange('G10:G28').setDataValidation(payDv);
+    s.getRange('H10:H28').setDataValidation(payDv);
     s.getRange('G33:G62').setDataValidation(payDv);
   }
 }
@@ -1298,10 +1326,12 @@ function applyProtection(ss) {
     goals.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
   });
 
-  // Monthly sheets - protect KPI panel + alert column + totals
+  // Monthly sheets - protect KPI panel + alert column + totals.
+  // Income difference column shifted F → G; income totals row expanded
+  // A29:G29 → A29:H29 to cover the new المداخيل column.
   for (const m of MONTHS) {
     const s = ss.getSheetByName(m);
-    ['A1:G6', 'F10:F28', 'H33:H62', 'A29:G29', 'A63:H63'].forEach(r => {
+    ['A1:H6', 'G10:G28', 'H33:H62', 'A29:H29', 'A63:H63'].forEach(r => {
       s.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
     });
   }
