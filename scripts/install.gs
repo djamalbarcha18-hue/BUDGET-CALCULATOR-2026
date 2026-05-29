@@ -266,6 +266,106 @@ function repairDashboard2026() {
 }
 
 // ============================================================================
+// DEMO DATA GENERATOR (Refinement v1.1)
+// ----------------------------------------------------------------------------
+// Seeds three sample income rows and three sample expense rows into every
+// monthly sheet so reviewers can visually verify:
+//   1. The new المداخيل column at F is populated and feeds the monthly KPI
+//      panel (B4) and the dashboard engine (column B + income doughnut).
+//   2. The black-on-white typography on the input grids is legible against
+//      the dark fintech theme on the surrounding dashboard.
+//   3. The shifted columns (G = الفرق, H = طريقة الدفع on the income block)
+//      validate, format, and protect correctly.
+//
+// Idempotency: the function only writes into rows 10..12 (income) and
+// rows 33..35 (expense). Re-running it overwrites those rows with the same
+// canonical demo set; user data outside those rows is never touched.
+//
+// Run from the Apps Script editor function dropdown: `_populateDemoData`.
+// ============================================================================
+function _populateDemoData() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  // Three canonical income rows. Layout per month:
+  //   A=date, B=category, C=description, D=expected, E=actual, F=المداخيل,
+  //   H=payment method.  G (الفرق) is left blank — it's spilled by the
+  //   ARRAYFORMULA at G10.
+  const incomeRows = [
+    ['راتب أساسي',  'الراتب الشهري الأساسي',           5000, 5000, 0,    'تحويل الكتروني'],
+    ['مكافآت وحوافز', 'مكافأة أداء ربعيّة',            500,  600,  150,  'تحويل الكتروني'],
+    ['عمل حر',     'مشروع جانبي + هدية المداخيل',       800,  900,  250,  'بطاقة بنكية'],
+  ];
+
+  // Three canonical expense rows. Layout per month:
+  //   A=date, B=category, C=description, D=expected, E=actual, G=payment.
+  //   F (الفرق) and H (حالة التنبيه) are spilled by their formulas.
+  const expenseRows = [
+    ['السكن',  'إيجار الشقة',                 1500, 1500, 'تحويل الكتروني'],
+    ['الطعام', 'مشتريات السوبر ماركت',        800,  920,  'بطاقة بنكية'],
+    ['النقل',  'وقود + اشتراك مواصلات',       400,  380,  'نقداً'],
+  ];
+
+  let monthsTouched = 0;
+  for (let mi = 0; mi < MONTHS.length; mi++) {
+    const m = MONTHS[mi];
+    const s = ss.getSheetByName(m);
+    if (!s) continue;
+
+    // Build per-month dates (1st, 5th, 15th of the month in 2026).
+    const incomeDates = [
+      new Date(2026, mi, 1),
+      new Date(2026, mi, 5),
+      new Date(2026, mi, 15),
+    ];
+    const expenseDates = [
+      new Date(2026, mi, 2),
+      new Date(2026, mi, 7),
+      new Date(2026, mi, 18),
+    ];
+
+    // ---- Income block: rows 10..12 ----
+    // Columns A..F (date + cat + desc + expected + actual + المداخيل).
+    const incomeAF = incomeRows.map((r, idx) => [
+      incomeDates[idx], r[0], r[1], r[2], r[3], r[4],
+    ]);
+    s.getRange(10, 1, incomeAF.length, 6).setValues(incomeAF);
+    // Column H (payment method) — written separately so we don't clobber the
+    // ARRAYFORMULA that lives at G10 and spills downward.
+    const incomePay = incomeRows.map(r => [r[5]]);
+    s.getRange(10, 8, incomePay.length, 1).setValues(incomePay);
+
+    // ---- Expense block: rows 33..35 ----
+    // Columns A..E (date + cat + desc + expected + actual). F (الفرق) is
+    // a spilled ARRAYFORMULA; H (حالة التنبيه) is a per-row formula.
+    const expenseAE = expenseRows.map((r, idx) => [
+      expenseDates[idx], r[0], r[1], r[2], r[3],
+    ]);
+    s.getRange(33, 1, expenseAE.length, 5).setValues(expenseAE);
+    // Column G (payment method).
+    const expensePay = expenseRows.map(r => [r[4]]);
+    s.getRange(33, 7, expensePay.length, 1).setValues(expensePay);
+
+    // Format the date column on both blocks so the seeded values render
+    // cleanly under any locale.
+    s.getRange(10, 1, incomeAF.length, 1).setNumberFormat('yyyy-mm-dd');
+    s.getRange(33, 1, expenseAE.length, 1).setNumberFormat('yyyy-mm-dd');
+
+    monthsTouched += 1;
+  }
+
+  SpreadsheetApp.flush();
+  ui.alert(
+    'تم تعبئة البيانات التجريبيّة',
+    'تمّ زرع 3 صفوف دخل (تشمل عمود المداخيل الجديد) و 3 صفوف مصاريف ' +
+    'في ' + monthsTouched + ' ورقة شهريّة. افتح أيّ ورقة شهريّة للتحقّق من ' +
+    'العمود الجديد F = المداخيل، ومن صيغة الفرق المُحدَّثة في العمود G، ' +
+    'ومن نصّ الجدول الأسود الصلب (#000000) على خلفيّة بيضاء. ' +
+    'افتح اللوحة الرئيسيّة للتحقّق من تحديث بطاقات KPI ومخطّط دونات الدخل.',
+    ui.ButtonSet.OK);
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 function getOrCreateSheet(ss, name) {
@@ -449,8 +549,8 @@ function buildGoals(ss) {
 function buildMonth(ss, monthName) {
   const s = getOrCreateSheet(ss, monthName);
 
-  // Title row
-  mergeAndStyle(s, 'A1:G1', `ميزانية شهر ${monthName} - نظام مالي ذكي متكامل`,
+  // Title row (A1:H1 - widened by one column to span the new المداخيل column)
+  mergeAndStyle(s, 'A1:H1', `ميزانية شهر ${monthName} - نظام مالي ذكي متكامل`,
     { bold: true, size: 14, align: 'center' });
 
   // KPI panel labels rows 2-5 (per docs/03 section 2.2)
@@ -470,7 +570,11 @@ function buildMonth(ss, monthName) {
   s.getRange('F3').setFormula('=IFERROR((B4-D4)/B4, 0)').setNumberFormat('0.0%');
 
   s.getRange('A4').setValue('إجمالي الدخل الفعلي');
-  s.getRange('B4').setFormula('=SUM(E10:E28)');
+  // REFINEMENT v1.1: total actual income now sums BOTH the canonical actual
+  // income column (E) and the new المداخيل column (F). Every downstream KPI —
+  // savings rate (F3), spending rate (F4), net (B5) — feeds off B4, so this
+  // single edit propagates the new column across the whole monthly KPI panel.
+  s.getRange('B4').setFormula('=SUM(E10:E28) + SUM(F10:F28)');
   s.getRange('C4').setValue('إجمالي المصروف الفعلي');
   s.getRange('D4').setFormula('=SUM(E33:E62)');
   s.getRange('E4').setValue('نسبة الإنفاق');
@@ -485,21 +589,37 @@ function buildMonth(ss, monthName) {
   s.getRange('F5').setFormula(
     '=IFERROR(MAX(ARRAYFORMULA(SUMIF(B33:B62, rng_ExpenseCategories, E33:E62))), 0)');
 
-  // Income block header row 9
-  const incomeHdr = ['التاريخ', 'الفئة', 'الوصف', 'الدخل المتوقع', 'الدخل الفعلي', 'الفرق', 'طريقة الدفع'];
-  s.getRange('A9:G9').setValues([incomeHdr])
+  // Income block header row 9 — REFINEMENT v1.1: 8 columns instead of 7.
+  // Layout: A=التاريخ, B=الفئة, C=الوصف, D=الدخل المتوقع, E=الدخل الفعلي,
+  //         F=المداخيل (NEW), G=الفرق (shifted), H=طريقة الدفع (shifted).
+  const incomeHdr = ['التاريخ', 'الفئة', 'الوصف', 'الدخل المتوقع', 'الدخل الفعلي', 'المداخيل', 'الفرق', 'طريقة الدفع'];
+  s.getRange('A9:H9').setValues([incomeHdr])
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary)
     .setHorizontalAlignment('center');
 
-  // Income difference column F10:F28 (ARRAYFORMULA in F10)
-  s.getRange('F10').setFormula(
-    '=ARRAYFORMULA(IF((D10:D28="")+(E10:E28="")>0, "", E10:E28 - D10:D28))');
+  // Income difference column G10:G28 (ARRAYFORMULA in G10).
+  // The diff is now (الدخل الفعلي + المداخيل) − الدخل المتوقع. We treat an
+  // empty F as 0 so a row that has only الدخل الفعلي behaves exactly like
+  // before, and a row that has only المداخيل (e.g. one-off receipts) still
+  // produces a sensible diff against the planned amount in D.
+  s.getRange('G10').setFormula(
+    '=ARRAYFORMULA(IF(D10:D28="", "", (IFERROR(N(E10:E28),0) + IFERROR(N(F10:F28),0)) - D10:D28))');
 
-  // Income totals row 29
+  // Income totals row 29 — now spans D..G (added F29 for المداخيل total,
+  // and G29 reflects the same combined-actual semantics as B4 above).
   s.getRange('A29').setValue('الإجمالي').setFontWeight('bold');
   s.getRange('D29').setFormula('=SUM(D10:D28)');
   s.getRange('E29').setFormula('=SUM(E10:E28)');
-  s.getRange('F29').setFormula('=E29-D29');
+  s.getRange('F29').setFormula('=SUM(F10:F28)');
+  s.getRange('G29').setFormula('=(E29+F29)-D29');
+
+  // ---- TYPOGRAPHY (Refinement v1.1) ----
+  // Apply solid-black font (#000000) on a clean white background to every
+  // input/total cell of the income block (A10:H29). The dark fintech theme
+  // continues to live on the dashboard + welcome sheets; the monthly entry
+  // grids are explicitly switched to high-contrast white-on-black so data
+  // entry stays comfortable to read on every monitor and locale.
+  s.getRange('A10:H29').setFontColor('#000000').setBackground('#FFFFFF');
 
   // Expense block header row 32
   const expenseHdr = ['التاريخ', 'الفئة', 'الوصف', 'المصروف المتوقع', 'المصروف الفعلي', 'الفرق', 'طريقة الدفع', 'حالة التنبيه'];
@@ -522,6 +642,12 @@ function buildMonth(ss, monthName) {
   s.getRange('D63').setFormula('=SUM(D33:D62)');
   s.getRange('E63').setFormula('=SUM(E33:E62)');
   s.getRange('F63').setFormula('=D63-E63');
+
+  // Apply the same solid-black-on-white treatment to the expense block
+  // (A33:H63). The alert column H is repainted by conditional formatting
+  // immediately below, so the static white background here only shows
+  // through on rows where the alert evaluates to "" (no data yet).
+  s.getRange('A33:H63').setFontColor('#000000').setBackground('#FFFFFF');
 
   // Conditional formatting on H33:H62 (alert states)
   const rules = s.getConditionalFormatRules();
@@ -555,7 +681,9 @@ function buildDashboardEngine(ss) {
     const m = MONTHS[i];
     const row = i + 2;
     s.getRange('A' + row).setValue(m);
-    s.getRange('B' + row).setFormula(`=SUM('${m}'!E10:E28)`);
+    // REFINEMENT v1.1: total actual income per month is now (الدخل الفعلي + المداخيل),
+    // matching the monthly KPI panel cell B4 on each ورقة شهرية.
+    s.getRange('B' + row).setFormula(`=SUM('${m}'!E10:E28) + SUM('${m}'!F10:F28)`);
     s.getRange('C' + row).setFormula(`=SUM('${m}'!E33:E62)`);
     s.getRange('D' + row).setFormula(`=B${row}-C${row}`);
   }
@@ -639,6 +767,12 @@ function buildDashboardEngine(ss) {
   // Income blocks: 12 months × 19 rows = rows 2..(2 + 12*19 -1) = 2..229
   // Expense blocks: rows 230..(230 + 12*30 -1) = 230..589
   // Approach: write per-month ARRAYFORMULAs so each row is dynamic.
+  //
+  // REFINEMENT v1.1: the income amount column V now reports the combined
+  // actual receipt for each row — الدخل الفعلي (E) + المداخيل (F) — so the
+  // dashboard ledger surfaces the *total* cash received per transaction line.
+  // Empty F is coerced to 0 via N(IFERROR(..,0)). The income payment method
+  // moved from G to H to make room for the new المداخيل column at F.
   let row = 2;
   for (let i = 0; i < MONTHS.length; i++) {
     const m = MONTHS[i];
@@ -647,8 +781,9 @@ function buildDashboardEngine(ss) {
     s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF('${m}'!A10:A28="", "", "دخل"))`);
     s.getRange('T' + row).setFormula(`=ARRAYFORMULA('${m}'!B10:B28)`);
     s.getRange('U' + row).setFormula(`=ARRAYFORMULA('${m}'!C10:C28)`);
-    s.getRange('V' + row).setFormula(`=ARRAYFORMULA('${m}'!E10:E28)`);
-    s.getRange('W' + row).setFormula(`=ARRAYFORMULA('${m}'!G10:G28)`);
+    s.getRange('V' + row).setFormula(
+      `=ARRAYFORMULA(IF('${m}'!A10:A28="", "", IFERROR(N('${m}'!E10:E28),0) + IFERROR(N('${m}'!F10:F28),0)))`);
+    s.getRange('W' + row).setFormula(`=ARRAYFORMULA('${m}'!H10:H28)`);
     row += 19;
   }
   for (let i = 0; i < MONTHS.length; i++) {
@@ -667,10 +802,20 @@ function buildDashboardEngine(ss) {
 function buildCategorySumFormula(category, expense, negate, refCell) {
   // If refCell is provided, the formula references that cell for the category;
   // otherwise it inlines the category as a string literal.
+  //
+  // REFINEMENT v1.1: for income (expense=false) we now SUMIF over BOTH the
+  // الدخل الفعلي column (E10:E28) AND the new المداخيل column (F10:F28),
+  // grouped by the same category column B10:B28. This keeps the income
+  // doughnut on the dashboard consistent with the monthly KPI panel cell B4
+  // and with the engine's monthly grid in column B.
   const catRef = refCell || `"${category}"`;
   const cats = expense ? 'B33:B62' : 'B10:B28';
-  const amts = expense ? 'E33:E62' : 'E10:E28';
-  const parts = MONTHS.map(m => `SUMIF('${m}'!${cats}, ${catRef}, '${m}'!${amts})`);
+  const parts = MONTHS.map(m => {
+    if (expense) {
+      return `SUMIF('${m}'!${cats}, ${catRef}, '${m}'!E33:E62)`;
+    }
+    return `(SUMIF('${m}'!${cats}, ${catRef}, '${m}'!E10:E28) + SUMIF('${m}'!${cats}, ${catRef}, '${m}'!F10:F28))`;
+  });
   let f = '=' + parts.join(' + ');
   if (negate) f = '=-1 * (' + parts.join(' + ') + ')';
   return f;
@@ -844,8 +989,13 @@ function paintCard(s, a1) {
 }
 
 function buildAnnualSum(income) {
-  const block = income ? 'E10:E28' : 'E33:E62';
-  return '=SUM(' + MONTHS.map(m => `'${m}'!${block}`).join(', ') + ')';
+  // REFINEMENT v1.1: income annual sum now combines الدخل الفعلي (E) with
+  // the new المداخيل column (F), so any future caller stays consistent with
+  // the monthly KPI cell B4 and the engine's column B.
+  if (income) {
+    return '=SUM(' + MONTHS.map(m => `'${m}'!E10:E28, '${m}'!F10:F28`).join(', ') + ')';
+  }
+  return '=SUM(' + MONTHS.map(m => `'${m}'!E33:E62`).join(', ') + ')';
 }
 
 function buildTrendFormula(curCell, priCell) {
@@ -1003,7 +1153,9 @@ function applyMonthlyValidations(ss) {
     const s = ss.getSheetByName(m);
     s.getRange('B10:B28').setDataValidation(incomeCatDv);
     s.getRange('B33:B62').setDataValidation(expenseCatDv);
-    s.getRange('G10:G28').setDataValidation(payDv);
+    // REFINEMENT v1.1: payment method on the income block has shifted from
+    // column G to column H to make room for the new المداخيل column at F.
+    s.getRange('H10:H28').setDataValidation(payDv);
     s.getRange('G33:G62').setDataValidation(payDv);
   }
 }
@@ -1048,10 +1200,12 @@ function applyProtection(ss) {
     goals.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
   });
 
-  // Monthly sheets - protect KPI panel + alert column + totals
+  // Monthly sheets - protect KPI panel + alert column + totals.
+  // REFINEMENT v1.1: KPI panel widened to A1:H6 (title now spans H), income
+  // diff moved from F10:F28 to G10:G28, income totals row widened to A29:H29.
   for (const m of MONTHS) {
     const s = ss.getSheetByName(m);
-    ['A1:G6', 'F10:F28', 'H33:H62', 'A29:G29', 'A63:H63'].forEach(r => {
+    ['A1:H6', 'G10:G28', 'H33:H62', 'A29:H29', 'A63:H63'].forEach(r => {
       s.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
     });
   }
