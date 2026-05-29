@@ -20,7 +20,7 @@
  * ------------------
  * - Phase 1: ورقة "الإعدادات وأسعار الصرف" with 14 currencies + categories +
  *   payment methods + 11 named ranges (`rng_*`) wired across the workbook.
- * - Phase 2: 12 monthly sheets (يناير → ديسمبر) with full RTL layout, alert
+ * - Phase 2: 12 monthly sheets (جانفي → ديسمبر) with full RTL layout, alert
  *   engine on column H, KPI panel formulas, validation, and conditional
  *   formatting.
  * - Phase 3: ورقة "الأهداف المالية والادخار" with 4 baseline goals, status
@@ -107,9 +107,14 @@ const EXPENSE_CATEGORIES = [
 
 const PAYMENT_METHODS = ['نقداً', 'بطاقة بنكية', 'تحويل الكتروني', 'أخرى'];
 
+// Maghrebi/Tunisian Arabic Gregorian month names. Used as canonical sheet
+// tab names AND as the literal sheet token interpolated into every
+// cross-sheet formula in the engine (e.g. `'جانفي'!F10:F28`). Renaming any
+// entry here therefore cascades through every formula in install.gs at the
+// next install — no other change needed for the rename.
 const MONTHS = [
-  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  'جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان',
+  'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
 ];
 
 // Soft monthly background tints. One soft pastel per month, deliberately low
@@ -121,18 +126,18 @@ const MONTHS = [
 // are unaffected — tints only paint the title strip and the KPI panel of
 // each monthly sheet.
 const MONTH_TINTS = [
-  '#E3F2FD', // يناير   - soft sky blue
-  '#E8EAF6', // فبراير  - soft indigo
-  '#E0F2F1', // مارس    - soft teal
-  '#E8F5E9', // أبريل   - soft mint
-  '#F1F8E9', // مايو    - soft lime
-  '#FFFDE7', // يونيو   - soft cream
-  '#FFF8E1', // يوليو   - soft amber
-  '#FFF3E0', // أغسطس   - soft peach
-  '#FBE9E7', // سبتمبر  - soft coral
-  '#FCE4EC', // أكتوبر  - soft rose
-  '#F3E5F5', // نوفمبر  - soft lavender
-  '#EDE7F6', // ديسمبر  - soft violet
+  '#E3F2FD', // جانفي    - soft sky blue
+  '#E8EAF6', // فيفري    - soft indigo
+  '#E0F2F1', // مارس     - soft teal
+  '#E8F5E9', // أفريل    - soft mint
+  '#F1F8E9', // ماي      - soft lime
+  '#FFFDE7', // جوان     - soft cream
+  '#FFF8E1', // جويلية   - soft amber
+  '#FFF3E0', // أوت      - soft peach
+  '#FBE9E7', // سبتمبر   - soft coral
+  '#FCE4EC', // أكتوبر   - soft rose
+  '#F3E5F5', // نوفمبر   - soft lavender
+  '#EDE7F6', // ديسمبر   - soft violet
 ];
 
 // High-contrast text on the tints. Locked to true black so every monthly
@@ -385,22 +390,26 @@ function buildSettings(ss) {
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
 
   // 14 currencies
-  s.getRange(7, 1, CURRENCIES.length, 4).setValues(CURRENCIES);
+  s.getRange(7, 1, CURRENCIES.length, 4).setValues(CURRENCIES)
+    .setFontColor(TINT_FG);
 
   // Income categories at F6:F14
   s.getRange('F6').setValue('فئات الدخل').setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
   s.getRange(7, 6, INCOME_CATEGORIES.length, 1)
-    .setValues(INCOME_CATEGORIES.map(v => [v]));
+    .setValues(INCOME_CATEGORIES.map(v => [v]))
+    .setFontColor(TINT_FG);
 
   // Expense categories at G6:G18
   s.getRange('G6').setValue('فئات المصاريف').setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
   s.getRange(7, 7, EXPENSE_CATEGORIES.length, 1)
-    .setValues(EXPENSE_CATEGORIES.map(v => [v]));
+    .setValues(EXPENSE_CATEGORIES.map(v => [v]))
+    .setFontColor(TINT_FG);
 
   // Payment methods at H6:H10
   s.getRange('H6').setValue('طرق الدفع').setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary);
   s.getRange(7, 8, PAYMENT_METHODS.length, 1)
-    .setValues(PAYMENT_METHODS.map(v => [v]));
+    .setValues(PAYMENT_METHODS.map(v => [v]))
+    .setFontColor(TINT_FG);
 
   // Validate B3 against rng_Currencies (we'll set the real validation after named ranges exist;
   // here we use a direct range reference because rng_Currencies isn't defined yet).
@@ -481,11 +490,15 @@ function buildGoals(ss) {
 
   // Clean table aesthetic: white inner borders + banded rows on the goals
   // table (rows 7..26 across A..I) so it reads identically to the monthly
-  // sheets even with the page-level gridlines hidden.
+  // sheets even with the page-level gridlines hidden. Font color is locked
+  // to pure black (#000000) on every data row to guarantee high contrast
+  // against the near-white banded backgrounds.
   s.getRange('A6:I26').setBorder(true, true, true, true, true, true,
     TINT_BORDER, SpreadsheetApp.BorderStyle.SOLID);
   for (let r = 7; r <= 26; r++) {
-    s.getRange(r, 1, 1, 9).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+    s.getRange(r, 1, 1, 9)
+      .setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF')
+      .setFontColor(TINT_FG);
   }
   // Summary panel rows 2..4 lift on a soft neutral tint with black text
   s.getRange('A2:F4').setBackground('#F5F5F5').setFontColor(TINT_FG)
@@ -560,6 +573,10 @@ function buildMonth(ss, monthName, monthIndex) {
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary)
     .setHorizontalAlignment('center');
 
+  // Global ISO date format (yyyy-mm-dd) on the income date column.
+  // Standardizes the user's date entry display regardless of workbook locale.
+  s.getRange('B10:B28').setNumberFormat('yyyy-mm-dd');
+
   // Income difference column G10:G28 (ARRAYFORMULA in G10).
   // Formula reads expected (E) and actual (F), writes the gap into G.
   // Previously this lived in F (with refs to D/E) — the new المداخيل column
@@ -578,6 +595,9 @@ function buildMonth(ss, monthName, monthIndex) {
   s.getRange('A32:H32').setValues([expenseHdr])
     .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary)
     .setHorizontalAlignment('center');
+
+  // Global ISO date format (yyyy-mm-dd) on the expense date column.
+  s.getRange('A33:A62').setNumberFormat('yyyy-mm-dd');
 
   // Expense difference column F33:F62 (ARRAYFORMULA in F33)
   s.getRange('F33').setFormula(
@@ -623,12 +643,19 @@ function buildMonth(ss, monthName, monthIndex) {
       SpreadsheetApp.BorderStyle.SOLID);
   });
   // Banded rows on income (10..28, 8 cols) and expense (33..62, 7 cols —
-  // the 8th col H carries the alert CF, which paints over any banded gray)
+  // the 8th col H carries the alert CF, which paints over any banded gray).
+  // Font color is locked to TINT_FG (#000000) on every data row so the
+  // user's typed values display as pure black regardless of any default
+  // theme drift in Sheets.
   for (let r = 10; r <= 28; r++) {
-    s.getRange(r, 1, 1, 8).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+    s.getRange(r, 1, 1, 8)
+      .setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF')
+      .setFontColor(TINT_FG);
   }
   for (let r = 33; r <= 62; r++) {
-    s.getRange(r, 1, 1, 7).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+    s.getRange(r, 1, 1, 7)
+      .setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF')
+      .setFontColor(TINT_FG);
   }
   // Totals rows lift slightly with the active tint at low opacity
   s.getRange('A29:H29').setBackground(tint).setFontWeight('bold').setFontColor(TINT_FG);
@@ -1162,6 +1189,12 @@ function buildTrendFormula(curCell, priCell) {
 function buildWelcome(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.welcome);
 
+  // SaaS aesthetic: Cairo is the canonical Arabic UI font in modern SaaS.
+  // Setting it on the entire used range as the FIRST step ensures every
+  // subsequent style mutation (hero header, tagline, card titles, signature,
+  // footer) inherits Cairo without us having to remember it on each call.
+  s.getRange(1, 1, 40, 16).setFontFamily('Cairo');
+
   // Page background and increase row heights
   s.getRange(1, 1, 40, 16).setBackground(T.bgPage).setFontColor(T.fgPrimary);
   for (let i = 1; i <= 40; i++) s.setRowHeight(i, 24);
@@ -1184,7 +1217,7 @@ function buildWelcome(ss) {
   // Quick start cards (3 columns of 5 each)
   const cards = [
     { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:H28 (مع عمود المداخيل الجديد) وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
+    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:H28 (مع عمود المداخيل الجديد) وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'جانفي', accent: T.accentIncome, link: '📅 افتح ورقة جانفي' },
     { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
   ];
 
@@ -1219,7 +1252,7 @@ function buildWelcome(ss) {
     { bg: T.bgCard, fg: T.fgMuted, size: 12, align: 'center', vAlign: 'middle' });
 
   // Footer
-  mergeAndStyle(s, 'B32:O32', 'الإصدار: 1.0.0 (Phase 6/13 - Apps Script Installer) - مايو 2026',
+  mergeAndStyle(s, 'B32:O32', 'الإصدار: 1.0.0 (Phase 6/13 - Apps Script Installer) - ماي 2026',
     { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
   mergeAndStyle(s, 'B33:O33',
     'قالب احترافي مفتوح للتخصيص. أسعار الصرف مؤشّرات إرشاديّة - يجب على المستخدم تحديثها قبل أيّ استخدام محاسبي فعلي.',
