@@ -59,12 +59,23 @@
 const T = {
   bgPage:           '#0F172A',
   bgCard:           '#1F2937',
+  // REFINEMENT v1.2: dedicated background for the utility/config sheets
+  // (Goals + Settings). Slightly lighter than bgPage so a side-by-side tab
+  // switch from the dashboard to these sheets carries the same family of
+  // dark fintech tones while still feeling like a distinct surface.
+  bgPageAlt:        '#111827',
   fgPrimary:        '#F1F5F9',
   fgMuted:          '#94A3B8',
   accentIncome:     '#10B981',
   accentExpense:    '#DC2626',
   accentNet:        '#06B6D4',
   accentTrendDown:  '#EF4444',
+  // REFINEMENT v1.2: soft gold accent reserved for utility/config sheets
+  // (Goals + Settings). Distinct from the income/expense/net trio so a
+  // reviewer can tell at a glance "this is configuration, not data". The
+  // muted warm tone evokes the premium-banking aesthetic the rest of the
+  // dashboard already projects via its monochrome card surfaces.
+  accentGold:       '#D4A574',
   gridline:         '#334155',
   paletteOrange:    '#F97316',
   paletteBlue:      '#3B82F6',
@@ -301,6 +312,29 @@ function paintSheet(s, fg, bg) {
     .setBackground(bg).setFontColor(fg);
 }
 
+/**
+ * REFINEMENT v1.2 — applies the "Dark Fintech / utility sheet" preset to a
+ * sheet. This is the shared visual baseline for the Goals and Settings sheets:
+ *
+ *   - Page background painted to T.bgPageAlt (#111827).
+ *   - Default font color set to T.fgPrimary so any unstyled cell still reads
+ *     legibly against the dark background.
+ *   - Native gridlines hidden (the cards/borders we paint on top do the
+ *     visual segmentation).
+ *   - RTL layout pinned (idempotent — getOrCreateSheet already enables it,
+ *     but we re-assert here so any caller that bypasses that helper still
+ *     gets the correct alignment).
+ *
+ * Purely cosmetic. Does not touch values, formulas, named ranges, validations,
+ * conditional formatting rules, protected ranges, or frozen rows.
+ */
+function applyDarkConfigTheme(s) {
+  s.setHiddenGridlines(true);
+  s.setRightToLeft(true);
+  s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns())
+    .setBackground(T.bgPageAlt).setFontColor(T.fgPrimary);
+}
+
 function mergeAndStyle(s, a1, value, opts) {
   const r = s.getRange(a1);
   r.merge();
@@ -371,6 +405,91 @@ function buildSettings(ss) {
 
   // Auto-resize for legibility.
   s.autoResizeColumns(1, 8);
+
+  // ==========================================================================
+  // REFINEMENT v1.2 — Aesthetic overlay (Dark Fintech + soft-gold accent)
+  // --------------------------------------------------------------------------
+  // EVERYTHING below this line is purely cosmetic. Cell anchors, formulas,
+  // values, validations, and named-range targets above are preserved exactly.
+  // The overlay paints on top, so the engine and `defineNamedRanges` continue
+  // to read the same cells they always have (B3, B4, B5, A7:D20, F7:F14,
+  // G7:G18, H7:H10).
+  // ==========================================================================
+  applyDarkConfigTheme(s);
+
+  // Title — soft-gold accent on the dark fintech background
+  s.getRange('A1:D1')
+    .setBackground(T.bgPageAlt).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(16).setHorizontalAlignment('center');
+
+  // Subtitle — muted slate, centered, italicized for hierarchy
+  s.getRange('A2:D2')
+    .setBackground(T.bgPageAlt).setFontColor(T.fgMuted)
+    .setFontSize(10).setFontStyle('italic').setHorizontalAlignment('center');
+
+  // Active currency selector card (rows 3–5) — bgCard surface, gold accent
+  // labels, primary-light values. This visually groups the three "active
+  // currency" cells into a single readable card.
+  s.getRange('A3:B5').setBackground(T.bgCard);
+  s.getRange('A3:A5')
+    .setFontColor(T.accentGold).setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('right').setVerticalAlignment('middle');
+  s.getRange('B3:B5')
+    .setFontColor(T.fgPrimary).setFontWeight('bold').setFontSize(12)
+    .setHorizontalAlignment('right').setVerticalAlignment('middle');
+  s.getRange('A3:B5').setBorder(
+    true, true, true, true, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID);
+
+  // Currency table header (A6:D6) — gold-accent text on bgCard
+  s.getRange('A6:D6')
+    .setBackground(T.bgCard).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+  // Currency table data (A7:D20) — solid white background + solid black text
+  // so reviewers can read the 14 rows of rates and format strings comfortably
+  // against the dark page surrounding them.
+  const currencyData = s.getRange('A7:D20');
+  currencyData.setBackground('#FFFFFF').setFontColor('#000000').setFontSize(11);
+  s.getRange('A7:A20').setHorizontalAlignment('center').setFontWeight('bold');
+  s.getRange('B7:B20').setHorizontalAlignment('right');
+  s.getRange('C7:C20').setHorizontalAlignment('right')
+    .setNumberFormat('#,##0.0000');
+  s.getRange('D7:D20').setHorizontalAlignment('center').setFontFamily('Roboto Mono');
+  currencyData.setBorder(
+    true, true, true, true, true, true,
+    T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+
+  // Category + payment-method headers (F6, G6, H6) — same gold-on-bgCard treatment
+  s.getRange('F6:H6')
+    .setBackground(T.bgCard).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+  // Category + payment-method data — white-on-black input style.
+  // Each list has its own height; we paint each precise range so empty cells
+  // below the lists keep the dark fintech background.
+  const cardLists = [
+    s.getRange(7, 6, INCOME_CATEGORIES.length,  1),
+    s.getRange(7, 7, EXPENSE_CATEGORIES.length, 1),
+    s.getRange(7, 8, PAYMENT_METHODS.length,    1),
+  ];
+  cardLists.forEach(rng => {
+    rng.setBackground('#FFFFFF').setFontColor('#000000').setFontSize(11)
+       .setHorizontalAlignment('right').setVerticalAlignment('middle');
+    rng.setBorder(
+      true, true, true, true, true, true,
+      T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+  });
+
+  // Spacing — uniform row height for the active-currency card and
+  // generous heights for the table headers + first table row to give the
+  // page a calm, readable rhythm.
+  for (let r = 1; r <= 2;  r++) s.setRowHeight(r, 32);  // title + subtitle
+  for (let r = 3; r <= 5;  r++) s.setRowHeight(r, 30);  // active currency card
+  s.setRowHeight(6, 34);                                // header band
+  for (let r = 7; r <= 20; r++) s.setRowHeight(r, 26);  // data rows
 }
 
 // ============================================================================
@@ -441,6 +560,85 @@ function buildGoals(ss) {
 
   s.setFrozenRows(6);
   s.autoResizeColumns(1, 9);
+
+  // ==========================================================================
+  // REFINEMENT v1.2 — Aesthetic overlay (Dark Fintech + soft-gold accent)
+  // --------------------------------------------------------------------------
+  // EVERYTHING below this line is purely cosmetic. Cell anchors that the
+  // engine reads (D2, B3, H7:H26, G7:G26) and every formula above are
+  // preserved exactly. Conditional-format rules on H7:H26 stay registered;
+  // the static white background here only shows through when the status
+  // column evaluates to empty (rows where B is blank).
+  // ==========================================================================
+  applyDarkConfigTheme(s);
+
+  // Title — soft-gold accent, bold, generous size on the dark fintech surface
+  s.getRange('A1:I1')
+    .setBackground(T.bgPageAlt).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(18).setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
+
+  // ---- Summary panel (rows 2-4) — a single fintech card across A:F ----
+  // The remaining columns G:I in rows 2-4 stay on the dark page surface so
+  // the card has clean negative space on its right.
+  const summaryCard = s.getRange('A2:F4');
+  summaryCard.setBackground(T.bgCard);
+  summaryCard.setBorder(
+    true, true, true, true, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID);
+
+  // Summary labels (gold) — A2, C2, E2, A3, C3, E3, A4
+  ['A2', 'C2', 'E2', 'A3', 'C3', 'E3', 'A4'].forEach(a1 => {
+    s.getRange(a1).setFontColor(T.accentGold).setFontWeight('bold')
+      .setFontSize(11).setHorizontalAlignment('right').setVerticalAlignment('middle');
+  });
+
+  // Summary values (light primary, larger weight) — B2, D2, F2, B3, D3, F3, B4
+  ['B2', 'D2', 'F2', 'B3', 'D3', 'F3', 'B4'].forEach(a1 => {
+    s.getRange(a1).setFontColor(T.fgPrimary).setFontWeight('bold')
+      .setFontSize(13).setHorizontalAlignment('right').setVerticalAlignment('middle');
+  });
+
+  // Goals table header (A6:I6) — gold-accent text on bgCard surface
+  s.getRange('A6:I6')
+    .setBackground(T.bgCard).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle')
+    .setWrap(true);
+
+  // Goals data rows (A7:I26) — solid white background + solid black text.
+  // The conditional-format rules on H7:H26 stay registered (registered above)
+  // and override the white whenever the status text matches one of the three
+  // sentinels. For empty status rows the white-on-black input style is what
+  // shows through.
+  const goalsData = s.getRange('A7:I26');
+  goalsData.setBackground('#FFFFFF').setFontColor('#000000').setFontSize(11)
+           .setVerticalAlignment('middle');
+  s.getRange('A7:A26').setHorizontalAlignment('right').setFontWeight('bold');
+  s.getRange('B7:C26').setHorizontalAlignment('right'); // costs + saved amounts
+  s.getRange('D7:D26').setHorizontalAlignment('center'); // % progress
+  s.getRange('E7:E26').setHorizontalAlignment('center'); // target date
+  s.getRange('F7:G26').setHorizontalAlignment('center'); // months remaining + monthly amount
+  s.getRange('H7:H26').setHorizontalAlignment('center').setFontWeight('bold'); // status
+  s.getRange('I7:I26').setHorizontalAlignment('right').setWrap(true)           // recommendation
+                       .setFontSize(10);
+  goalsData.setBorder(
+    true, true, true, true, true, true,
+    T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+
+  // ---- Spacing — give the page a calm, readable rhythm ----
+  s.setRowHeight(1, 44);                                 // title — generous
+  for (let r = 2; r <= 4;  r++) s.setRowHeight(r, 30);   // summary card rows
+  s.setRowHeight(5, 12);                                 // breathing space
+  s.setRowHeight(6, 38);                                 // goals header band
+  for (let r = 7; r <= 26; r++) s.setRowHeight(r, 44);   // goals rows — extra
+                                                         // height so the long
+                                                         // recommendation
+                                                         // wraps cleanly.
+
+  // Widen the recommendation column so the wrapped IFS text reads on one line
+  // for short recommendations and on two for the long ones.
+  s.setColumnWidth(9, 360);
 }
 
 // ============================================================================
