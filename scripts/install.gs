@@ -1275,6 +1275,30 @@ function insertDashboardCharts(ss) {
   const HAXIS       = { textStyle: TEXT_STYLE, gridlines: { color: T.gridline, count: 0 }, baselineColor: T.gridline };
   const VAXIS       = { textStyle: TEXT_STYLE, gridlines: { color: T.gridline },           baselineColor: T.gridline };
 
+  // ------------------------------------------------------------------
+  // REFINEMENT v1.6 (PR #23) — modern, responsive chartArea geometry.
+  // Google Charts deprecated `chartArea.bottom` and `chartArea.right` in
+  // 2024. The replacement idiom is to size the plot region with the
+  // explicit `width` + `height` keys, anchored from `top` + `left`.
+  // Percentages (rather than fixed pixels) keep the chart responsive if
+  // the user resizes the embedded element later. The PAGE_BG fill keeps
+  // the dark fintech aesthetic (#111827) intact across every chart.
+  // ------------------------------------------------------------------
+  // Wide rectangular charts (Combo, Waterfall) carry their legend at the
+  // bottom + an X-axis tick row, so the plot region needs more vertical
+  // breathing room beneath it (1 - 16% top - 64% height = 20% bottom).
+  const CHART_AREA_WIDE = {
+    backgroundColor: PAGE_BG,
+    left: '8%', top: '16%', width: '88%', height: '64%',
+  };
+  // Doughnuts carry their legend on the right. Width is intentionally
+  // capped at 62% so the right ~34% of the chart frame is reserved for
+  // the legend without it overlapping the slice ring.
+  const CHART_AREA_DOUGHNUT = {
+    backgroundColor: PAGE_BG,
+    left: '4%', top: '15%', width: '62%', height: '70%',
+  };
+
   // ---- Chart 1: Combo (Monthly comparison) anchored at B11 ----
   // B/C → vertical bars (income green, expense red); D → line (cyan accentNet).
   // groupWidth at 70% gives the column pair a balanced, breathable gap that
@@ -1287,7 +1311,7 @@ function insertDashboardCharts(ss) {
     .setOption('title',          'المقارنة الشهرية - الدخل والمصروف وصافي الربح')
     .setOption('titleTextStyle', TITLE_STYLE)
     .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
-    .setOption('chartArea',      { backgroundColor: PAGE_BG, left: 60, right: 30, top: 50, bottom: 60 })
+    .setOption('chartArea',      CHART_AREA_WIDE)
     .setOption('legend',         LEGEND)
     .setOption('hAxis',          HAXIS)
     .setOption('vAxis',          VAXIS)
@@ -1315,7 +1339,7 @@ function insertDashboardCharts(ss) {
     .setOption('title',          'تدفّق النقد - من إجمالي الدخل إلى صافي الربح')
     .setOption('titleTextStyle', TITLE_STYLE)
     .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
-    .setOption('chartArea',      { backgroundColor: PAGE_BG, left: 60, right: 30, top: 50, bottom: 60 })
+    .setOption('chartArea',      CHART_AREA_WIDE)
     .setOption('legend',         { position: 'none' })
     .setOption('hAxis',          HAXIS)
     .setOption('vAxis',          VAXIS)
@@ -1345,7 +1369,7 @@ function insertDashboardCharts(ss) {
     .setOption('title',          'مصادر الدخل')
     .setOption('titleTextStyle', TITLE_STYLE)
     .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
-    .setOption('chartArea',      { backgroundColor: PAGE_BG, left: 30, right: 30, top: 50, bottom: 50 })
+    .setOption('chartArea',      CHART_AREA_DOUGHNUT)
     .setOption('legend',         { position: 'right', textStyle: TEXT_STYLE })
     .setOption('pieHole',        0.55)
     .setOption('pieSliceText',   'percentage')
@@ -1373,7 +1397,7 @@ function insertDashboardCharts(ss) {
     .setOption('title',          'توزيع المصروفات')
     .setOption('titleTextStyle', TITLE_STYLE)
     .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
-    .setOption('chartArea',      { backgroundColor: PAGE_BG, left: 30, right: 30, top: 50, bottom: 50 })
+    .setOption('chartArea',      CHART_AREA_DOUGHNUT)
     .setOption('legend',         { position: 'right', textStyle: TEXT_STYLE })
     .setOption('pieHole',        0.55)
     .setOption('pieSliceText',   'percentage')
