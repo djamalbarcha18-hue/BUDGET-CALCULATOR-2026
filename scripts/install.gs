@@ -59,12 +59,23 @@
 const T = {
   bgPage:           '#0F172A',
   bgCard:           '#1F2937',
+  // REFINEMENT v1.2: dedicated background for the utility/config sheets
+  // (Goals + Settings). Slightly lighter than bgPage so a side-by-side tab
+  // switch from the dashboard to these sheets carries the same family of
+  // dark fintech tones while still feeling like a distinct surface.
+  bgPageAlt:        '#111827',
   fgPrimary:        '#F1F5F9',
   fgMuted:          '#94A3B8',
   accentIncome:     '#10B981',
   accentExpense:    '#DC2626',
   accentNet:        '#06B6D4',
   accentTrendDown:  '#EF4444',
+  // REFINEMENT v1.2: soft gold accent reserved for utility/config sheets
+  // (Goals + Settings). Distinct from the income/expense/net trio so a
+  // reviewer can tell at a glance "this is configuration, not data". The
+  // muted warm tone evokes the premium-banking aesthetic the rest of the
+  // dashboard already projects via its monochrome card surfaces.
+  accentGold:       '#D4A574',
   gridline:         '#334155',
   paletteOrange:    '#F97316',
   paletteBlue:      '#3B82F6',
@@ -74,6 +85,29 @@ const T = {
   gaugeLightGreen:  '#84CC16',
   white:            '#FFFFFF',
 };
+
+// REFINEMENT v1.3 — High-contrast 12-color chart palette for the dashboard
+// doughnuts (income + expense) and any future categorical chart on the page.
+// Every entry is a saturated "400" shade hand-picked from the Tailwind palette
+// family so all 12 remain clearly distinguishable against the dark fintech
+// canvas (#111827) without any one slice fading into the background. The
+// order is curated so adjacent slices (cyan → emerald → amber → rose) carry
+// maximal hue separation — important for doughnut charts where slice order
+// follows the source-data order.
+const DASH_CHART_PALETTE = [
+  '#22D3EE', // cyan-400
+  '#34D399', // emerald-400
+  '#FBBF24', // amber-400
+  '#FB7185', // rose-400
+  '#A78BFA', // violet-400
+  '#38BDF8', // sky-400
+  '#A3E635', // lime-400
+  '#FB923C', // orange-400
+  '#F472B6', // pink-400
+  '#818CF8', // indigo-400
+  '#2DD4BF', // teal-400
+  '#FACC15', // yellow-400
+];
 
 // ============================================================================
 // SEED DATA - mirrors data/*.csv
@@ -169,17 +203,30 @@ function installBudgetCalculator2026() {
   applyProtection(ss);
   reorderTabs(ss);
 
+  // REFINEMENT v1.3 — Auto-insert the four dashboard charts. Runs AFTER the
+  // engine + dashboard + named ranges all exist, so every chart resolves its
+  // engine source range cleanly on the very first install. Idempotent: if the
+  // user re-runs the installer, existing charts are dropped and re-inserted
+  // with the latest styling and palette.
+  insertDashboardCharts(ss);
+
   // Hide engine sheet last (after all references resolve).
   ss.getSheetByName(SHEET_NAMES.engine).hideSheet();
 
-  // Land the user on the welcome tab.
+  // REFINEMENT v1.4 (PR #21) — Land the user on the Welcome landing page
+  // with the active cell pinned at A1 so they open into a clean, framed
+  // view of the hero card, the two CTAs, and the Quick-Start trio.
+  // .activate() sets BOTH the active sheet and the active cell in one call.
   const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
-  ss.setActiveSheet(welcome);
+  welcome.getRange('A1').activate();
 
   ui.alert(
     'تم تركيب القالب بنجاح',
-    'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
-    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
+    'كل الأوراق والصيغ والنطاقات المُسماة جاهزة، والرسوم البيانية الأربعة على ' +
+    'اللوحة الرئيسية تمّ إدراجها وتنسيقها تلقائياً.\n\n' +
+    'ستجد ورقة الترحيب مفتوحة الآن — اتّبع خطوات البداية السريعة بالترتيب: ' +
+    'اضبط الإعدادات أوّلاً، ثمّ سجِّل حركاتك في ورقة الشهر الحالي، ثمّ افتح ' +
+    'اللوحة الرئيسيّة لمتابعة أدائك. كل البطاقات والرسوم تتحدّث آنيّاً.',
     ui.ButtonSet.OK);
 }
 
@@ -255,11 +302,19 @@ function repairDashboard2026() {
   ss.setNamedRange('rng_dash_doughnut_income',  engine.getRange('I1:J9'));
   ss.setNamedRange('rng_dash_doughnut_expense', engine.getRange('L1:M13'));
 
+  // REFINEMENT v1.3 — 7) Re-insert the four embedded charts with the
+  // refreshed dark-fintech styling and high-contrast palette. Idempotent:
+  // any pre-existing charts on the dashboard are dropped and rebuilt, so
+  // running repair on a workbook that already carries old/stale charts is
+  // safe and brings them up to the current visual baseline in one click.
+  insertDashboardCharts(ss);
+
   SpreadsheetApp.flush();
   ui.alert(
     'تم إصلاح اللوحة',
     'أُعيدت كتابة جميع صيغ المحرّك وبطاقات المؤشّرات بإصدار محصَّن ضدّ الأخطاء، ' +
-    'وأُعيد ربط النطاقات المُسمَّاة الأربعة للرسوم البيانية. ' +
+    'وأُعيد ربط النطاقات المُسمَّاة الأربعة للرسوم البيانية، وأُعيد إدراج الرسوم ' +
+    'البيانية الأربعة بالتنسيق المحدَّث (خلفية #111827 + لوحة ألوان عالية التباين). ' +
     'افتح ورقة \"' + SHEET_NAMES.dashboard + '\" — يجب أن تختفي رسائل #REF! و #VALUE! ' +
     'وتظهر الأسهم الخضراء/الحمراء على بطاقات الاتجاه.',
     ui.ButtonSet.OK);
@@ -301,6 +356,29 @@ function paintSheet(s, fg, bg) {
     .setBackground(bg).setFontColor(fg);
 }
 
+/**
+ * REFINEMENT v1.2 — applies the "Dark Fintech / utility sheet" preset to a
+ * sheet. This is the shared visual baseline for the Goals and Settings sheets:
+ *
+ *   - Page background painted to T.bgPageAlt (#111827).
+ *   - Default font color set to T.fgPrimary so any unstyled cell still reads
+ *     legibly against the dark background.
+ *   - Native gridlines hidden (the cards/borders we paint on top do the
+ *     visual segmentation).
+ *   - RTL layout pinned (idempotent — getOrCreateSheet already enables it,
+ *     but we re-assert here so any caller that bypasses that helper still
+ *     gets the correct alignment).
+ *
+ * Purely cosmetic. Does not touch values, formulas, named ranges, validations,
+ * conditional formatting rules, protected ranges, or frozen rows.
+ */
+function applyDarkConfigTheme(s) {
+  s.setHiddenGridlines(true);
+  s.setRightToLeft(true);
+  s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns())
+    .setBackground(T.bgPageAlt).setFontColor(T.fgPrimary);
+}
+
 function mergeAndStyle(s, a1, value, opts) {
   const r = s.getRange(a1);
   r.merge();
@@ -314,6 +392,7 @@ function mergeAndStyle(s, a1, value, opts) {
     if (opts.vAlign)     r.setVerticalAlignment(opts.vAlign);
     if (opts.wrap)       r.setWrap(true);
     if (opts.fontFamily) r.setFontFamily(opts.fontFamily);
+    if (opts.italic)     r.setFontStyle('italic');
   }
   return r;
 }
@@ -371,6 +450,91 @@ function buildSettings(ss) {
 
   // Auto-resize for legibility.
   s.autoResizeColumns(1, 8);
+
+  // ==========================================================================
+  // REFINEMENT v1.2 — Aesthetic overlay (Dark Fintech + soft-gold accent)
+  // --------------------------------------------------------------------------
+  // EVERYTHING below this line is purely cosmetic. Cell anchors, formulas,
+  // values, validations, and named-range targets above are preserved exactly.
+  // The overlay paints on top, so the engine and `defineNamedRanges` continue
+  // to read the same cells they always have (B3, B4, B5, A7:D20, F7:F14,
+  // G7:G18, H7:H10).
+  // ==========================================================================
+  applyDarkConfigTheme(s);
+
+  // Title — soft-gold accent on the dark fintech background
+  s.getRange('A1:D1')
+    .setBackground(T.bgPageAlt).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(16).setHorizontalAlignment('center');
+
+  // Subtitle — muted slate, centered, italicized for hierarchy
+  s.getRange('A2:D2')
+    .setBackground(T.bgPageAlt).setFontColor(T.fgMuted)
+    .setFontSize(10).setFontStyle('italic').setHorizontalAlignment('center');
+
+  // Active currency selector card (rows 3–5) — bgCard surface, gold accent
+  // labels, primary-light values. This visually groups the three "active
+  // currency" cells into a single readable card.
+  s.getRange('A3:B5').setBackground(T.bgCard);
+  s.getRange('A3:A5')
+    .setFontColor(T.accentGold).setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('right').setVerticalAlignment('middle');
+  s.getRange('B3:B5')
+    .setFontColor(T.fgPrimary).setFontWeight('bold').setFontSize(12)
+    .setHorizontalAlignment('right').setVerticalAlignment('middle');
+  s.getRange('A3:B5').setBorder(
+    true, true, true, true, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID);
+
+  // Currency table header (A6:D6) — gold-accent text on bgCard
+  s.getRange('A6:D6')
+    .setBackground(T.bgCard).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+  // Currency table data (A7:D20) — solid white background + solid black text
+  // so reviewers can read the 14 rows of rates and format strings comfortably
+  // against the dark page surrounding them.
+  const currencyData = s.getRange('A7:D20');
+  currencyData.setBackground('#FFFFFF').setFontColor('#000000').setFontSize(11);
+  s.getRange('A7:A20').setHorizontalAlignment('center').setFontWeight('bold');
+  s.getRange('B7:B20').setHorizontalAlignment('right');
+  s.getRange('C7:C20').setHorizontalAlignment('right')
+    .setNumberFormat('#,##0.0000');
+  s.getRange('D7:D20').setHorizontalAlignment('center').setFontFamily('Roboto Mono');
+  currencyData.setBorder(
+    true, true, true, true, true, true,
+    T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+
+  // Category + payment-method headers (F6, G6, H6) — same gold-on-bgCard treatment
+  s.getRange('F6:H6')
+    .setBackground(T.bgCard).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+  // Category + payment-method data — white-on-black input style.
+  // Each list has its own height; we paint each precise range so empty cells
+  // below the lists keep the dark fintech background.
+  const cardLists = [
+    s.getRange(7, 6, INCOME_CATEGORIES.length,  1),
+    s.getRange(7, 7, EXPENSE_CATEGORIES.length, 1),
+    s.getRange(7, 8, PAYMENT_METHODS.length,    1),
+  ];
+  cardLists.forEach(rng => {
+    rng.setBackground('#FFFFFF').setFontColor('#000000').setFontSize(11)
+       .setHorizontalAlignment('right').setVerticalAlignment('middle');
+    rng.setBorder(
+      true, true, true, true, true, true,
+      T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+  });
+
+  // Spacing — uniform row height for the active-currency card and
+  // generous heights for the table headers + first table row to give the
+  // page a calm, readable rhythm.
+  for (let r = 1; r <= 2;  r++) s.setRowHeight(r, 32);  // title + subtitle
+  for (let r = 3; r <= 5;  r++) s.setRowHeight(r, 30);  // active currency card
+  s.setRowHeight(6, 34);                                // header band
+  for (let r = 7; r <= 20; r++) s.setRowHeight(r, 26);  // data rows
 }
 
 // ============================================================================
@@ -441,6 +605,85 @@ function buildGoals(ss) {
 
   s.setFrozenRows(6);
   s.autoResizeColumns(1, 9);
+
+  // ==========================================================================
+  // REFINEMENT v1.2 — Aesthetic overlay (Dark Fintech + soft-gold accent)
+  // --------------------------------------------------------------------------
+  // EVERYTHING below this line is purely cosmetic. Cell anchors that the
+  // engine reads (D2, B3, H7:H26, G7:G26) and every formula above are
+  // preserved exactly. Conditional-format rules on H7:H26 stay registered;
+  // the static white background here only shows through when the status
+  // column evaluates to empty (rows where B is blank).
+  // ==========================================================================
+  applyDarkConfigTheme(s);
+
+  // Title — soft-gold accent, bold, generous size on the dark fintech surface
+  s.getRange('A1:I1')
+    .setBackground(T.bgPageAlt).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(18).setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
+
+  // ---- Summary panel (rows 2-4) — a single fintech card across A:F ----
+  // The remaining columns G:I in rows 2-4 stay on the dark page surface so
+  // the card has clean negative space on its right.
+  const summaryCard = s.getRange('A2:F4');
+  summaryCard.setBackground(T.bgCard);
+  summaryCard.setBorder(
+    true, true, true, true, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID);
+
+  // Summary labels (gold) — A2, C2, E2, A3, C3, E3, A4
+  ['A2', 'C2', 'E2', 'A3', 'C3', 'E3', 'A4'].forEach(a1 => {
+    s.getRange(a1).setFontColor(T.accentGold).setFontWeight('bold')
+      .setFontSize(11).setHorizontalAlignment('right').setVerticalAlignment('middle');
+  });
+
+  // Summary values (light primary, larger weight) — B2, D2, F2, B3, D3, F3, B4
+  ['B2', 'D2', 'F2', 'B3', 'D3', 'F3', 'B4'].forEach(a1 => {
+    s.getRange(a1).setFontColor(T.fgPrimary).setFontWeight('bold')
+      .setFontSize(13).setHorizontalAlignment('right').setVerticalAlignment('middle');
+  });
+
+  // Goals table header (A6:I6) — gold-accent text on bgCard surface
+  s.getRange('A6:I6')
+    .setBackground(T.bgCard).setFontColor(T.accentGold)
+    .setFontWeight('bold').setFontSize(11)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle')
+    .setWrap(true);
+
+  // Goals data rows (A7:I26) — solid white background + solid black text.
+  // The conditional-format rules on H7:H26 stay registered (registered above)
+  // and override the white whenever the status text matches one of the three
+  // sentinels. For empty status rows the white-on-black input style is what
+  // shows through.
+  const goalsData = s.getRange('A7:I26');
+  goalsData.setBackground('#FFFFFF').setFontColor('#000000').setFontSize(11)
+           .setVerticalAlignment('middle');
+  s.getRange('A7:A26').setHorizontalAlignment('right').setFontWeight('bold');
+  s.getRange('B7:C26').setHorizontalAlignment('right'); // costs + saved amounts
+  s.getRange('D7:D26').setHorizontalAlignment('center'); // % progress
+  s.getRange('E7:E26').setHorizontalAlignment('center'); // target date
+  s.getRange('F7:G26').setHorizontalAlignment('center'); // months remaining + monthly amount
+  s.getRange('H7:H26').setHorizontalAlignment('center').setFontWeight('bold'); // status
+  s.getRange('I7:I26').setHorizontalAlignment('right').setWrap(true)           // recommendation
+                       .setFontSize(10);
+  goalsData.setBorder(
+    true, true, true, true, true, true,
+    T.gridline, SpreadsheetApp.BorderStyle.SOLID);
+
+  // ---- Spacing — give the page a calm, readable rhythm ----
+  s.setRowHeight(1, 44);                                 // title — generous
+  for (let r = 2; r <= 4;  r++) s.setRowHeight(r, 30);   // summary card rows
+  s.setRowHeight(5, 12);                                 // breathing space
+  s.setRowHeight(6, 38);                                 // goals header band
+  for (let r = 7; r <= 26; r++) s.setRowHeight(r, 44);   // goals rows — extra
+                                                         // height so the long
+                                                         // recommendation
+                                                         // wraps cleanly.
+
+  // Widen the recommendation column so the wrapped IFS text reads on one line
+  // for short recommendations and on two for the long ones.
+  s.setColumnWidth(9, 360);
 }
 
 // ============================================================================
@@ -682,12 +925,17 @@ function buildCategorySumFormula(category, expense, negate, refCell) {
 function buildDashboard(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.dashboard);
 
-  // Page background
-  s.getRange(1, 1, 60, 25).setBackground(T.bgPage).setFontColor(T.fgPrimary);
+  // REFINEMENT v1.3 — Page background switched to T.bgPageAlt (#111827) to
+  // match the Goals + Settings utility-sheet treatment from PR #19, and the
+  // native gridlines are hidden so every visual boundary on the page comes
+  // from the cards/borders we paint explicitly. The fintech canvas now reads
+  // as a single coherent surface across the entire workbook.
+  s.setHiddenGridlines(true);
+  s.getRange(1, 1, 60, 25).setBackground(T.bgPageAlt).setFontColor(T.fgPrimary);
 
   // Title row
   mergeAndStyle(s, 'B2:Y2', 'اللوحة الرئيسية والتقرير السنوي - نظام مالي ذكي متكامل',
-    { bg: T.bgPage, fg: T.fgPrimary, size: 18, bold: true, align: 'center' });
+    { bg: T.bgPageAlt, fg: T.accentGold, size: 18, bold: true, align: 'center' });
 
   // ---- Module 1: Six KPI cards ----
   // SOURCE OF TRUTH: every KPI now reads from `_DashboardEngine` so the
@@ -757,6 +1005,18 @@ function buildDashboard(ss) {
   mergeAndStyle(s, 'V8:Y8', '(الدخل - المصروفات) / الدخل.',
     { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'right' });
 
+  // REFINEMENT v1.3 — Card padding. Default Sheets row height is 21px which
+  // makes the 5-row cards feel cramped. These tuned heights give each card a
+  // calm, modern, breathable rhythm: a tight title strip, a generous numeric
+  // hero row, room for the trend pill, and a quiet description footer.
+  s.setRowHeight(4, 26);   // card titles
+  s.setRowHeight(5, 32);   // big number (top half)
+  s.setRowHeight(6, 26);   // big number (bottom half)
+  s.setRowHeight(7, 28);   // trend pill
+  s.setRowHeight(8, 22);   // description footer
+  s.setRowHeight(9,  6);   // breathing space below the KPI band
+  s.setRowHeight(10, 6);   // breathing space above the chart band
+
   // Conditional formatting on trend cells (▲ green / ▼ red)
   const rules = s.getConditionalFormatRules();
   ['B7', 'F7', 'J7', 'N7', 'R7', 'V7'].forEach(cell => {
@@ -770,41 +1030,106 @@ function buildDashboard(ss) {
         .setBackground(T.accentTrendDown).setFontColor(T.white).setRanges([rng]).build());
   });
 
-  // ---- Module 3: Health gauge display (text under where the chart goes) ----
+  // ---- Module 3: Health-score "Financial Health" mini-table ----
+  // REFINEMENT v1.3 — Upgraded from a single big-number plate to a structured
+  // mini-table card that surfaces the THREE components of the composite score
+  // (Savings 40 + Discipline 30 + Goal Progress 30). The score's source of
+  // truth is still _DashboardEngine!O2 — we just split its display so the
+  // user can SEE which component is dragging the score down. The component
+  // formulas mirror the engine's O2 expression EXACTLY so the three rows
+  // always sum to the same number shown in the hero plate; we read engine
+  // cells (H2, H3, goals!F2) plus the engine's own monthly-expected-expense
+  // sum, never duplicating any numeric logic that lives in the engine.
   paintCard(s, 'N29:S44');
-  mergeAndStyle(s, 'N29:S29', 'درجة الصحّة المالية', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'center' });
-  mergeAndStyle(s, 'N31:S38', '', { bg: T.bgCard, fg: T.fgPrimary, size: 36, bold: true, align: 'center' });
-  s.getRange('N31').setFormula(`=${SHEET_NAMES.engine}!O2 & "/100"`);
-  mergeAndStyle(s, 'N40:S40', '', { bg: T.bgCard, fg: T.fgPrimary, size: 14, align: 'center' });
-  s.getRange('N40').setFormula(`=${SHEET_NAMES.engine}!O3`);
-  mergeAndStyle(s, 'N43:S43', 'يُحدَّد مقياس الصحّة من نسبة الادخار + الانضباط الميزاني + تقدّم الأهداف.',
+  mergeAndStyle(s, 'N29:S29', 'لوحة الصحّة المالية', { bg: T.bgCard, fg: T.accentGold, size: 12, bold: true, align: 'center' });
+  // Hero score plate (single cell, large)
+  mergeAndStyle(s, 'N30:S33', '', { bg: T.bgCard, fg: T.fgPrimary, size: 30, bold: true, align: 'center' });
+  s.getRange('N30').setFormula(`=${SHEET_NAMES.engine}!O2 & "/100"`);
+  // Status badge (ممتاز / جيد / مقبول / يحتاج إلى تحسين)
+  mergeAndStyle(s, 'N34:S34', '', { bg: T.bgCard, fg: T.accentGold, size: 13, bold: true, align: 'center' });
+  s.getRange('N34').setFormula(`=${SHEET_NAMES.engine}!O3`);
+  // Component breakdown table — three rows, each labeled and weighted.
+  // Row 36: Savings rate (40 pts max).
+  s.getRange('N36').setValue('نسبة الادخار')
+    .setBackground(T.bgCard).setFontColor(T.fgMuted).setFontSize(10).setHorizontalAlignment('right');
+  mergeAndStyle(s, 'O36:R36', '', { bg: T.bgCard, fg: T.fgPrimary, size: 11, bold: true, align: 'center' });
+  s.getRange('O36').setFormula(
+    `=ROUND(40 * MAX(0, MIN(1, IFERROR((${SHEET_NAMES.engine}!H2 - ${SHEET_NAMES.engine}!H3) / ${SHEET_NAMES.engine}!H2, 0))), 0) & " / 40"`);
+  s.getRange('S36').setValue('🟢').setBackground(T.bgCard).setFontSize(11).setHorizontalAlignment('center');
+  // Row 38: Budget discipline (30 pts max).
+  s.getRange('N38').setValue('الانضباط الميزاني')
+    .setBackground(T.bgCard).setFontColor(T.fgMuted).setFontSize(10).setHorizontalAlignment('right');
+  mergeAndStyle(s, 'O38:R38', '', { bg: T.bgCard, fg: T.fgPrimary, size: 11, bold: true, align: 'center' });
+  const monthlyExpectedExpenseSum = MONTHS.map(m => `'${m}'!D33:D62`).join(', ');
+  s.getRange('O38').setFormula(
+    `=ROUND(30 * MAX(0, MIN(1, IFERROR(1 - (${SHEET_NAMES.engine}!H3 / SUM(${monthlyExpectedExpenseSum})), 0))), 0) & " / 30"`);
+  s.getRange('S38').setValue('🟡').setBackground(T.bgCard).setFontSize(11).setHorizontalAlignment('center');
+  // Row 40: Goal progress (30 pts max).
+  s.getRange('N40').setValue('تقدّم الأهداف')
+    .setBackground(T.bgCard).setFontColor(T.fgMuted).setFontSize(10).setHorizontalAlignment('right');
+  mergeAndStyle(s, 'O40:R40', '', { bg: T.bgCard, fg: T.fgPrimary, size: 11, bold: true, align: 'center' });
+  s.getRange('O40').setFormula(
+    `=ROUND(30 * IFERROR('${SHEET_NAMES.goals}'!F2, 0), 0) & " / 30"`);
+  s.getRange('S40').setValue('🔵').setBackground(T.bgCard).setFontSize(11).setHorizontalAlignment('center');
+  // Footer caption
+  mergeAndStyle(s, 'N43:S43', 'يُحدَّد المقياس من نسبة الادخار + الانضباط الميزاني + تقدّم الأهداف.',
     { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'center', wrap: true });
 
-  // ---- Module 3: Three SPARKLINE progress bars ----
+  // ---- Module 3: Three SPARKLINE progress bars (FULLY DYNAMIC) ----
+  // REFINEMENT v1.3 — Goal NAMES are no longer hardcoded in JavaScript.
+  // Each progress bar now pulls its goal name, percentage, and 🟢/🟡/⚪ status
+  // directly from the FIRST THREE rows of the goals table (rows 7, 8, 9).
+  // Every cell on the dashboard is a formula whose source of truth is the
+  // Goals sheet, so:
+  //
+  //   • Renaming a goal in الأهداف!A7 instantly retitles the dashboard bar.
+  //   • Editing C7 (المدخر حالياً) instantly recolors and resizes the bar.
+  //   • The 🟢/🟡/⚪ badge tracks the goals-sheet status column H7..H9 so the
+  //     user always sees the same indicator on both sheets.
+  //
+  // To change WHICH three goals appear on the dashboard, the user simply
+  // reorders rows 7..9 of the Goals sheet — no code edit required.
   paintCard(s, 'T29:Y44');
-  mergeAndStyle(s, 'T29:Y29', 'تقدّم الأهداف الرئيسيّة', { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'center' });
+  mergeAndStyle(s, 'T29:Y29', 'تقدّم الأهداف الرئيسيّة', { bg: T.bgCard, fg: T.accentGold, size: 12, bold: true, align: 'center' });
 
-  const goalNames = ['صندوق الطوارئ', 'شراء منزل', 'صندوق التقاعد'];
-  const barRows = [31, 34, 37];
-  for (let i = 0; i < goalNames.length; i++) {
-    const g = goalNames[i];
-    const rr = barRows[i];
-    s.getRange('Y' + rr).setValue(g).setFontColor(T.fgPrimary).setBackground(T.bgCard).setFontSize(11);
-    // Sparkline merged across V..X
+  const goalRefRows = [7, 8, 9];        // pulls FIRST 3 goals from الأهداف!A:H
+  const barRows     = [32, 36, 40];     // dashboard rows for the 3 bars
+  for (let i = 0; i < goalRefRows.length; i++) {
+    const goalRow = goalRefRows[i];
+    const rr      = barRows[i];
+
+    // Label cell (column Y) — pulls goal name dynamically from Goals!A{goalRow}
+    s.getRange('Y' + rr)
+      .setFormula(`=IFERROR('${SHEET_NAMES.goals}'!A${goalRow}, "—")`)
+      .setBackground(T.bgCard).setFontColor(T.fgPrimary)
+      .setFontWeight('bold').setFontSize(11).setHorizontalAlignment('right');
+
+    // Status badge cell (column T) — pulls 🟢/🟡/⚪ from Goals!H{goalRow}
+    s.getRange('T' + rr)
+      .setFormula(`=IFERROR('${SHEET_NAMES.goals}'!H${goalRow}, "")`)
+      .setBackground(T.bgCard).setFontSize(11).setHorizontalAlignment('center');
+
+    // Sparkline merged across V..X. Source: Goals!D{goalRow} (% complete).
+    // Color thresholds match the Goals-sheet conditional formatting:
+    //   < 33% → red (expense accent)
+    //   < 66% → amber
+    //   ≥ 66% → green (income accent)
     mergeAndStyle(s, `V${rr}:X${rr}`, '', { bg: T.bgCard });
-    const goalLookup = `IFERROR(XLOOKUP("${g}", '${SHEET_NAMES.goals}'!A7:A26, '${SHEET_NAMES.goals}'!D7:D26), 0)`;
+    const pct = `IFERROR('${SHEET_NAMES.goals}'!D${goalRow}, 0)`;
     s.getRange(`V${rr}`).setFormula(
-      `=SPARKLINE(${goalLookup}, {"charttype","bar"; "max",1; "color1", IF(${goalLookup} < 0.33, "${T.accentExpense}", IF(${goalLookup} < 0.66, "${T.gaugeAmber}", "${T.accentIncome}")); "empty","zero"})`);
-    s.getRange('U' + rr).setFormula(`=TEXT(${goalLookup}, "0.0%")`)
-      .setFontColor(T.fgPrimary).setBackground(T.bgCard).setFontSize(11)
-      .setHorizontalAlignment('center');
+      `=SPARKLINE(${pct}, {"charttype","bar"; "max",1; "color1", IF(${pct} < 0.33, "${T.accentExpense}", IF(${pct} < 0.66, "${T.gaugeAmber}", "${T.accentIncome}")); "empty","zero"})`);
+
+    // Percentage column (U) — same source as the sparkline so they always agree.
+    s.getRange('U' + rr).setFormula(`=TEXT(${pct}, "0.0%")`)
+      .setBackground(T.bgCard).setFontColor(T.fgPrimary)
+      .setFontWeight('bold').setFontSize(11).setHorizontalAlignment('center');
   }
 
   // ---- Module 3: Latest 5 transactions ledger ----
   paintCard(s, 'H47:N56');
   const ledgerHdr = ['الشهر', 'التاريخ', 'النوع', 'الفئة', 'الوصف', 'المبلغ', 'طريقة الدفع'];
   s.getRange('H47:N47').setValues([ledgerHdr])
-    .setFontWeight('bold').setBackground('#374151').setFontColor(T.fgPrimary)
+    .setFontWeight('bold').setBackground('#374151').setFontColor(T.accentGold)
     .setHorizontalAlignment('center');
   s.getRange('H48').setFormula(
     `=IFERROR(QUERY(${SHEET_NAMES.engine}!Q2:W, "select * where Col2 is not null order by Col2 desc limit 5", 0), "")`);
@@ -820,27 +1145,34 @@ function buildDashboard(ss) {
       .setBackground(T.accentExpense).setFontColor(T.white).setRanges([jRange]).build());
   s.setConditionalFormatRules(rules);
 
-  // Stub anchors for the four charts (visible card backgrounds the user can drop charts onto).
-  // Insert each chart via Insert → Chart and bind it to the matching NAMED RANGE
-  // (defined in defineNamedRanges) instead of typing the engine A1 ranges by hand.
-  // The named ranges are stable across rebuilds, so the chart never needs to be
-  // re-bound when the engine sheet is rebuilt or moved.
+  // Chart anchor cards. The four embedded charts are inserted programmatically
+  // by `insertDashboardCharts()` (called from installBudgetCalculator2026 +
+  // repairDashboard2026) and float on top of these placeholders. The titles
+  // below stay as a graceful fallback in case a chart fails to render — they
+  // are visually covered the moment the chart paints.
   paintCard(s, 'B11:M26');
-  mergeAndStyle(s, 'B11:M11', 'Chart 1: المقارنة الشهريّة (أدرجه يدوياً من النطاق المُسمَّى rng_dash_monthly_grid)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
+  mergeAndStyle(s, 'B11:M11', 'المقارنة الشهريّة', { bg: T.bgCard, fg: T.accentGold, size: 12, bold: true, align: 'center' });
   paintCard(s, 'N11:Y26');
-  mergeAndStyle(s, 'N11:Y11', 'Chart 2: Waterfall - تدفّق النقد (أدرجه يدوياً من النطاق المُسمَّى rng_dash_waterfall)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
+  mergeAndStyle(s, 'N11:Y11', 'تدفّق النقد - Waterfall', { bg: T.bgCard, fg: T.accentGold, size: 12, bold: true, align: 'center' });
   paintCard(s, 'B29:G44');
-  mergeAndStyle(s, 'B29:G29', 'Chart 3: دونات الدخل (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_income)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
+  mergeAndStyle(s, 'B29:G29', 'مصادر الدخل - Doughnut', { bg: T.bgCard, fg: T.accentGold, size: 12, bold: true, align: 'center' });
   paintCard(s, 'H29:M44');
-  mergeAndStyle(s, 'H29:M29', 'Chart 4: دونات المصاريف (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_expense)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
+  mergeAndStyle(s, 'H29:M29', 'توزيع المصروفات - Doughnut', { bg: T.bgCard, fg: T.accentGold, size: 12, bold: true, align: 'center' });
 }
 
 function paintCard(s, a1) {
-  s.getRange(a1).setBackground(T.bgCard).setFontColor(T.fgPrimary);
+  // REFINEMENT v1.3 — every dashboard card now wears a thin slate border.
+  // The border, combined with the existing T.bgCard fill against the darker
+  // T.bgPageAlt page surface, gives each card a clean, modern, "elevated"
+  // edge without a real CSS-style border-radius (Sheets cells are
+  // unavoidably rectangular). T.gridline (#334155) is the same slate
+  // already used inside the input tables on Goals/Settings, so the visual
+  // grammar is consistent across every sheet of the workbook.
+  const rng = s.getRange(a1);
+  rng.setBackground(T.bgCard).setFontColor(T.fgPrimary);
+  rng.setBorder(
+    true, true, true, true, false, false,
+    T.gridline, SpreadsheetApp.BorderStyle.SOLID);
 }
 
 function buildAnnualSum(income) {
@@ -881,76 +1213,487 @@ function buildTrendFormula(curCell, priCell) {
 }
 
 // ============================================================================
+// REFINEMENT v1.3 — DASHBOARD CHART INSERTION
+// ----------------------------------------------------------------------------
+// Inserts the four embedded charts (Combo, Waterfall, two Doughnuts) onto
+// the dashboard sheet and styles every one of them to match the dark fintech
+// canvas: page-matched #111827 chart background, light text + slate gridlines,
+// vibrant 12-color palette on the doughnuts, and the canonical
+// income/expense/net trio on the combo's series.
+//
+// ARCHITECTURAL INTEGRITY: every chart's data source is one of the four
+// `_DashboardEngine` ranges (A1:D13, F1:G7, I1:J9, L1:M13). These are the
+// SAME ranges the dashboard's named ranges (rng_dash_*) point at. We pull
+// directly from the engine here — not via `getRangeByName` — to keep this
+// function safe to call before `defineNamedRanges` has run on a fresh
+// install. The engine itself is built by `buildDashboardEngine`, which we
+// do NOT touch in this PR.
+// ============================================================================
+
+/**
+ * Removes every embedded chart from a sheet. Used by `insertDashboardCharts`
+ * so the function is idempotent — install or repair can be re-run without
+ * piling up duplicate charts on top of each other.
+ */
+function removeExistingCharts(sheet) {
+  const charts = sheet.getCharts();
+  for (let i = 0; i < charts.length; i++) {
+    sheet.removeChart(charts[i]);
+  }
+}
+
+/**
+ * Inserts the four canonical dashboard charts. Idempotent — safely re-runnable.
+ *
+ * Chart inventory + anchors:
+ *   1. Combo  (Monthly comparison)        → engine!A1:D13   anchored at B11
+ *   2. Waterfall (Cash flow)              → engine!F1:G7    anchored at N11
+ *   3. Pie / Doughnut (Income sources)    → engine!I1:J9    anchored at B29
+ *   4. Pie / Doughnut (Expense categories)→ engine!L1:M13   anchored at H29
+ *
+ * Every chart gets:
+ *   • backgroundColor + chartArea.backgroundColor = T.bgPageAlt (#111827)
+ *     so the chart blends seamlessly into the dashboard's dark surface
+ *   • title text in soft-gold (T.accentGold) — consistent with the card titles
+ *   • axis text in T.fgPrimary, gridlines in T.gridline (#334155)
+ *   • legend at the bottom with light-primary text
+ *   • a tuned chartArea inset so the labels and legend never collide
+ */
+function insertDashboardCharts(ss) {
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!dash || !engine) return;
+
+  // Idempotency: drop any pre-existing charts first.
+  removeExistingCharts(dash);
+
+  const PAGE_BG     = T.bgPageAlt;      // chart background = page background
+  const TITLE_STYLE = { color: T.accentGold, fontSize: 13, bold: true };
+  const TEXT_STYLE  = { color: T.fgPrimary, fontSize: 11 };
+  const MUTED_STYLE = { color: T.fgMuted,   fontSize: 10 };
+  const LEGEND      = { position: 'bottom', alignment: 'center', textStyle: TEXT_STYLE };
+  const HAXIS       = { textStyle: TEXT_STYLE, gridlines: { color: T.gridline, count: 0 }, baselineColor: T.gridline };
+  const VAXIS       = { textStyle: TEXT_STYLE, gridlines: { color: T.gridline },           baselineColor: T.gridline };
+
+  // ------------------------------------------------------------------
+  // REFINEMENT v1.6 (PR #23) — modern, responsive chartArea geometry.
+  // Google Charts deprecated `chartArea.bottom` and `chartArea.right` in
+  // 2024. The replacement idiom is to size the plot region with the
+  // explicit `width` + `height` keys, anchored from `top` + `left`.
+  // Percentages (rather than fixed pixels) keep the chart responsive if
+  // the user resizes the embedded element later. The PAGE_BG fill keeps
+  // the dark fintech aesthetic (#111827) intact across every chart.
+  // ------------------------------------------------------------------
+  // Wide rectangular charts (Combo, Waterfall) carry their legend at the
+  // bottom + an X-axis tick row, so the plot region needs more vertical
+  // breathing room beneath it (1 - 16% top - 64% height = 20% bottom).
+  const CHART_AREA_WIDE = {
+    backgroundColor: PAGE_BG,
+    left: '8%', top: '16%', width: '88%', height: '64%',
+  };
+  // Doughnuts carry their legend on the right. Width is intentionally
+  // capped at 62% so the right ~34% of the chart frame is reserved for
+  // the legend without it overlapping the slice ring.
+  const CHART_AREA_DOUGHNUT = {
+    backgroundColor: PAGE_BG,
+    left: '4%', top: '15%', width: '62%', height: '70%',
+  };
+
+  // ---- Chart 1: Combo (Monthly comparison) anchored at B11 ----
+  // B/C → vertical bars (income green, expense red); D → line (cyan accentNet).
+  // groupWidth at 70% gives the column pair a balanced, breathable gap that
+  // matches the "clean Fintech" reference look.
+  const combo = dash.newChart()
+    .setChartType(Charts.ChartType.COMBO)
+    .addRange(engine.getRange('A1:D13'))
+    .setPosition(11, 2, 0, 0)               // row 11, col 2 (= B11)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('title',          'المقارنة الشهرية - الدخل والمصروف وصافي الربح')
+    .setOption('titleTextStyle', TITLE_STYLE)
+    .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
+    .setOption('chartArea',      CHART_AREA_WIDE)
+    .setOption('legend',         LEGEND)
+    .setOption('hAxis',          HAXIS)
+    .setOption('vAxis',          VAXIS)
+    .setOption('series', {
+      0: { type: 'bars', color: T.accentIncome,  labelInLegend: 'الدخل الفعلي' },
+      1: { type: 'bars', color: T.accentExpense, labelInLegend: 'المصروف الفعلي' },
+      2: { type: 'line', color: T.accentNet,     lineWidth: 3, pointSize: 5,
+           pointShape: 'circle', labelInLegend: 'صافي الربح' },
+    })
+    .setOption('bar',    { groupWidth: '70%' })
+    .setOption('width',  720)
+    .setOption('height', 320)
+    .build();
+  dash.insertChart(combo);
+
+  // ---- Chart 2: Waterfall (Cash flow) anchored at N11 ----
+  // The engine waterfall block is F1:G7. Apps Script supports
+  // Charts.ChartType.WATERFALL natively; we surface it with the same dark
+  // canvas + light text treatment.
+  const waterfall = dash.newChart()
+    .setChartType(Charts.ChartType.WATERFALL)
+    .addRange(engine.getRange('F1:G7'))
+    .setPosition(11, 14, 0, 0)              // row 11, col 14 (= N11)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('title',          'تدفّق النقد - من إجمالي الدخل إلى صافي الربح')
+    .setOption('titleTextStyle', TITLE_STYLE)
+    .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
+    .setOption('chartArea',      CHART_AREA_WIDE)
+    .setOption('legend',         { position: 'none' })
+    .setOption('hAxis',          HAXIS)
+    .setOption('vAxis',          VAXIS)
+    // Waterfall semantic colors: rising = income green, falling = expense red,
+    // total = net cyan. Connector lines mute to slate so they don't compete.
+    .setOption('bar',            { groupWidth: '70%' })
+    .setOption('series',         { 0: { color: T.accentNet } })
+    .setOption('connectorLineStyle', { color: T.gridline, strokeWidth: 1 })
+    .setOption('width',  720)
+    .setOption('height', 320)
+    .build();
+  dash.insertChart(waterfall);
+
+  // ---- Chart 3: Doughnut (Income sources) anchored at B29 ----
+  // pieHole 0.55 gives a modern banking-app doughnut. Slice colors come from
+  // the curated 12-shade DASH_CHART_PALETTE so every slice reads clearly
+  // against the dark canvas — no washed-out pastels.
+  const incomeSlices = {};
+  for (let i = 0; i < DASH_CHART_PALETTE.length; i++) {
+    incomeSlices[i] = { color: DASH_CHART_PALETTE[i] };
+  }
+  const incomeDoughnut = dash.newChart()
+    .setChartType(Charts.ChartType.PIE)
+    .addRange(engine.getRange('I1:J9'))
+    .setPosition(29, 2, 0, 0)               // row 29, col 2 (= B29)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('title',          'مصادر الدخل')
+    .setOption('titleTextStyle', TITLE_STYLE)
+    .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
+    .setOption('chartArea',      CHART_AREA_DOUGHNUT)
+    .setOption('legend',         { position: 'right', textStyle: TEXT_STYLE })
+    .setOption('pieHole',        0.55)
+    .setOption('pieSliceText',   'percentage')
+    .setOption('pieSliceTextStyle', { color: '#FFFFFF', fontSize: 11, bold: true })
+    .setOption('pieSliceBorderColor', PAGE_BG)   // slice "gaps" match the canvas
+    .setOption('slices',         incomeSlices)
+    .setOption('width',  360)
+    .setOption('height', 320)
+    .build();
+  dash.insertChart(incomeDoughnut);
+
+  // ---- Chart 4: Doughnut (Expense categories) anchored at H29 ----
+  // Same vibrant palette, but rotated by 1 so the income and expense
+  // doughnuts don't both lead with cyan. This makes the two charts read as
+  // a complementary pair when scanned side-by-side.
+  const expenseSlices = {};
+  for (let i = 0; i < DASH_CHART_PALETTE.length; i++) {
+    expenseSlices[i] = { color: DASH_CHART_PALETTE[(i + 1) % DASH_CHART_PALETTE.length] };
+  }
+  const expenseDoughnut = dash.newChart()
+    .setChartType(Charts.ChartType.PIE)
+    .addRange(engine.getRange('L1:M13'))
+    .setPosition(29, 8, 0, 0)               // row 29, col 8 (= H29)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('title',          'توزيع المصروفات')
+    .setOption('titleTextStyle', TITLE_STYLE)
+    .setOption('backgroundColor', { fill: PAGE_BG, stroke: PAGE_BG })
+    .setOption('chartArea',      CHART_AREA_DOUGHNUT)
+    .setOption('legend',         { position: 'right', textStyle: TEXT_STYLE })
+    .setOption('pieHole',        0.55)
+    .setOption('pieSliceText',   'percentage')
+    .setOption('pieSliceTextStyle', { color: '#FFFFFF', fontSize: 11, bold: true })
+    .setOption('pieSliceBorderColor', PAGE_BG)
+    .setOption('slices',         expenseSlices)
+    .setOption('width',  360)
+    .setOption('height', 320)
+    .build();
+  dash.insertChart(expenseDoughnut);
+}
+
+// ============================================================================
 // PHASE 5: WELCOME / ONBOARDING SHEET
+// ----------------------------------------------------------------------------
+// REFINEMENT v1.4 (PR #21) — Premium Fintech-SaaS landing experience.
+//
+// The welcome tab is the user's first impression of the workbook, so it is
+// designed end-to-end as a landing page rather than a documentation dump:
+//
+//   • Dark fintech canvas (#0F172A) with hidden gridlines so every visual
+//     boundary comes from cards we paint explicitly — never from native grid.
+//   • Cairo typography across every cell (headlines, body, CTAs, footer)
+//     for a luxurious, modern, highly legible Arabic experience.
+//   • Strict typographic hierarchy: 32pt gold hero headline → 14pt subtitle →
+//     16pt card titles → 11pt body → 9pt technical line.
+//   • Two high-contrast hyperlink CTAs (Dashboard + Settings) with thick
+//     accent-gold borders — these are the page's primary actions.
+//   • Three Quick-Start cards with colored top stripes (cyan → green → gold)
+//     each ending in a hyperlink to the relevant sheet.
+//   • Footer with NO LABELS: the developer signature, a clickable mailto,
+//     and a single italic design-philosophy quote — nothing else.
+//
+// Engineering integrity: zero engine.gs changes, zero edits to any rng_*
+// named range, zero edits to dashboard / monthly / goals / settings logic.
+// This rewrite touches only the welcome sheet + the install entry-point's
+// active-cell line + the install success alert text.
 // ============================================================================
 function buildWelcome(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.welcome);
 
-  // Page background and increase row heights
-  s.getRange(1, 1, 40, 16).setBackground(T.bgPage).setFontColor(T.fgPrimary);
-  for (let i = 1; i <= 40; i++) s.setRowHeight(i, 24);
-  for (let i = 2; i <= 4; i++) s.setRowHeight(i, 60);
+  // ---- 1) Wipe + reset (idempotent) ------------------------------------
+  // s.clear() removes values, formats, AND merges. Re-running install or
+  // repair on an existing workbook produces the exact same final layout.
+  s.clear();
+  s.setConditionalFormatRules([]);
+  s.setHiddenGridlines(true);
+  s.setRightToLeft(true);
 
-  // Hero header
-  const hero = s.getRange('B2:O4');
-  hero.merge();
-  hero.setValue('نظام ميزان المالي الذكي\nBUDGET CALCULATOR 2026')
-    .setBackground(T.bgCard).setFontColor(T.fgPrimary)
-    .setFontSize(20).setFontWeight('bold')
-    .setHorizontalAlignment('center').setVerticalAlignment('middle')
-    .setWrap(true);
+  const CAIRO = 'Cairo';
+  const NCOLS = 18;            // working canvas: cols A..R (A and R = margins)
+  const NROWS = 40;
 
-  // Tagline
-  mergeAndStyle(s, 'B6:O9',
-    'نظام ميزان المالي الذكي قالب فنتك عربي احترافي مبني على Google Sheets، يجمع محرّك عملات متعدّد، 12 ورقة شهريّة بمحرّك تنبيهات ذكي، نظام أهداف وادّخار مع توصيات آليّة، ولوحة معلومات فاخرة بوضع داكن وتحليلات سنويّة.',
-    { bg: T.bgPage, fg: T.fgMuted, size: 13, align: 'center', wrap: true });
+  // ---- 2) Page background — deep slate fintech canvas + Cairo default --
+  const pageRange = s.getRange(1, 1, NROWS, NCOLS);
+  pageRange.setBackground(T.bgPage)
+           .setFontColor(T.fgPrimary)
+           .setFontFamily(CAIRO);
 
-  // Quick start cards (3 columns of 5 each)
-  const cards = [
-    { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
-    { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
+  // ---- 3) Column widths ------------------------------------------------
+  // 16-column content band (B..Q used as 8 + 8 for CTAs and 5 + 5 + 5 for
+  // Quick-Start cards via spacer columns G & M; col R sits as right margin).
+  s.setColumnWidth(1, 30);                                      // A: left margin
+  for (let c = 2; c <= 17; c++) s.setColumnWidth(c, 92);        // B..Q content
+  s.setColumnWidth(18, 30);                                     // R: right margin
+
+  // ---- 4) Row heights — generous to let Cairo breathe ------------------
+  for (let r = 1; r <= NROWS; r++) s.setRowHeight(r, 22);
+  s.setRowHeight(1, 30);                                        // top breathing
+  // Hero band (rows 2-9)
+  s.setRowHeight(2, 18);
+  s.setRowHeight(3, 30);                                        // brand badge
+  s.setRowHeight(4, 56);                                        // huge headline
+  s.setRowHeight(5, 16);                                        // gap
+  s.setRowHeight(6, 28); s.setRowHeight(7, 28);                 // subtitle (2 lines)
+  s.setRowHeight(8, 16); s.setRowHeight(9, 18);                 // bottom padding
+  // CTA band (rows 11-12)
+  s.setRowHeight(10, 22);                                       // gap
+  s.setRowHeight(11, 18);                                       // gap
+  s.setRowHeight(12, 56);                                       // <-- CTA buttons
+  // Quick-Start label (row 14)
+  s.setRowHeight(13, 28);
+  s.setRowHeight(14, 32);
+  s.setRowHeight(15, 14);
+  // Quick-Start cards (rows 16-29) — 14 rows tall
+  s.setRowHeight(16, 8);                                        // top accent stripe
+  s.setRowHeight(17, 36); s.setRowHeight(18, 24);               // big number
+  s.setRowHeight(19, 12);
+  s.setRowHeight(20, 28); s.setRowHeight(21, 18);               // title (2 lines)
+  s.setRowHeight(22, 12);
+  s.setRowHeight(23, 22); s.setRowHeight(24, 22);
+  s.setRowHeight(25, 22); s.setRowHeight(26, 22);               // body (4 lines)
+  s.setRowHeight(27, 14);
+  s.setRowHeight(28, 30);                                       // hyperlink
+  s.setRowHeight(29, 14);                                       // card bottom padding
+  // Footer (rows 31-38)
+  s.setRowHeight(30, 32);                                       // section gap
+  s.setRowHeight(31, 22);
+  s.setRowHeight(32, 16);                                       // gold divider
+  s.setRowHeight(33, 56);                                       // signature
+  s.setRowHeight(34, 26);                                       // email
+  s.setRowHeight(35, 18);                                       // gap
+  s.setRowHeight(36, 30);                                       // quote
+  s.setRowHeight(37, 18);                                       // gap
+  s.setRowHeight(38, 22);                                       // version line
+
+  // ====================================================================
+  // SECTION 1 — HERO CARD (B2:R9)
+  // The page's anchor: a single elevated card carrying the product name,
+  // the brand line, and the value proposition. Gold thick border wraps
+  // it for maximum prominence; Cairo typography for the Arabic text.
+  // ====================================================================
+  const hero = s.getRange('B2:R9');
+  hero.setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontFamily(CAIRO);
+  hero.setBorder(
+    true, true, true, true, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID_THICK);
+
+  // Brand badge (small caps line on top)
+  mergeAndStyle(s, 'B3:R3', 'BUDGET CALCULATOR · 2026',
+    { bg: T.bgCard, fg: T.fgMuted, size: 11, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Hero headline — huge, bold, gold, centered
+  mergeAndStyle(s, 'B4:R4', 'نظام ميزان المالي الذكي',
+    { bg: T.bgCard, fg: T.accentGold, size: 32, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Hero subtitle — clean, medium-weight Arabic body
+  mergeAndStyle(s, 'B6:R7',
+    'منصّة عربيّة احترافيّة لإدارة الميزانية الشخصيّة، مصمَّمة بالكامل داخل Google Sheets.\n' +
+    'تجمع بين دقّة الحسابات الماليّة وجماليّة لوحات Fintech الحديثة.',
+    { bg: T.bgCard, fg: T.fgPrimary, size: 14,
+      align: 'center', vAlign: 'middle', wrap: true, fontFamily: CAIRO });
+
+  // ====================================================================
+  // SECTION 2 — CTA BUTTONS (row 12)
+  // Two side-by-side hyperlink buttons with thick accent-gold borders.
+  // Primary: Dashboard. Secondary: Settings. Clicking either jumps to the
+  // matching sheet via the #gid= URL anchor — Sheets honors this internally.
+  // ====================================================================
+  const dashSheet     = ss.getSheetByName(SHEET_NAMES.dashboard);
+  const settingsSheet = ss.getSheetByName(SHEET_NAMES.settings);
+
+  // Primary CTA — Dashboard (B12:I12)
+  if (dashSheet) {
+    const gid = dashSheet.getSheetId();
+    const btn = s.getRange('B12:I12');
+    btn.merge();
+    btn.setBackground(T.bgCard);
+    btn.setBorder(
+      true, true, true, true, false, false,
+      T.accentGold, SpreadsheetApp.BorderStyle.SOLID_THICK);
+    btn.setFormula(`=HYPERLINK("#gid=${gid}", "📊  افتح اللوحة الرئيسيّة")`)
+       .setFontColor(T.accentGold).setFontWeight('bold').setFontSize(15)
+       .setFontFamily(CAIRO).setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  }
+
+  // Secondary CTA — Settings (K12:R12)
+  if (settingsSheet) {
+    const gid = settingsSheet.getSheetId();
+    const btn = s.getRange('K12:R12');
+    btn.merge();
+    btn.setBackground(T.bgCard);
+    btn.setBorder(
+      true, true, true, true, false, false,
+      T.accentGold, SpreadsheetApp.BorderStyle.SOLID_THICK);
+    btn.setFormula(`=HYPERLINK("#gid=${gid}", "⚙  افتح ورقة الإعدادات")`)
+       .setFontColor(T.accentGold).setFontWeight('bold').setFontSize(15)
+       .setFontFamily(CAIRO).setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  }
+
+  // ====================================================================
+  // SECTION 3 — Quick-Start label (row 14)
+  // ====================================================================
+  mergeAndStyle(s, 'B14:R14', '— البداية السريعة —',
+    { bg: T.bgPage, fg: T.fgMuted, size: 12, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // ====================================================================
+  // SECTION 4 — Three Quick-Start cards (rows 16-29)
+  // Each card is 5 cols wide × 14 rows tall:
+  //   • Top accent stripe (1 row, distinct color per card)
+  //   • Step number (huge, accent color)
+  //   • Step title (bold, primary)
+  //   • Step body (muted, wrap, 4 lines)
+  //   • Hyperlink (bottom)
+  // Cards are split by 1-col spacers (G and M) for visual breathing room.
+  // ====================================================================
+  const steps = [
+    {
+      num: '01',
+      title: 'اضبط الإعدادات أوّلاً',
+      body: 'ابدأ من ورقة "الإعدادات وأسعار الصرف": اختر العملة الرئيسيّة من خلية B3، حدِّث أسعار الصرف اليدوية في العمود C عند الحاجة، ثمّ راجع قوائم الفئات وطرق الدفع. يربط القالب هذه القيم تلقائياً عبر النطاقات المُسمّاة rng_* فتنعكس على الأوراق الـ12 الشهريّة.',
+      link: '⚙  افتح الإعدادات',
+      target: SHEET_NAMES.settings,
+      accent: T.accentNet,
+    },
+    {
+      num: '02',
+      title: 'سجِّل حركاتك الشهريّة',
+      body: 'انتقل إلى ورقة الشهر الحالي وأدخل الدخل في النطاق A10:H28 (مع عمود "المداخيل" الجديد للمدخولات الإضافيّة)، والمصاريف في A33:G62. الفئة وطريقة الدفع منسدلتان من الإعدادات، ومحرّك التنبيهات يُلوِّن الصفوف الحرجة آنيّاً قبل أيّ تجاوز للميزانية.',
+      link: '📅  افتح ورقة يناير',
+      target: 'يناير',
+      accent: T.accentIncome,
+    },
+    {
+      num: '03',
+      title: 'راقب أداءك من اللوحة الرئيسيّة',
+      body: 'بعد تراكم بيانات شهرَين أو أكثر، افتح "اللوحة الرئيسيّة والتقرير السنوي" لتجد ست بطاقات KPI سنويّة، ومخطّط مقارنة شهريّ، وتدفّق نقدي على شكل Waterfall، ومخطّطَي دونات لمصادر الدخل والمصاريف، إضافة إلى مقياس الصحّة الماليّة المركّب.',
+      link: '📊  افتح اللوحة الرئيسيّة',
+      target: SHEET_NAMES.dashboard,
+      accent: T.accentGold,
+    },
   ];
 
-  const cardCols = [['B', 'F'], ['G', 'K'], ['L', 'P']];
-  for (let i = 0; i < cards.length; i++) {
-    const c = cards[i];
-    const [colStart, colEnd] = cardCols[i];
-    paintCard(s, `${colStart}11:${colEnd}23`);
-    // Top accent border (Apps Script doesn't expose top-only-border with custom width well, so use a narrow row)
-    s.getRange(`${colStart}11:${colEnd}11`).setBackground(c.accent);
-    mergeAndStyle(s, `${colStart}12:${colEnd}13`, c.id,
-      { bg: T.bgCard, fg: c.accent, size: 30, bold: true, align: 'right' });
-    mergeAndStyle(s, `${colStart}14:${colEnd}15`, c.title,
-      { bg: T.bgCard, fg: T.fgPrimary, size: 16, bold: true, align: 'right' });
-    mergeAndStyle(s, `${colStart}16:${colEnd}22`, c.body,
-      { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right', wrap: true });
-    // Hyperlink
-    const target = ss.getSheetByName(c.target);
+  // Card column anchors. Spacer cols G and M sit between them.
+  const cardCols = [
+    { startCol: 'B', endCol: 'F' },   // Card 1
+    { startCol: 'H', endCol: 'L' },   // Card 2
+    { startCol: 'N', endCol: 'R' },   // Card 3
+  ];
+
+  for (let i = 0; i < steps.length; i++) {
+    const step  = steps[i];
+    const cols  = cardCols[i];
+    const range = `${cols.startCol}16:${cols.endCol}29`;
+
+    // paintCard gives us the bgCard fill + thin slate border.
+    paintCard(s, range);
+
+    // Top accent stripe (row 16) — colored band that distinguishes each card
+    s.getRange(`${cols.startCol}16:${cols.endCol}16`).setBackground(step.accent);
+
+    // Step number (huge, accent color)
+    mergeAndStyle(s, `${cols.startCol}17:${cols.endCol}18`, step.num,
+      { bg: T.bgCard, fg: step.accent, size: 36, bold: true,
+        align: 'right', vAlign: 'middle', fontFamily: CAIRO });
+
+    // Step title
+    mergeAndStyle(s, `${cols.startCol}20:${cols.endCol}21`, step.title,
+      { bg: T.bgCard, fg: T.fgPrimary, size: 16, bold: true,
+        align: 'right', vAlign: 'middle', wrap: true, fontFamily: CAIRO });
+
+    // Step body
+    mergeAndStyle(s, `${cols.startCol}23:${cols.endCol}26`, step.body,
+      { bg: T.bgCard, fg: T.fgMuted, size: 11,
+        align: 'right', vAlign: 'top', wrap: true, fontFamily: CAIRO });
+
+    // Hyperlink at bottom
+    mergeAndStyle(s, `${cols.startCol}28:${cols.endCol}28`, '',
+      { bg: T.bgCard, align: 'right', vAlign: 'middle' });
+    const target = ss.getSheetByName(step.target);
     if (target) {
       const gid = target.getSheetId();
-      mergeAndStyle(s, `${colStart}23:${colEnd}23`, '', { bg: T.bgCard, align: 'right' });
-      s.getRange(`${colStart}23`).setFormula(`=HYPERLINK("#gid=${gid}", "${c.link}")`)
-        .setFontColor(T.accentIncome).setFontSize(11);
+      s.getRange(cols.startCol + '28')
+        .setFormula(`=HYPERLINK("#gid=${gid}", "${step.link}")`)
+        .setFontColor(step.accent).setFontWeight('bold').setFontSize(12)
+        .setFontFamily(CAIRO);
     }
   }
 
-  // Developer signature card
-  paintCard(s, 'B26:O29');
-  mergeAndStyle(s, 'B26:O27', '💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس',
-    { bg: T.bgCard, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
-  mergeAndStyle(s, 'B28:O29', '📩 للتواصل والدعم الفني: boulahdiddjamaleddine',
-    { bg: T.bgCard, fg: T.fgMuted, size: 12, align: 'center', vAlign: 'middle' });
+  // ====================================================================
+  // SECTION 5 — FOOTER (no labels — just the signature, contact, philosophy)
+  // ====================================================================
+  // Subtle gold divider above the footer block
+  s.getRange('B32:R32').setBorder(
+    true, false, false, false, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID);
 
-  // Footer
-  mergeAndStyle(s, 'B32:O32', 'الإصدار: 1.0.0 (Phase 6/13 - Apps Script Installer) - مايو 2026',
-    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
-  mergeAndStyle(s, 'B33:O33',
-    'قالب احترافي مفتوح للتخصيص. أسعار الصرف مؤشّرات إرشاديّة - يجب على المستخدم تحديثها قبل أيّ استخدام محاسبي فعلي.',
-    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
-  mergeAndStyle(s, 'B34:O34',
-    'Premium Arabic Fintech Template - All formulas built for Google Sheets compatibility (XLOOKUP, ARRAYFORMULA, IFS, QUERY, SPARKLINE).',
-    { bg: T.bgPage, fg: T.fgMuted, size: 9, align: 'center' });
+  // Signature line — bold, prominent, signature-style
+  mergeAndStyle(s, 'B33:R33', 'Boulahdid Djamal Eddine',
+    { bg: T.bgPage, fg: T.accentGold, size: 22, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Email — clickable mailto, clean and subtle
+  mergeAndStyle(s, 'B34:R34', '',
+    { bg: T.bgPage, align: 'center', vAlign: 'middle' });
+  s.getRange('B34').setFormula(
+    '=HYPERLINK("mailto:boulahdiddjamaleddine@gmail.com", "boulahdiddjamaleddine@gmail.com")'
+  ).setFontColor(T.fgMuted).setFontSize(12).setFontFamily(CAIRO)
+   .setHorizontalAlignment('center');
+
+  // Design-philosophy quote — italic, muted, centered
+  mergeAndStyle(s, 'B36:R36',
+    'صُمم هذا القالب ليدمج بين الأداء العالي وتجربة المستخدم المتميزة.',
+    { bg: T.bgPage, fg: T.fgMuted, size: 12, italic: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Discreet technical / version line at the very bottom
+  mergeAndStyle(s, 'B38:R38',
+    'الإصدار 1.4 · مايو 2026 · مبنيّ بالكامل على Google Sheets',
+    { bg: T.bgPage, fg: T.fgMuted, size: 9,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
 }
 
 // ============================================================================
@@ -1077,4 +1820,415 @@ function reorderTabs(ss) {
       ss.moveActiveSheet(i + 1); // 1-based position
     }
   }
+}
+
+
+// ============================================================================
+// MIGRATION UTILITIES (Refinement v1.5 — PR #22)
+// ----------------------------------------------------------------------------
+// Automated, schema-aware data migration from a legacy workbook into the
+// freshly-installed production workbook. This is the recommended way to
+// consolidate three different evolution-stage workbooks into one master.
+//
+// USAGE FLOW
+// ----------
+//   1. Merge PRs #18 → #19 → #20 → #21 to main so install.gs is canonical.
+//   2. Create a new Google Sheet ("BUDGET CALCULATOR 2026 — Production").
+//   3. Paste install.gs into Apps Script and run installBudgetCalculator2026.
+//   4. Pick the legacy workbook that holds your most-recent user data.
+//   5. From the function dropdown choose `_migrateFromLegacyWorkbook` and run.
+//   6. Paste the legacy workbook URL when prompted, confirm.
+//   7. Run `repairDashboard2026` once to ensure all formulas + charts are
+//      pristine after the data write.
+//
+// WHAT IT MIGRATES
+// ----------------
+//   • Monthly sheets (×12): user-entered income data + expense data + payment
+//     methods. Schema-aware: handles BOTH pre-#18 (7-column income block)
+//     and post-#18 (8-column with المداخيل) source workbooks. For pre-#18
+//     sources, the payment-method column is automatically shifted from G to
+//     the new H position; the new F column (المداخيل) is left empty for the
+//     user to backfill as needed.
+//
+//   • Goals sheet: rows 7–26 of A (goal name), B (cost), C (saved), and
+//     E (target date). Computed columns D, F, G, H, I are skipped — they
+//     recompute from formulas the installer wrote.
+//
+//   • Settings sheet: B3 (main currency choice) and C7:C20 (exchange rates).
+//     Currency value is validated against the new currency table; if not
+//     found the user is warned in the report.
+//
+// WHAT IT DOES NOT TOUCH
+// ----------------------
+//   • No formula cells (the income G10:G28 ARRAYFORMULA, the expense
+//     F33:F62 ARRAYFORMULA, the per-row H33:H62 alerts, every dashboard
+//     formula, every goals computed column).
+//   • No engine.gs logic, no rng_* named range, no validation, no protection,
+//     no conditional formatting, no chart.
+//   • No category lists or payment-method lists (if you've added custom
+//     entries in the legacy workbook, add them manually to the new
+//     Settings sheet at F7:F14, G7:G18, H7:H10 after migration).
+//
+// SECURITY / PERMISSIONS
+// ----------------------
+// SpreadsheetApp.openByUrl requires the "manage all of your spreadsheets"
+// scope. The first time you run this function Google will prompt you to
+// grant that authorization. The legacy workbook must be one you have
+// view-or-edit access to.
+//
+// IDEMPOTENCY
+// -----------
+// The function overwrites user-data cells in the target with values from
+// the legacy. Re-running it produces the same final state. It is safe to
+// re-run if the first attempt errored on one sheet — the report identifies
+// which sheets failed and the user can re-run after fixing.
+// ============================================================================
+function _migrateFromLegacyWorkbook(legacyUrl) {
+  const target = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  // --------------------------------------------------------------------
+  // 0) Pre-flight: confirm the TARGET is a post-#18 install.
+  // --------------------------------------------------------------------
+  // The migration assumes the target's monthly sheets carry the 8-column
+  // income block (with المداخيل at F). If the target was built from a
+  // pre-#18 install.gs, writing post-#18 source data would push payment
+  // methods into a non-validated column and clobber the old الفرق formula.
+  // We detect this up-front and refuse to run rather than corrupt data.
+  const targetSchema = _detectLegacySchema(target);
+  if (targetSchema.incomeCols !== 8) {
+    ui.alert(
+      'ورقة العمل الحالية ليست محدّثة',
+      'تتطلّب أداة الترحيل ورقة عمل مبنيّة من install.gs الإصدار 1.1+ ' +
+      '(مع عمود "المداخيل" في الأوراق الشهريّة). يبدو أنّ هذه الورقة ' +
+      'مبنيّة من إصدار أقدم.\n\n' +
+      'الحلّ: شغّل installBudgetCalculator2026 من نسخة install.gs ' +
+      'المُدمَجة (PR #18 + #19 + #20 + #21) في ورقة عمل جديدة، ' +
+      'ثمّ شغّل أداة الترحيل من هناك.',
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // --------------------------------------------------------------------
+  // 1) Acquire the legacy workbook URL.
+  // --------------------------------------------------------------------
+  let url = legacyUrl;
+  if (!url) {
+    const r = ui.prompt(
+      'ترحيل من ورقة عمل قديمة',
+      'الصق رابط (URL) ورقة العمل المصدر التي تحوي بياناتك السابقة:',
+      ui.ButtonSet.OK_CANCEL);
+    if (r.getSelectedButton() !== ui.Button.OK) return;
+    url = (r.getResponseText() || '').trim();
+  }
+  if (!url) {
+    ui.alert('عنوان URL مطلوب', 'يجب إدخال رابط ورقة العمل المصدر للمتابعة.', ui.ButtonSet.OK);
+    return;
+  }
+
+  // --------------------------------------------------------------------
+  // 2) Open the legacy workbook (with friendly error on permission/URL fail).
+  // --------------------------------------------------------------------
+  let legacy;
+  try {
+    legacy = SpreadsheetApp.openByUrl(url);
+  } catch (e) {
+    ui.alert(
+      'تعذّر فتح ورقة العمل القديمة',
+      'تأكّد من صحّة الرابط ومن أنّ لديك صلاحيّات الوصول إليه. ' +
+      'إذا ظهرت رسالة تفويض من Google عند أوّل تشغيل، اقبل الصلاحيّات ' +
+      'ثمّ أعد المحاولة.\n\nالخطأ التقني: ' + String(e),
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // --------------------------------------------------------------------
+  // 3) Detect legacy schema + show pre-flight confirmation.
+  // --------------------------------------------------------------------
+  const legacySchema = _detectLegacySchema(legacy);
+  const previewMsg =
+    'ورقة العمل المصدر: ' + legacy.getName() + '\n' +
+    'الإصدار المُكتشَف: ' + legacySchema.label + '\n' +
+    (legacySchema.incomeCols === 7
+      ? '(لا يحوي عمود المداخيل — سيُنقل عمود طريقة الدفع من G إلى H تلقائياً وسيُترك F فارغاً)\n\n'
+      : '(يحوي عمود المداخيل — سيُنقل بنفس البنية الجديدة)\n\n') +
+    'سيتم نسخ:\n' +
+    '  • بيانات المستخدم في 12 ورقة شهريّة (الدخل + المصاريف + طرق الدفع)\n' +
+    '  • أهداف الادخار من ورقة الأهداف (الاسم، التكلفة، المدخر، الموعد)\n' +
+    '  • العملة الرئيسيّة وأسعار الصرف من ورقة الإعدادات\n\n' +
+    'الصيغ، النطاقات المُسمّاة، التحقّقات، الحماية، والرسوم لن تتأثّر.\n' +
+    'أيّ بيانات يدويّة موجودة حاليّاً في ورقة العمل الهدف ستُستبدل.\n\n' +
+    'هل تريد المتابعة؟';
+
+  const confirm = ui.alert('تأكيد الترحيل', previewMsg, ui.ButtonSet.YES_NO);
+  if (confirm !== ui.Button.YES) return;
+
+  // --------------------------------------------------------------------
+  // 4) Run all migrations under one umbrella try/catch per surface so a
+  //    single bad sheet doesn't abort the whole job.
+  // --------------------------------------------------------------------
+  const report = {
+    monthly: [],
+    goals: 0,
+    settings: { currency: '', currencyOk: false, ratesUpdated: 0 },
+    warnings: [],
+    errors: [],
+  };
+
+  // ---- Monthly sheets ----
+  for (const month of MONTHS) {
+    try {
+      const src = legacy.getSheetByName(month);
+      const dst = target.getSheetByName(month);
+      if (!src) {
+        report.warnings.push('الورقة "' + month + '" غير موجودة في المصدر — تمّ تخطّيها');
+        continue;
+      }
+      if (!dst) {
+        report.errors.push('الورقة "' + month + '" غير موجودة في الهدف — شغّل installBudgetCalculator2026 أوّلاً');
+        continue;
+      }
+      const stats = _migrateMonthlySheet(src, dst, legacySchema);
+      report.monthly.push({ month: month, incomeRows: stats.incomeRows, expenseRows: stats.expenseRows });
+    } catch (e) {
+      report.errors.push('خطأ في ورقة "' + month + '": ' + String(e));
+    }
+  }
+
+  // ---- Goals ----
+  try {
+    const src = legacy.getSheetByName(SHEET_NAMES.goals);
+    const dst = target.getSheetByName(SHEET_NAMES.goals);
+    if (!src) {
+      report.warnings.push('ورقة الأهداف غير موجودة في المصدر — تمّ تخطّيها');
+    } else if (!dst) {
+      report.errors.push('ورقة الأهداف غير موجودة في الهدف');
+    } else {
+      report.goals = _migrateGoalsSheet(src, dst);
+    }
+  } catch (e) {
+    report.errors.push('خطأ في ورقة الأهداف: ' + String(e));
+  }
+
+  // ---- Settings ----
+  try {
+    const src = legacy.getSheetByName(SHEET_NAMES.settings);
+    const dst = target.getSheetByName(SHEET_NAMES.settings);
+    if (!src) {
+      report.warnings.push('ورقة الإعدادات غير موجودة في المصدر — تمّ تخطّيها');
+    } else if (!dst) {
+      report.errors.push('ورقة الإعدادات غير موجودة في الهدف');
+    } else {
+      const s = _migrateSettingsSheet(src, dst);
+      report.settings = s;
+      if (s.currency && !s.currencyOk) {
+        report.warnings.push(
+          'العملة الرئيسيّة "' + s.currency + '" غير موجودة في قائمة العملات الجديدة. ' +
+          'أضِفها يدوياً في الإعدادات (A7:A20) أو اختر بديلاً من القائمة المنسدلة في B3.');
+      }
+    }
+  } catch (e) {
+    report.errors.push('خطأ في ورقة الإعدادات: ' + String(e));
+  }
+
+  // --------------------------------------------------------------------
+  // 5) Flush + show report.
+  // --------------------------------------------------------------------
+  SpreadsheetApp.flush();
+  _showMigrationReport(ui, report, legacySchema);
+}
+
+// ============================================================================
+// _detectLegacySchema — reads row 9 of the first available monthly sheet to
+// classify the workbook as pre-#18 (7-col income) or post-#18 (8-col income
+// with المداخيل at F). Used both as a pre-flight check on the target AND to
+// drive the column-shift logic for the source.
+// ============================================================================
+function _detectLegacySchema(book) {
+  for (let i = 0; i < MONTHS.length; i++) {
+    const s = book.getSheetByName(MONTHS[i]);
+    if (!s) continue;
+    let headers;
+    try {
+      headers = s.getRange('A9:H9').getValues()[0];
+    } catch (e) {
+      continue;
+    }
+    // Post-#18 signature: F='المداخيل' OR H='طريقة الدفع'
+    if (headers[5] === 'المداخيل' || headers[7] === 'طريقة الدفع') {
+      return { version: 'post-#18', incomeCols: 8, label: 'الإصدار 1.1+ (مع عمود المداخيل)' };
+    }
+    // Pre-#18 signature: F='الفرق' OR G='طريقة الدفع'
+    if (headers[5] === 'الفرق' || headers[6] === 'طريقة الدفع') {
+      return { version: 'pre-#18', incomeCols: 7, label: 'الإصدار 1.0 (بدون عمود المداخيل)' };
+    }
+  }
+  // Conservative default: treat as pre-#18.
+  return { version: 'unknown', incomeCols: 7, label: 'غير معروف — سيُعامَل كإصدار 1.0' };
+}
+
+// ============================================================================
+// _migrateMonthlySheet — copies user data ranges from src into dst, shifting
+// the payment-method column when the source is pre-#18.
+//
+// Source ranges read (NEVER includes formula columns):
+//   pre-#18  (7-col):  A10:E28 (income data) + G10:G28 (income payment) +
+//                      A33:E62 (expense data) + G33:G62 (expense payment)
+//   post-#18 (8-col):  A10:F28 (income data + المداخيل) + H10:H28 (payment) +
+//                      A33:E62 (expense data) + G33:G62 (expense payment)
+//
+// Target writes (NEVER overlap formula columns G10:G28, F33:F62, H33:H62):
+//   A10:E28 or A10:F28 — income data (rows + المداخيل if present)
+//   H10:H28            — income payment method (always at H in target)
+//   A33:E62            — expense data
+//   G33:G62            — expense payment method
+// ============================================================================
+function _migrateMonthlySheet(src, dst, schema) {
+  if (schema.incomeCols === 7) {
+    // Pre-#18 source. Two reads + two writes for income (column shift),
+    // two reads + two writes for expense (1:1).
+    dst.getRange('A10:E28').setValues(src.getRange('A10:E28').getValues());
+    dst.getRange('H10:H28').setValues(src.getRange('G10:G28').getValues());
+  } else {
+    // Post-#18 source. Income block already in the new shape.
+    dst.getRange('A10:F28').setValues(src.getRange('A10:F28').getValues());
+    dst.getRange('H10:H28').setValues(src.getRange('H10:H28').getValues());
+  }
+
+  // Expense block — unchanged across all versions.
+  dst.getRange('A33:E62').setValues(src.getRange('A33:E62').getValues());
+  dst.getRange('G33:G62').setValues(src.getRange('G33:G62').getValues());
+
+  // Count populated rows for the report. We check column A (date) since a
+  // user always supplies a date when entering a transaction row.
+  const incomeCheck  = dst.getRange('A10:A28').getValues();
+  const expenseCheck = dst.getRange('A33:A62').getValues();
+  return {
+    incomeRows:  incomeCheck.filter(function (r) { return r[0] !== '' && r[0] !== null; }).length,
+    expenseRows: expenseCheck.filter(function (r) { return r[0] !== '' && r[0] !== null; }).length,
+  };
+}
+
+// ============================================================================
+// _migrateGoalsSheet — copies the user-entered cells of the goals table.
+// Layout is identical across all versions (the engine reads D2/B3/H7:H26/
+// G7:G26 — none of which we touch here).
+// ============================================================================
+function _migrateGoalsSheet(src, dst) {
+  // A:C is goal name + target cost + currently saved.
+  const abc = src.getRange('A7:C26').getValues();
+  // E is the target date. D, F, G, H, I are computed columns the installer
+  // already wrote — we never overwrite them.
+  const e = src.getRange('E7:E26').getValues();
+
+  dst.getRange('A7:C26').setValues(abc);
+  dst.getRange('E7:E26').setValues(e);
+
+  return abc.filter(function (r) { return r[0] !== '' && r[0] !== null; }).length;
+}
+
+// ============================================================================
+// _migrateSettingsSheet — copies the main currency choice (B3) and the
+// exchange-rates column (C7:C20). Categories/payment methods are NOT
+// migrated — if the user added custom entries, they should be re-added by
+// hand to F7:F14, G7:G18, H7:H10 of the new Settings sheet.
+// ============================================================================
+function _migrateSettingsSheet(src, dst) {
+  const out = { currency: '', currencyOk: false, ratesUpdated: 0 };
+
+  // B3 — main currency. Validate it exists in the new currency seed.
+  const mainCur = src.getRange('B3').getValue();
+  if (mainCur !== '' && mainCur !== null) {
+    out.currency = String(mainCur);
+    const codes = dst.getRange('A7:A20').getValues().map(function (r) { return r[0]; });
+    if (codes.indexOf(mainCur) >= 0) {
+      dst.getRange('B3').setValue(mainCur);
+      out.currencyOk = true;
+    }
+    // If not in the seed, we leave dst.B3 at its default (USD) and let the
+    // user see the migration-report warning. Forcing an unknown value would
+    // make B4/B5 (active format / active rate) collapse to #N/A.
+  }
+
+  // C7:C20 — only copy non-empty source values so we don't blank out the
+  // installer-seeded defaults for currencies the user never customized.
+  const srcRates = src.getRange('C7:C20').getValues();
+  for (let i = 0; i < 14; i++) {
+    if (srcRates[i][0] !== '' && srcRates[i][0] !== null) {
+      dst.getRange(7 + i, 3).setValue(srcRates[i][0]);
+      out.ratesUpdated++;
+    }
+  }
+
+  return out;
+}
+
+// ============================================================================
+// _showMigrationReport — assembles and displays the final summary dialog.
+// Called once at the very end of `_migrateFromLegacyWorkbook`. The report
+// breaks down per-month row counts, goals migrated, settings migrated, and
+// any warnings or errors that surfaced along the way.
+// ============================================================================
+function _showMigrationReport(ui, report, legacySchema) {
+  const lines = [];
+  lines.push('— ملخّص الترحيل —');
+  lines.push('الإصدار المصدر: ' + legacySchema.label);
+  lines.push('');
+
+  // Per-month detail.
+  lines.push('— الأوراق الشهريّة —');
+  let totalIncome = 0;
+  let totalExpense = 0;
+  for (let i = 0; i < report.monthly.length; i++) {
+    const m = report.monthly[i];
+    lines.push('  ' + m.month + ': ' + m.incomeRows + ' صف دخل + ' + m.expenseRows + ' صف مصاريف');
+    totalIncome += m.incomeRows;
+    totalExpense += m.expenseRows;
+  }
+  lines.push('  المجموع: ' + totalIncome + ' دخل، ' + totalExpense + ' مصاريف');
+  lines.push('');
+
+  // Goals.
+  lines.push('— الأهداف —');
+  lines.push('  ' + report.goals + ' هدف منقول');
+  lines.push('');
+
+  // Settings.
+  lines.push('— الإعدادات —');
+  let curLine;
+  if (!report.settings.currency) {
+    curLine = 'لم يتمّ نسخها';
+  } else if (report.settings.currencyOk) {
+    curLine = 'تمّ نسخها (' + report.settings.currency + ')';
+  } else {
+    curLine = '"' + report.settings.currency + '" غير موجودة في القائمة الجديدة — يلزم تعديل يدوي';
+  }
+  lines.push('  العملة الرئيسيّة: ' + curLine);
+  lines.push('  أسعار الصرف المنقولة: ' + report.settings.ratesUpdated + ' / 14');
+  lines.push('');
+
+  // Warnings.
+  if (report.warnings.length) {
+    lines.push('— تحذيرات —');
+    for (let i = 0; i < report.warnings.length; i++) {
+      lines.push('  ⚠ ' + report.warnings[i]);
+    }
+    lines.push('');
+  }
+
+  // Errors.
+  if (report.errors.length) {
+    lines.push('— أخطاء —');
+    for (let i = 0; i < report.errors.length; i++) {
+      lines.push('  ✗ ' + report.errors[i]);
+    }
+    lines.push('');
+  }
+
+  // Next steps.
+  lines.push('— الخطوة التالية —');
+  lines.push('شغّل repairDashboard2026 لإعادة حساب جميع الصيغ والرسوم بشكل نظيف،');
+  lines.push('ثمّ افتح اللوحة الرئيسيّة وتأكّد من ظهور البيانات في البطاقات والرسوم.');
+
+  ui.alert('اكتمل الترحيل', lines.join('\n'), ui.ButtonSet.OK);
 }
