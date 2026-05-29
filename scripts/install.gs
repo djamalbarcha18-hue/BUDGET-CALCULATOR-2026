@@ -1797,3 +1797,414 @@ function reorderTabs(ss) {
     }
   }
 }
+
+
+// ============================================================================
+// MIGRATION UTILITIES (Refinement v1.5 — PR #22)
+// ----------------------------------------------------------------------------
+// Automated, schema-aware data migration from a legacy workbook into the
+// freshly-installed production workbook. This is the recommended way to
+// consolidate three different evolution-stage workbooks into one master.
+//
+// USAGE FLOW
+// ----------
+//   1. Merge PRs #18 → #19 → #20 → #21 to main so install.gs is canonical.
+//   2. Create a new Google Sheet ("BUDGET CALCULATOR 2026 — Production").
+//   3. Paste install.gs into Apps Script and run installBudgetCalculator2026.
+//   4. Pick the legacy workbook that holds your most-recent user data.
+//   5. From the function dropdown choose `_migrateFromLegacyWorkbook` and run.
+//   6. Paste the legacy workbook URL when prompted, confirm.
+//   7. Run `repairDashboard2026` once to ensure all formulas + charts are
+//      pristine after the data write.
+//
+// WHAT IT MIGRATES
+// ----------------
+//   • Monthly sheets (×12): user-entered income data + expense data + payment
+//     methods. Schema-aware: handles BOTH pre-#18 (7-column income block)
+//     and post-#18 (8-column with المداخيل) source workbooks. For pre-#18
+//     sources, the payment-method column is automatically shifted from G to
+//     the new H position; the new F column (المداخيل) is left empty for the
+//     user to backfill as needed.
+//
+//   • Goals sheet: rows 7–26 of A (goal name), B (cost), C (saved), and
+//     E (target date). Computed columns D, F, G, H, I are skipped — they
+//     recompute from formulas the installer wrote.
+//
+//   • Settings sheet: B3 (main currency choice) and C7:C20 (exchange rates).
+//     Currency value is validated against the new currency table; if not
+//     found the user is warned in the report.
+//
+// WHAT IT DOES NOT TOUCH
+// ----------------------
+//   • No formula cells (the income G10:G28 ARRAYFORMULA, the expense
+//     F33:F62 ARRAYFORMULA, the per-row H33:H62 alerts, every dashboard
+//     formula, every goals computed column).
+//   • No engine.gs logic, no rng_* named range, no validation, no protection,
+//     no conditional formatting, no chart.
+//   • No category lists or payment-method lists (if you've added custom
+//     entries in the legacy workbook, add them manually to the new
+//     Settings sheet at F7:F14, G7:G18, H7:H10 after migration).
+//
+// SECURITY / PERMISSIONS
+// ----------------------
+// SpreadsheetApp.openByUrl requires the "manage all of your spreadsheets"
+// scope. The first time you run this function Google will prompt you to
+// grant that authorization. The legacy workbook must be one you have
+// view-or-edit access to.
+//
+// IDEMPOTENCY
+// -----------
+// The function overwrites user-data cells in the target with values from
+// the legacy. Re-running it produces the same final state. It is safe to
+// re-run if the first attempt errored on one sheet — the report identifies
+// which sheets failed and the user can re-run after fixing.
+// ============================================================================
+function _migrateFromLegacyWorkbook(legacyUrl) {
+  const target = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  // --------------------------------------------------------------------
+  // 0) Pre-flight: confirm the TARGET is a post-#18 install.
+  // --------------------------------------------------------------------
+  // The migration assumes the target's monthly sheets carry the 8-column
+  // income block (with المداخيل at F). If the target was built from a
+  // pre-#18 install.gs, writing post-#18 source data would push payment
+  // methods into a non-validated column and clobber the old الفرق formula.
+  // We detect this up-front and refuse to run rather than corrupt data.
+  const targetSchema = _detectLegacySchema(target);
+  if (targetSchema.incomeCols !== 8) {
+    ui.alert(
+      'ورقة العمل الحالية ليست محدّثة',
+      'تتطلّب أداة الترحيل ورقة عمل مبنيّة من install.gs الإصدار 1.1+ ' +
+      '(مع عمود "المداخيل" في الأوراق الشهريّة). يبدو أنّ هذه الورقة ' +
+      'مبنيّة من إصدار أقدم.\n\n' +
+      'الحلّ: شغّل installBudgetCalculator2026 من نسخة install.gs ' +
+      'المُدمَجة (PR #18 + #19 + #20 + #21) في ورقة عمل جديدة، ' +
+      'ثمّ شغّل أداة الترحيل من هناك.',
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // --------------------------------------------------------------------
+  // 1) Acquire the legacy workbook URL.
+  // --------------------------------------------------------------------
+  let url = legacyUrl;
+  if (!url) {
+    const r = ui.prompt(
+      'ترحيل من ورقة عمل قديمة',
+      'الصق رابط (URL) ورقة العمل المصدر التي تحوي بياناتك السابقة:',
+      ui.ButtonSet.OK_CANCEL);
+    if (r.getSelectedButton() !== ui.Button.OK) return;
+    url = (r.getResponseText() || '').trim();
+  }
+  if (!url) {
+    ui.alert('عنوان URL مطلوب', 'يجب إدخال رابط ورقة العمل المصدر للمتابعة.', ui.ButtonSet.OK);
+    return;
+  }
+
+  // --------------------------------------------------------------------
+  // 2) Open the legacy workbook (with friendly error on permission/URL fail).
+  // --------------------------------------------------------------------
+  let legacy;
+  try {
+    legacy = SpreadsheetApp.openByUrl(url);
+  } catch (e) {
+    ui.alert(
+      'تعذّر فتح ورقة العمل القديمة',
+      'تأكّد من صحّة الرابط ومن أنّ لديك صلاحيّات الوصول إليه. ' +
+      'إذا ظهرت رسالة تفويض من Google عند أوّل تشغيل، اقبل الصلاحيّات ' +
+      'ثمّ أعد المحاولة.\n\nالخطأ التقني: ' + String(e),
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // --------------------------------------------------------------------
+  // 3) Detect legacy schema + show pre-flight confirmation.
+  // --------------------------------------------------------------------
+  const legacySchema = _detectLegacySchema(legacy);
+  const previewMsg =
+    'ورقة العمل المصدر: ' + legacy.getName() + '\n' +
+    'الإصدار المُكتشَف: ' + legacySchema.label + '\n' +
+    (legacySchema.incomeCols === 7
+      ? '(لا يحوي عمود المداخيل — سيُنقل عمود طريقة الدفع من G إلى H تلقائياً وسيُترك F فارغاً)\n\n'
+      : '(يحوي عمود المداخيل — سيُنقل بنفس البنية الجديدة)\n\n') +
+    'سيتم نسخ:\n' +
+    '  • بيانات المستخدم في 12 ورقة شهريّة (الدخل + المصاريف + طرق الدفع)\n' +
+    '  • أهداف الادخار من ورقة الأهداف (الاسم، التكلفة، المدخر، الموعد)\n' +
+    '  • العملة الرئيسيّة وأسعار الصرف من ورقة الإعدادات\n\n' +
+    'الصيغ، النطاقات المُسمّاة، التحقّقات، الحماية، والرسوم لن تتأثّر.\n' +
+    'أيّ بيانات يدويّة موجودة حاليّاً في ورقة العمل الهدف ستُستبدل.\n\n' +
+    'هل تريد المتابعة؟';
+
+  const confirm = ui.alert('تأكيد الترحيل', previewMsg, ui.ButtonSet.YES_NO);
+  if (confirm !== ui.Button.YES) return;
+
+  // --------------------------------------------------------------------
+  // 4) Run all migrations under one umbrella try/catch per surface so a
+  //    single bad sheet doesn't abort the whole job.
+  // --------------------------------------------------------------------
+  const report = {
+    monthly: [],
+    goals: 0,
+    settings: { currency: '', currencyOk: false, ratesUpdated: 0 },
+    warnings: [],
+    errors: [],
+  };
+
+  // ---- Monthly sheets ----
+  for (const month of MONTHS) {
+    try {
+      const src = legacy.getSheetByName(month);
+      const dst = target.getSheetByName(month);
+      if (!src) {
+        report.warnings.push('الورقة "' + month + '" غير موجودة في المصدر — تمّ تخطّيها');
+        continue;
+      }
+      if (!dst) {
+        report.errors.push('الورقة "' + month + '" غير موجودة في الهدف — شغّل installBudgetCalculator2026 أوّلاً');
+        continue;
+      }
+      const stats = _migrateMonthlySheet(src, dst, legacySchema);
+      report.monthly.push({ month: month, incomeRows: stats.incomeRows, expenseRows: stats.expenseRows });
+    } catch (e) {
+      report.errors.push('خطأ في ورقة "' + month + '": ' + String(e));
+    }
+  }
+
+  // ---- Goals ----
+  try {
+    const src = legacy.getSheetByName(SHEET_NAMES.goals);
+    const dst = target.getSheetByName(SHEET_NAMES.goals);
+    if (!src) {
+      report.warnings.push('ورقة الأهداف غير موجودة في المصدر — تمّ تخطّيها');
+    } else if (!dst) {
+      report.errors.push('ورقة الأهداف غير موجودة في الهدف');
+    } else {
+      report.goals = _migrateGoalsSheet(src, dst);
+    }
+  } catch (e) {
+    report.errors.push('خطأ في ورقة الأهداف: ' + String(e));
+  }
+
+  // ---- Settings ----
+  try {
+    const src = legacy.getSheetByName(SHEET_NAMES.settings);
+    const dst = target.getSheetByName(SHEET_NAMES.settings);
+    if (!src) {
+      report.warnings.push('ورقة الإعدادات غير موجودة في المصدر — تمّ تخطّيها');
+    } else if (!dst) {
+      report.errors.push('ورقة الإعدادات غير موجودة في الهدف');
+    } else {
+      const s = _migrateSettingsSheet(src, dst);
+      report.settings = s;
+      if (s.currency && !s.currencyOk) {
+        report.warnings.push(
+          'العملة الرئيسيّة "' + s.currency + '" غير موجودة في قائمة العملات الجديدة. ' +
+          'أضِفها يدوياً في الإعدادات (A7:A20) أو اختر بديلاً من القائمة المنسدلة في B3.');
+      }
+    }
+  } catch (e) {
+    report.errors.push('خطأ في ورقة الإعدادات: ' + String(e));
+  }
+
+  // --------------------------------------------------------------------
+  // 5) Flush + show report.
+  // --------------------------------------------------------------------
+  SpreadsheetApp.flush();
+  _showMigrationReport(ui, report, legacySchema);
+}
+
+// ============================================================================
+// _detectLegacySchema — reads row 9 of the first available monthly sheet to
+// classify the workbook as pre-#18 (7-col income) or post-#18 (8-col income
+// with المداخيل at F). Used both as a pre-flight check on the target AND to
+// drive the column-shift logic for the source.
+// ============================================================================
+function _detectLegacySchema(book) {
+  for (let i = 0; i < MONTHS.length; i++) {
+    const s = book.getSheetByName(MONTHS[i]);
+    if (!s) continue;
+    let headers;
+    try {
+      headers = s.getRange('A9:H9').getValues()[0];
+    } catch (e) {
+      continue;
+    }
+    // Post-#18 signature: F='المداخيل' OR H='طريقة الدفع'
+    if (headers[5] === 'المداخيل' || headers[7] === 'طريقة الدفع') {
+      return { version: 'post-#18', incomeCols: 8, label: 'الإصدار 1.1+ (مع عمود المداخيل)' };
+    }
+    // Pre-#18 signature: F='الفرق' OR G='طريقة الدفع'
+    if (headers[5] === 'الفرق' || headers[6] === 'طريقة الدفع') {
+      return { version: 'pre-#18', incomeCols: 7, label: 'الإصدار 1.0 (بدون عمود المداخيل)' };
+    }
+  }
+  // Conservative default: treat as pre-#18.
+  return { version: 'unknown', incomeCols: 7, label: 'غير معروف — سيُعامَل كإصدار 1.0' };
+}
+
+// ============================================================================
+// _migrateMonthlySheet — copies user data ranges from src into dst, shifting
+// the payment-method column when the source is pre-#18.
+//
+// Source ranges read (NEVER includes formula columns):
+//   pre-#18  (7-col):  A10:E28 (income data) + G10:G28 (income payment) +
+//                      A33:E62 (expense data) + G33:G62 (expense payment)
+//   post-#18 (8-col):  A10:F28 (income data + المداخيل) + H10:H28 (payment) +
+//                      A33:E62 (expense data) + G33:G62 (expense payment)
+//
+// Target writes (NEVER overlap formula columns G10:G28, F33:F62, H33:H62):
+//   A10:E28 or A10:F28 — income data (rows + المداخيل if present)
+//   H10:H28            — income payment method (always at H in target)
+//   A33:E62            — expense data
+//   G33:G62            — expense payment method
+// ============================================================================
+function _migrateMonthlySheet(src, dst, schema) {
+  if (schema.incomeCols === 7) {
+    // Pre-#18 source. Two reads + two writes for income (column shift),
+    // two reads + two writes for expense (1:1).
+    dst.getRange('A10:E28').setValues(src.getRange('A10:E28').getValues());
+    dst.getRange('H10:H28').setValues(src.getRange('G10:G28').getValues());
+  } else {
+    // Post-#18 source. Income block already in the new shape.
+    dst.getRange('A10:F28').setValues(src.getRange('A10:F28').getValues());
+    dst.getRange('H10:H28').setValues(src.getRange('H10:H28').getValues());
+  }
+
+  // Expense block — unchanged across all versions.
+  dst.getRange('A33:E62').setValues(src.getRange('A33:E62').getValues());
+  dst.getRange('G33:G62').setValues(src.getRange('G33:G62').getValues());
+
+  // Count populated rows for the report. We check column A (date) since a
+  // user always supplies a date when entering a transaction row.
+  const incomeCheck  = dst.getRange('A10:A28').getValues();
+  const expenseCheck = dst.getRange('A33:A62').getValues();
+  return {
+    incomeRows:  incomeCheck.filter(function (r) { return r[0] !== '' && r[0] !== null; }).length,
+    expenseRows: expenseCheck.filter(function (r) { return r[0] !== '' && r[0] !== null; }).length,
+  };
+}
+
+// ============================================================================
+// _migrateGoalsSheet — copies the user-entered cells of the goals table.
+// Layout is identical across all versions (the engine reads D2/B3/H7:H26/
+// G7:G26 — none of which we touch here).
+// ============================================================================
+function _migrateGoalsSheet(src, dst) {
+  // A:C is goal name + target cost + currently saved.
+  const abc = src.getRange('A7:C26').getValues();
+  // E is the target date. D, F, G, H, I are computed columns the installer
+  // already wrote — we never overwrite them.
+  const e = src.getRange('E7:E26').getValues();
+
+  dst.getRange('A7:C26').setValues(abc);
+  dst.getRange('E7:E26').setValues(e);
+
+  return abc.filter(function (r) { return r[0] !== '' && r[0] !== null; }).length;
+}
+
+// ============================================================================
+// _migrateSettingsSheet — copies the main currency choice (B3) and the
+// exchange-rates column (C7:C20). Categories/payment methods are NOT
+// migrated — if the user added custom entries, they should be re-added by
+// hand to F7:F14, G7:G18, H7:H10 of the new Settings sheet.
+// ============================================================================
+function _migrateSettingsSheet(src, dst) {
+  const out = { currency: '', currencyOk: false, ratesUpdated: 0 };
+
+  // B3 — main currency. Validate it exists in the new currency seed.
+  const mainCur = src.getRange('B3').getValue();
+  if (mainCur !== '' && mainCur !== null) {
+    out.currency = String(mainCur);
+    const codes = dst.getRange('A7:A20').getValues().map(function (r) { return r[0]; });
+    if (codes.indexOf(mainCur) >= 0) {
+      dst.getRange('B3').setValue(mainCur);
+      out.currencyOk = true;
+    }
+    // If not in the seed, we leave dst.B3 at its default (USD) and let the
+    // user see the migration-report warning. Forcing an unknown value would
+    // make B4/B5 (active format / active rate) collapse to #N/A.
+  }
+
+  // C7:C20 — only copy non-empty source values so we don't blank out the
+  // installer-seeded defaults for currencies the user never customized.
+  const srcRates = src.getRange('C7:C20').getValues();
+  for (let i = 0; i < 14; i++) {
+    if (srcRates[i][0] !== '' && srcRates[i][0] !== null) {
+      dst.getRange(7 + i, 3).setValue(srcRates[i][0]);
+      out.ratesUpdated++;
+    }
+  }
+
+  return out;
+}
+
+// ============================================================================
+// _showMigrationReport — assembles and displays the final summary dialog.
+// Called once at the very end of `_migrateFromLegacyWorkbook`. The report
+// breaks down per-month row counts, goals migrated, settings migrated, and
+// any warnings or errors that surfaced along the way.
+// ============================================================================
+function _showMigrationReport(ui, report, legacySchema) {
+  const lines = [];
+  lines.push('— ملخّص الترحيل —');
+  lines.push('الإصدار المصدر: ' + legacySchema.label);
+  lines.push('');
+
+  // Per-month detail.
+  lines.push('— الأوراق الشهريّة —');
+  let totalIncome = 0;
+  let totalExpense = 0;
+  for (let i = 0; i < report.monthly.length; i++) {
+    const m = report.monthly[i];
+    lines.push('  ' + m.month + ': ' + m.incomeRows + ' صف دخل + ' + m.expenseRows + ' صف مصاريف');
+    totalIncome += m.incomeRows;
+    totalExpense += m.expenseRows;
+  }
+  lines.push('  المجموع: ' + totalIncome + ' دخل، ' + totalExpense + ' مصاريف');
+  lines.push('');
+
+  // Goals.
+  lines.push('— الأهداف —');
+  lines.push('  ' + report.goals + ' هدف منقول');
+  lines.push('');
+
+  // Settings.
+  lines.push('— الإعدادات —');
+  let curLine;
+  if (!report.settings.currency) {
+    curLine = 'لم يتمّ نسخها';
+  } else if (report.settings.currencyOk) {
+    curLine = 'تمّ نسخها (' + report.settings.currency + ')';
+  } else {
+    curLine = '"' + report.settings.currency + '" غير موجودة في القائمة الجديدة — يلزم تعديل يدوي';
+  }
+  lines.push('  العملة الرئيسيّة: ' + curLine);
+  lines.push('  أسعار الصرف المنقولة: ' + report.settings.ratesUpdated + ' / 14');
+  lines.push('');
+
+  // Warnings.
+  if (report.warnings.length) {
+    lines.push('— تحذيرات —');
+    for (let i = 0; i < report.warnings.length; i++) {
+      lines.push('  ⚠ ' + report.warnings[i]);
+    }
+    lines.push('');
+  }
+
+  // Errors.
+  if (report.errors.length) {
+    lines.push('— أخطاء —');
+    for (let i = 0; i < report.errors.length; i++) {
+      lines.push('  ✗ ' + report.errors[i]);
+    }
+    lines.push('');
+  }
+
+  // Next steps.
+  lines.push('— الخطوة التالية —');
+  lines.push('شغّل repairDashboard2026 لإعادة حساب جميع الصيغ والرسوم بشكل نظيف،');
+  lines.push('ثمّ افتح اللوحة الرئيسيّة وتأكّد من ظهور البيانات في البطاقات والرسوم.');
+
+  ui.alert('اكتمل الترحيل', lines.join('\n'), ui.ButtonSet.OK);
+}
