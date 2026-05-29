@@ -213,16 +213,20 @@ function installBudgetCalculator2026() {
   // Hide engine sheet last (after all references resolve).
   ss.getSheetByName(SHEET_NAMES.engine).hideSheet();
 
-  // Land the user on the welcome tab.
+  // REFINEMENT v1.4 (PR #21) — Land the user on the Welcome landing page
+  // with the active cell pinned at A1 so they open into a clean, framed
+  // view of the hero card, the two CTAs, and the Quick-Start trio.
+  // .activate() sets BOTH the active sheet and the active cell in one call.
   const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
-  ss.setActiveSheet(welcome);
+  welcome.getRange('A1').activate();
 
   ui.alert(
     'تم تركيب القالب بنجاح',
     'كل الأوراق والصيغ والنطاقات المُسماة جاهزة، والرسوم البيانية الأربعة على ' +
-    'اللوحة الرئيسية تمّ إدراجها وتنسيقها تلقائياً (مقارنة شهرية + تدفّق نقد + ' +
-    'دونات الدخل + دونات المصاريف) بألوان عالية التباين على خلفية #111827.\n\n' +
-    'يمكنك الآن البدء بإدخال البيانات الشهرية وستتحدّث جميع البطاقات والرسوم تلقائياً.',
+    'اللوحة الرئيسية تمّ إدراجها وتنسيقها تلقائياً.\n\n' +
+    'ستجد ورقة الترحيب مفتوحة الآن — اتّبع خطوات البداية السريعة بالترتيب: ' +
+    'اضبط الإعدادات أوّلاً، ثمّ سجِّل حركاتك في ورقة الشهر الحالي، ثمّ افتح ' +
+    'اللوحة الرئيسيّة لمتابعة أدائك. كل البطاقات والرسوم تتحدّث آنيّاً.',
     ui.ButtonSet.OK);
 }
 
@@ -388,6 +392,7 @@ function mergeAndStyle(s, a1, value, opts) {
     if (opts.vAlign)     r.setVerticalAlignment(opts.vAlign);
     if (opts.wrap)       r.setWrap(true);
     if (opts.fontFamily) r.setFontFamily(opts.fontFamily);
+    if (opts.italic)     r.setFontStyle('italic');
   }
   return r;
 }
@@ -1383,75 +1388,288 @@ function insertDashboardCharts(ss) {
 
 // ============================================================================
 // PHASE 5: WELCOME / ONBOARDING SHEET
+// ----------------------------------------------------------------------------
+// REFINEMENT v1.4 (PR #21) — Premium Fintech-SaaS landing experience.
+//
+// The welcome tab is the user's first impression of the workbook, so it is
+// designed end-to-end as a landing page rather than a documentation dump:
+//
+//   • Dark fintech canvas (#0F172A) with hidden gridlines so every visual
+//     boundary comes from cards we paint explicitly — never from native grid.
+//   • Cairo typography across every cell (headlines, body, CTAs, footer)
+//     for a luxurious, modern, highly legible Arabic experience.
+//   • Strict typographic hierarchy: 32pt gold hero headline → 14pt subtitle →
+//     16pt card titles → 11pt body → 9pt technical line.
+//   • Two high-contrast hyperlink CTAs (Dashboard + Settings) with thick
+//     accent-gold borders — these are the page's primary actions.
+//   • Three Quick-Start cards with colored top stripes (cyan → green → gold)
+//     each ending in a hyperlink to the relevant sheet.
+//   • Footer with NO LABELS: the developer signature, a clickable mailto,
+//     and a single italic design-philosophy quote — nothing else.
+//
+// Engineering integrity: zero engine.gs changes, zero edits to any rng_*
+// named range, zero edits to dashboard / monthly / goals / settings logic.
+// This rewrite touches only the welcome sheet + the install entry-point's
+// active-cell line + the install success alert text.
 // ============================================================================
 function buildWelcome(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.welcome);
 
-  // Page background and increase row heights
-  s.getRange(1, 1, 40, 16).setBackground(T.bgPage).setFontColor(T.fgPrimary);
-  for (let i = 1; i <= 40; i++) s.setRowHeight(i, 24);
-  for (let i = 2; i <= 4; i++) s.setRowHeight(i, 60);
+  // ---- 1) Wipe + reset (idempotent) ------------------------------------
+  // s.clear() removes values, formats, AND merges. Re-running install or
+  // repair on an existing workbook produces the exact same final layout.
+  s.clear();
+  s.setConditionalFormatRules([]);
+  s.setHiddenGridlines(true);
+  s.setRightToLeft(true);
 
-  // Hero header
-  const hero = s.getRange('B2:O4');
-  hero.merge();
-  hero.setValue('نظام ميزان المالي الذكي\nBUDGET CALCULATOR 2026')
-    .setBackground(T.bgCard).setFontColor(T.fgPrimary)
-    .setFontSize(20).setFontWeight('bold')
-    .setHorizontalAlignment('center').setVerticalAlignment('middle')
-    .setWrap(true);
+  const CAIRO = 'Cairo';
+  const NCOLS = 18;            // working canvas: cols A..R (A and R = margins)
+  const NROWS = 40;
 
-  // Tagline
-  mergeAndStyle(s, 'B6:O9',
-    'نظام ميزان المالي الذكي قالب فنتك عربي احترافي مبني على Google Sheets، يجمع محرّك عملات متعدّد، 12 ورقة شهريّة بمحرّك تنبيهات ذكي، نظام أهداف وادّخار مع توصيات آليّة، ولوحة معلومات فاخرة بوضع داكن وتحليلات سنويّة.',
-    { bg: T.bgPage, fg: T.fgMuted, size: 13, align: 'center', wrap: true });
+  // ---- 2) Page background — deep slate fintech canvas + Cairo default --
+  const pageRange = s.getRange(1, 1, NROWS, NCOLS);
+  pageRange.setBackground(T.bgPage)
+           .setFontColor(T.fgPrimary)
+           .setFontFamily(CAIRO);
 
-  // Quick start cards (3 columns of 5 each)
-  const cards = [
-    { id: '01', title: 'اضبط الإعدادات أوّلاً', body: 'افتح ورقة الإعدادات وأسعار الصرف، اختر العملة الرئيسيّة من B3، حدِّث أسعار الصرف، وراجع قوائم الفئات وطرق الدفع.', target: SHEET_NAMES.settings, accent: T.accentNet, link: '📘 افتح ورقة الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهريّة', body: 'انتقل لورقة الشهر الحالي وأدخل صفوف الدخل في A10:G28 وصفوف المصاريف في A33:G62. الفرق ومحرّك التنبيهات يُحسبان آلياً.', target: 'يناير', accent: T.accentIncome, link: '📅 افتح ورقة يناير' },
-    { id: '03', title: 'اقرأ اللوحة الرئيسيّة بأمان', body: 'بعد تراكم البيانات افتح ورقة اللوحة الرئيسيّة. ستجد ست بطاقات KPI وأربعة رسوم وسجلّ المعاملات. لا تُحرِّر الخلايا المحميّة.', target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 افتح اللوحة الرئيسيّة' },
+  // ---- 3) Column widths ------------------------------------------------
+  // 16-column content band (B..Q used as 8 + 8 for CTAs and 5 + 5 + 5 for
+  // Quick-Start cards via spacer columns G & M; col R sits as right margin).
+  s.setColumnWidth(1, 30);                                      // A: left margin
+  for (let c = 2; c <= 17; c++) s.setColumnWidth(c, 92);        // B..Q content
+  s.setColumnWidth(18, 30);                                     // R: right margin
+
+  // ---- 4) Row heights — generous to let Cairo breathe ------------------
+  for (let r = 1; r <= NROWS; r++) s.setRowHeight(r, 22);
+  s.setRowHeight(1, 30);                                        // top breathing
+  // Hero band (rows 2-9)
+  s.setRowHeight(2, 18);
+  s.setRowHeight(3, 30);                                        // brand badge
+  s.setRowHeight(4, 56);                                        // huge headline
+  s.setRowHeight(5, 16);                                        // gap
+  s.setRowHeight(6, 28); s.setRowHeight(7, 28);                 // subtitle (2 lines)
+  s.setRowHeight(8, 16); s.setRowHeight(9, 18);                 // bottom padding
+  // CTA band (rows 11-12)
+  s.setRowHeight(10, 22);                                       // gap
+  s.setRowHeight(11, 18);                                       // gap
+  s.setRowHeight(12, 56);                                       // <-- CTA buttons
+  // Quick-Start label (row 14)
+  s.setRowHeight(13, 28);
+  s.setRowHeight(14, 32);
+  s.setRowHeight(15, 14);
+  // Quick-Start cards (rows 16-29) — 14 rows tall
+  s.setRowHeight(16, 8);                                        // top accent stripe
+  s.setRowHeight(17, 36); s.setRowHeight(18, 24);               // big number
+  s.setRowHeight(19, 12);
+  s.setRowHeight(20, 28); s.setRowHeight(21, 18);               // title (2 lines)
+  s.setRowHeight(22, 12);
+  s.setRowHeight(23, 22); s.setRowHeight(24, 22);
+  s.setRowHeight(25, 22); s.setRowHeight(26, 22);               // body (4 lines)
+  s.setRowHeight(27, 14);
+  s.setRowHeight(28, 30);                                       // hyperlink
+  s.setRowHeight(29, 14);                                       // card bottom padding
+  // Footer (rows 31-38)
+  s.setRowHeight(30, 32);                                       // section gap
+  s.setRowHeight(31, 22);
+  s.setRowHeight(32, 16);                                       // gold divider
+  s.setRowHeight(33, 56);                                       // signature
+  s.setRowHeight(34, 26);                                       // email
+  s.setRowHeight(35, 18);                                       // gap
+  s.setRowHeight(36, 30);                                       // quote
+  s.setRowHeight(37, 18);                                       // gap
+  s.setRowHeight(38, 22);                                       // version line
+
+  // ====================================================================
+  // SECTION 1 — HERO CARD (B2:R9)
+  // The page's anchor: a single elevated card carrying the product name,
+  // the brand line, and the value proposition. Gold thick border wraps
+  // it for maximum prominence; Cairo typography for the Arabic text.
+  // ====================================================================
+  const hero = s.getRange('B2:R9');
+  hero.setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontFamily(CAIRO);
+  hero.setBorder(
+    true, true, true, true, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID_THICK);
+
+  // Brand badge (small caps line on top)
+  mergeAndStyle(s, 'B3:R3', 'BUDGET CALCULATOR · 2026',
+    { bg: T.bgCard, fg: T.fgMuted, size: 11, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Hero headline — huge, bold, gold, centered
+  mergeAndStyle(s, 'B4:R4', 'نظام ميزان المالي الذكي',
+    { bg: T.bgCard, fg: T.accentGold, size: 32, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Hero subtitle — clean, medium-weight Arabic body
+  mergeAndStyle(s, 'B6:R7',
+    'منصّة عربيّة احترافيّة لإدارة الميزانية الشخصيّة، مصمَّمة بالكامل داخل Google Sheets.\n' +
+    'تجمع بين دقّة الحسابات الماليّة وجماليّة لوحات Fintech الحديثة.',
+    { bg: T.bgCard, fg: T.fgPrimary, size: 14,
+      align: 'center', vAlign: 'middle', wrap: true, fontFamily: CAIRO });
+
+  // ====================================================================
+  // SECTION 2 — CTA BUTTONS (row 12)
+  // Two side-by-side hyperlink buttons with thick accent-gold borders.
+  // Primary: Dashboard. Secondary: Settings. Clicking either jumps to the
+  // matching sheet via the #gid= URL anchor — Sheets honors this internally.
+  // ====================================================================
+  const dashSheet     = ss.getSheetByName(SHEET_NAMES.dashboard);
+  const settingsSheet = ss.getSheetByName(SHEET_NAMES.settings);
+
+  // Primary CTA — Dashboard (B12:I12)
+  if (dashSheet) {
+    const gid = dashSheet.getSheetId();
+    const btn = s.getRange('B12:I12');
+    btn.merge();
+    btn.setBackground(T.bgCard);
+    btn.setBorder(
+      true, true, true, true, false, false,
+      T.accentGold, SpreadsheetApp.BorderStyle.SOLID_THICK);
+    btn.setFormula(`=HYPERLINK("#gid=${gid}", "📊  افتح اللوحة الرئيسيّة")`)
+       .setFontColor(T.accentGold).setFontWeight('bold').setFontSize(15)
+       .setFontFamily(CAIRO).setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  }
+
+  // Secondary CTA — Settings (K12:R12)
+  if (settingsSheet) {
+    const gid = settingsSheet.getSheetId();
+    const btn = s.getRange('K12:R12');
+    btn.merge();
+    btn.setBackground(T.bgCard);
+    btn.setBorder(
+      true, true, true, true, false, false,
+      T.accentGold, SpreadsheetApp.BorderStyle.SOLID_THICK);
+    btn.setFormula(`=HYPERLINK("#gid=${gid}", "⚙  افتح ورقة الإعدادات")`)
+       .setFontColor(T.accentGold).setFontWeight('bold').setFontSize(15)
+       .setFontFamily(CAIRO).setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  }
+
+  // ====================================================================
+  // SECTION 3 — Quick-Start label (row 14)
+  // ====================================================================
+  mergeAndStyle(s, 'B14:R14', '— البداية السريعة —',
+    { bg: T.bgPage, fg: T.fgMuted, size: 12, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // ====================================================================
+  // SECTION 4 — Three Quick-Start cards (rows 16-29)
+  // Each card is 5 cols wide × 14 rows tall:
+  //   • Top accent stripe (1 row, distinct color per card)
+  //   • Step number (huge, accent color)
+  //   • Step title (bold, primary)
+  //   • Step body (muted, wrap, 4 lines)
+  //   • Hyperlink (bottom)
+  // Cards are split by 1-col spacers (G and M) for visual breathing room.
+  // ====================================================================
+  const steps = [
+    {
+      num: '01',
+      title: 'اضبط الإعدادات أوّلاً',
+      body: 'ابدأ من ورقة "الإعدادات وأسعار الصرف": اختر العملة الرئيسيّة من خلية B3، حدِّث أسعار الصرف اليدوية في العمود C عند الحاجة، ثمّ راجع قوائم الفئات وطرق الدفع. يربط القالب هذه القيم تلقائياً عبر النطاقات المُسمّاة rng_* فتنعكس على الأوراق الـ12 الشهريّة.',
+      link: '⚙  افتح الإعدادات',
+      target: SHEET_NAMES.settings,
+      accent: T.accentNet,
+    },
+    {
+      num: '02',
+      title: 'سجِّل حركاتك الشهريّة',
+      body: 'انتقل إلى ورقة الشهر الحالي وأدخل الدخل في النطاق A10:H28 (مع عمود "المداخيل" الجديد للمدخولات الإضافيّة)، والمصاريف في A33:G62. الفئة وطريقة الدفع منسدلتان من الإعدادات، ومحرّك التنبيهات يُلوِّن الصفوف الحرجة آنيّاً قبل أيّ تجاوز للميزانية.',
+      link: '📅  افتح ورقة يناير',
+      target: 'يناير',
+      accent: T.accentIncome,
+    },
+    {
+      num: '03',
+      title: 'راقب أداءك من اللوحة الرئيسيّة',
+      body: 'بعد تراكم بيانات شهرَين أو أكثر، افتح "اللوحة الرئيسيّة والتقرير السنوي" لتجد ست بطاقات KPI سنويّة، ومخطّط مقارنة شهريّ، وتدفّق نقدي على شكل Waterfall، ومخطّطَي دونات لمصادر الدخل والمصاريف، إضافة إلى مقياس الصحّة الماليّة المركّب.',
+      link: '📊  افتح اللوحة الرئيسيّة',
+      target: SHEET_NAMES.dashboard,
+      accent: T.accentGold,
+    },
   ];
 
-  const cardCols = [['B', 'F'], ['G', 'K'], ['L', 'P']];
-  for (let i = 0; i < cards.length; i++) {
-    const c = cards[i];
-    const [colStart, colEnd] = cardCols[i];
-    paintCard(s, `${colStart}11:${colEnd}23`);
-    // Top accent border (Apps Script doesn't expose top-only-border with custom width well, so use a narrow row)
-    s.getRange(`${colStart}11:${colEnd}11`).setBackground(c.accent);
-    mergeAndStyle(s, `${colStart}12:${colEnd}13`, c.id,
-      { bg: T.bgCard, fg: c.accent, size: 30, bold: true, align: 'right' });
-    mergeAndStyle(s, `${colStart}14:${colEnd}15`, c.title,
-      { bg: T.bgCard, fg: T.fgPrimary, size: 16, bold: true, align: 'right' });
-    mergeAndStyle(s, `${colStart}16:${colEnd}22`, c.body,
-      { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right', wrap: true });
-    // Hyperlink
-    const target = ss.getSheetByName(c.target);
+  // Card column anchors. Spacer cols G and M sit between them.
+  const cardCols = [
+    { startCol: 'B', endCol: 'F' },   // Card 1
+    { startCol: 'H', endCol: 'L' },   // Card 2
+    { startCol: 'N', endCol: 'R' },   // Card 3
+  ];
+
+  for (let i = 0; i < steps.length; i++) {
+    const step  = steps[i];
+    const cols  = cardCols[i];
+    const range = `${cols.startCol}16:${cols.endCol}29`;
+
+    // paintCard gives us the bgCard fill + thin slate border.
+    paintCard(s, range);
+
+    // Top accent stripe (row 16) — colored band that distinguishes each card
+    s.getRange(`${cols.startCol}16:${cols.endCol}16`).setBackground(step.accent);
+
+    // Step number (huge, accent color)
+    mergeAndStyle(s, `${cols.startCol}17:${cols.endCol}18`, step.num,
+      { bg: T.bgCard, fg: step.accent, size: 36, bold: true,
+        align: 'right', vAlign: 'middle', fontFamily: CAIRO });
+
+    // Step title
+    mergeAndStyle(s, `${cols.startCol}20:${cols.endCol}21`, step.title,
+      { bg: T.bgCard, fg: T.fgPrimary, size: 16, bold: true,
+        align: 'right', vAlign: 'middle', wrap: true, fontFamily: CAIRO });
+
+    // Step body
+    mergeAndStyle(s, `${cols.startCol}23:${cols.endCol}26`, step.body,
+      { bg: T.bgCard, fg: T.fgMuted, size: 11,
+        align: 'right', vAlign: 'top', wrap: true, fontFamily: CAIRO });
+
+    // Hyperlink at bottom
+    mergeAndStyle(s, `${cols.startCol}28:${cols.endCol}28`, '',
+      { bg: T.bgCard, align: 'right', vAlign: 'middle' });
+    const target = ss.getSheetByName(step.target);
     if (target) {
       const gid = target.getSheetId();
-      mergeAndStyle(s, `${colStart}23:${colEnd}23`, '', { bg: T.bgCard, align: 'right' });
-      s.getRange(`${colStart}23`).setFormula(`=HYPERLINK("#gid=${gid}", "${c.link}")`)
-        .setFontColor(T.accentIncome).setFontSize(11);
+      s.getRange(cols.startCol + '28')
+        .setFormula(`=HYPERLINK("#gid=${gid}", "${step.link}")`)
+        .setFontColor(step.accent).setFontWeight('bold').setFontSize(12)
+        .setFontFamily(CAIRO);
     }
   }
 
-  // Developer signature card
-  paintCard(s, 'B26:O29');
-  mergeAndStyle(s, 'B26:O27', '💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس',
-    { bg: T.bgCard, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
-  mergeAndStyle(s, 'B28:O29', '📩 للتواصل والدعم الفني: boulahdiddjamaleddine',
-    { bg: T.bgCard, fg: T.fgMuted, size: 12, align: 'center', vAlign: 'middle' });
+  // ====================================================================
+  // SECTION 5 — FOOTER (no labels — just the signature, contact, philosophy)
+  // ====================================================================
+  // Subtle gold divider above the footer block
+  s.getRange('B32:R32').setBorder(
+    true, false, false, false, false, false,
+    T.accentGold, SpreadsheetApp.BorderStyle.SOLID);
 
-  // Footer
-  mergeAndStyle(s, 'B32:O32', 'الإصدار: 1.0.0 (Phase 6/13 - Apps Script Installer) - مايو 2026',
-    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
-  mergeAndStyle(s, 'B33:O33',
-    'قالب احترافي مفتوح للتخصيص. أسعار الصرف مؤشّرات إرشاديّة - يجب على المستخدم تحديثها قبل أيّ استخدام محاسبي فعلي.',
-    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
-  mergeAndStyle(s, 'B34:O34',
-    'Premium Arabic Fintech Template - All formulas built for Google Sheets compatibility (XLOOKUP, ARRAYFORMULA, IFS, QUERY, SPARKLINE).',
-    { bg: T.bgPage, fg: T.fgMuted, size: 9, align: 'center' });
+  // Signature line — bold, prominent, signature-style
+  mergeAndStyle(s, 'B33:R33', 'Boulahdid Djamal Eddine',
+    { bg: T.bgPage, fg: T.accentGold, size: 22, bold: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Email — clickable mailto, clean and subtle
+  mergeAndStyle(s, 'B34:R34', '',
+    { bg: T.bgPage, align: 'center', vAlign: 'middle' });
+  s.getRange('B34').setFormula(
+    '=HYPERLINK("mailto:boulahdiddjamaleddine@gmail.com", "boulahdiddjamaleddine@gmail.com")'
+  ).setFontColor(T.fgMuted).setFontSize(12).setFontFamily(CAIRO)
+   .setHorizontalAlignment('center');
+
+  // Design-philosophy quote — italic, muted, centered
+  mergeAndStyle(s, 'B36:R36',
+    'صُمم هذا القالب ليدمج بين الأداء العالي وتجربة المستخدم المتميزة.',
+    { bg: T.bgPage, fg: T.fgMuted, size: 12, italic: true,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
+
+  // Discreet technical / version line at the very bottom
+  mergeAndStyle(s, 'B38:R38',
+    'الإصدار 1.4 · مايو 2026 · مبنيّ بالكامل على Google Sheets',
+    { bg: T.bgPage, fg: T.fgMuted, size: 9,
+      align: 'center', vAlign: 'middle', fontFamily: CAIRO });
 }
 
 // ============================================================================
