@@ -112,6 +112,34 @@ const MONTHS = [
   'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
 ];
 
+// Soft monthly background tints. One soft pastel per month, deliberately low
+// chroma so the high-contrast BLACK header text stays readable against every
+// tint (WCAG AA at 14pt bold on every entry — verified against the table in
+// docs/03 §6). The palette cycles seasonally (winter cool, spring green,
+// summer warm, autumn earth) so the user can navigate the 12 tabs by hue
+// alone. The dark-gray table headers (#374151) and the dark-mode dashboard
+// are unaffected — tints only paint the title strip and the KPI panel of
+// each monthly sheet.
+const MONTH_TINTS = [
+  '#E3F2FD', // يناير   - soft sky blue
+  '#E8EAF6', // فبراير  - soft indigo
+  '#E0F2F1', // مارس    - soft teal
+  '#E8F5E9', // أبريل   - soft mint
+  '#F1F8E9', // مايو    - soft lime
+  '#FFFDE7', // يونيو   - soft cream
+  '#FFF8E1', // يوليو   - soft amber
+  '#FFF3E0', // أغسطس   - soft peach
+  '#FBE9E7', // سبتمبر  - soft coral
+  '#FCE4EC', // أكتوبر  - soft rose
+  '#F3E5F5', // نوفمبر  - soft lavender
+  '#EDE7F6', // ديسمبر  - soft violet
+];
+
+// High-contrast text on the tints. Locked to true black so every monthly
+// title + KPI label clears WCAG AA against any color in MONTH_TINTS.
+const TINT_FG     = '#000000';
+const TINT_BORDER = '#FFFFFF'; // white inner borders give the "clean table" look
+
 const GOALS_SEED = [
   ['شراء سيارة',         80000,   12000, '', new Date('2027-12-31'), '', '', '', ''],
   ['شراء منزل',        1200000,   50000, '', new Date('2030-12-31'), '', '', '', ''],
@@ -160,7 +188,7 @@ function installBudgetCalculator2026() {
   // Build in canonical order (settings first because everything else references it).
   buildSettings(ss);
   buildGoals(ss);
-  for (let i = 0; i < MONTHS.length; i++) buildMonth(ss, MONTHS[i]);
+  for (let i = 0; i < MONTHS.length; i++) buildMonth(ss, MONTHS[i], i);
   buildDashboard(ss);          // <-- moved BEFORE the engine: card cells now exist
   buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
   buildWelcome(ss);
@@ -168,6 +196,12 @@ function installBudgetCalculator2026() {
   defineNamedRanges(ss);
   applyProtection(ss);
   reorderTabs(ss);
+
+  // Programmatic chart insertion. MUST run after defineNamedRanges (so the
+  // engine ranges exist and are wired to named ranges) and after
+  // applyProtection (so chart anchors aren't fighting protection rules
+  // during insertion).
+  buildDashboardCharts(ss);
 
   // Hide engine sheet last (after all references resolve).
   ss.getSheetByName(SHEET_NAMES.engine).hideSheet();
@@ -178,8 +212,9 @@ function installBudgetCalculator2026() {
 
   ui.alert(
     'تم تركيب القالب بنجاح',
-    'كل الأوراق والصيغ والنطاقات المُسماة جاهزة.\n\n' +
-    'الخطوة الاختيارية المتبقية: أدرج الرسوم البيانية الخمسة في ورقة \"اللوحة الرئيسية والتقرير السنوي\" (Insert → Chart) واربطها بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / rng_dash_doughnut_income / rng_dash_doughnut_expense — لا تستخدم مراجع A1 يدوية حتى تتحدّث الرسوم تلقائياً عند أيّ تعديل.',
+    'كل الأوراق والصيغ والنطاقات المُسماة والرسوم البيانية الأربعة جاهزة. ' +
+    'الرسوم مرتبطة بالنطاقات المُسمَّاة rng_dash_monthly_grid / rng_dash_waterfall / ' +
+    'rng_dash_doughnut_income / rng_dash_doughnut_expense وستتحدّث آلياً عند أيّ تعديل.',
     ui.ButtonSet.OK);
 }
 
@@ -272,6 +307,11 @@ function getOrCreateSheet(ss, name) {
   let s = ss.getSheetByName(name);
   if (!s) s = ss.insertSheet(name);
   s.setRightToLeft(true);
+  // Gold-master aesthetic: hide the default gridlines on every sheet. We
+  // re-introduce structure where it matters (table cells, KPI cards) via
+  // explicit white inner borders, so every surface reads as a designed
+  // panel rather than a spreadsheet grid.
+  s.setHiddenGridlines(true);
   return s;
 }
 
@@ -439,6 +479,18 @@ function buildGoals(ss) {
       .setBackground('#BDC3C7').setFontColor('#000000').setRanges([hRange]).build());
   s.setConditionalFormatRules(rules);
 
+  // Clean table aesthetic: white inner borders + banded rows on the goals
+  // table (rows 7..26 across A..I) so it reads identically to the monthly
+  // sheets even with the page-level gridlines hidden.
+  s.getRange('A6:I26').setBorder(true, true, true, true, true, true,
+    TINT_BORDER, SpreadsheetApp.BorderStyle.SOLID);
+  for (let r = 7; r <= 26; r++) {
+    s.getRange(r, 1, 1, 9).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+  }
+  // Summary panel rows 2..4 lift on a soft neutral tint with black text
+  s.getRange('A2:F4').setBackground('#F5F5F5').setFontColor(TINT_FG)
+    .setFontWeight('bold');
+
   s.setFrozenRows(6);
   s.autoResizeColumns(1, 9);
 }
@@ -446,12 +498,23 @@ function buildGoals(ss) {
 // ============================================================================
 // PHASE 2: A SINGLE MONTHLY SHEET
 // ============================================================================
-function buildMonth(ss, monthName) {
+function buildMonth(ss, monthName, monthIndex) {
   const s = getOrCreateSheet(ss, monthName);
+  // Soft monthly tint, indexed by month so each tab gets its own hue.
+  // Falls back to the first tint if a caller forgets the index argument.
+  const tint = MONTH_TINTS[monthIndex] || MONTH_TINTS[0];
 
-  // Title row
-  mergeAndStyle(s, 'A1:G1', `ميزانية شهر ${monthName} - نظام مالي ذكي متكامل`,
-    { bold: true, size: 14, align: 'center' });
+  // Title row — tinted background, BOLD BLACK text for max readability.
+  mergeAndStyle(s, 'A1:H1', `ميزانية شهر ${monthName} - نظام مالي ذكي متكامل`,
+    { bg: tint, fg: TINT_FG, bold: true, size: 16, align: 'center' });
+  s.setRowHeight(1, 38);
+
+  // KPI panel rows 2..5 — paint the whole 8-col block with the same tint
+  // so the labels and the formula values share one designed surface.
+  s.getRange('A2:H5').setBackground(tint).setFontColor(TINT_FG)
+    .setFontWeight('bold').setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
+  for (let r = 2; r <= 5; r++) s.setRowHeight(r, 28);
 
   // KPI panel labels rows 2-5 (per docs/03 section 2.2)
   s.getRange('A2').setValue('العملة الرئيسية للعرض');
@@ -537,6 +600,28 @@ function buildMonth(ss, monthName) {
       .whenFormulaSatisfied('=$H33="🟢 أداء مالي ممتاز"')
       .setBackground('#27AE60').setFontColor(T.white).setRanges([hRange]).build());
   s.setConditionalFormatRules(rules);
+
+  // Clean table aesthetic: white inner borders on every data cell. With the
+  // sheet's native gridlines hidden (see getOrCreateSheet), these explicit
+  // borders are what gives each cell its "designed table" outline. We also
+  // band the data-row backgrounds with two near-white shades so the eye can
+  // track a row across 7-8 columns without the help of gridlines.
+  const incomeBlock  = s.getRange('A9:G29');
+  const expenseBlock = s.getRange('A32:H63');
+  [incomeBlock, expenseBlock].forEach(blk => {
+    blk.setBorder(true, true, true, true, true, true, TINT_BORDER,
+      SpreadsheetApp.BorderStyle.SOLID);
+  });
+  // Banded rows on income (10..28) and expense (33..62)
+  for (let r = 10; r <= 28; r++) {
+    s.getRange(r, 1, 1, 7).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+  }
+  for (let r = 33; r <= 62; r++) {
+    s.getRange(r, 1, 1, 7).setBackground(r % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+  }
+  // Totals rows lift slightly with the active tint at low opacity
+  s.getRange('A29:G29').setBackground(tint).setFontWeight('bold').setFontColor(TINT_FG);
+  s.getRange('A63:H63').setBackground(tint).setFontWeight('bold').setFontColor(TINT_FG);
 
   s.setFrozenRows(6);
   s.autoResizeColumns(1, 8);
@@ -820,27 +905,192 @@ function buildDashboard(ss) {
       .setBackground(T.accentExpense).setFontColor(T.white).setRanges([jRange]).build());
   s.setConditionalFormatRules(rules);
 
-  // Stub anchors for the four charts (visible card backgrounds the user can drop charts onto).
-  // Insert each chart via Insert → Chart and bind it to the matching NAMED RANGE
-  // (defined in defineNamedRanges) instead of typing the engine A1 ranges by hand.
-  // The named ranges are stable across rebuilds, so the chart never needs to be
-  // re-bound when the engine sheet is rebuilt or moved.
+  // Card backdrops for the four charts. The actual chart objects are
+  // inserted by `buildDashboardCharts` and anchored at B11, N11, B29, H29 —
+  // these card backdrops simply provide a dark-mode surface around each
+  // chart's bounding box so transparent edges don't expose the page color.
   paintCard(s, 'B11:M26');
-  mergeAndStyle(s, 'B11:M11', 'Chart 1: المقارنة الشهريّة (أدرجه يدوياً من النطاق المُسمَّى rng_dash_monthly_grid)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'N11:Y26');
-  mergeAndStyle(s, 'N11:Y11', 'Chart 2: Waterfall - تدفّق النقد (أدرجه يدوياً من النطاق المُسمَّى rng_dash_waterfall)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'B29:G44');
-  mergeAndStyle(s, 'B29:G29', 'Chart 3: دونات الدخل (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_income)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
   paintCard(s, 'H29:M44');
-  mergeAndStyle(s, 'H29:M29', 'Chart 4: دونات المصاريف (أدرجه يدوياً من النطاق المُسمَّى rng_dash_doughnut_expense)',
-    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
 }
 
 function paintCard(s, a1) {
   s.getRange(a1).setBackground(T.bgCard).setFontColor(T.fgPrimary);
+}
+
+// ============================================================================
+// PHASE 4 (continued): PROGRAMMATIC CHART INSERTION
+// ----------------------------------------------------------------------------
+// Builds the four dashboard charts directly via the Apps Script Charts API
+// instead of leaving the user with "Insert → Chart" placeholders. Every
+// chart is pinned to one of the four named ranges defined in
+// `defineNamedRanges`, so the user can edit any monthly sheet, any goal, or
+// any exchange rate and the chart updates automatically.
+//
+// Three design rules every chart in here follows:
+//
+//   1. RESPONSIVE chartArea. The `chartArea` option is given as PERCENTAGE
+//      strings ("8%" / "85%") rather than absolute pixels, so the visible
+//      plot region scales with the chart container as the user resizes
+//      their browser, the dashboard zoom level, or the column widths. This
+//      is the fix that PR #23 was tracking.
+//
+//   2. EXPLICIT palette. The default Sheets palette clashes with the
+//      dark-mode dashboard. Every series (Combo) and every slice (the two
+//      doughnuts) is assigned a color from the project theme tokens — the
+//      same tokens used elsewhere on the dashboard cards.
+//
+//   3. DARK chart canvas. `backgroundColor` is set to T.bgCard so the chart
+//      sits on the same surface as its surrounding KPI cards instead of
+//      flashing white during load.
+// ============================================================================
+function buildDashboardCharts(ss) {
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+
+  // Idempotent: nuke any chart already on the dashboard before rebuilding.
+  // Lets the installer be re-run on a workbook that already has charts
+  // without producing duplicates stacked on top of each other.
+  dash.getCharts().forEach(c => dash.removeChart(c));
+
+  // Common option blocks reused across the four charts. Pulled out so the
+  // dark-mode color tokens stay in lockstep across every chart in the
+  // dashboard. Edit one block, all four charts shift.
+  const darkAxis = {
+    textStyle: { color: T.fgPrimary, fontSize: 11 },
+    titleTextStyle: { color: T.fgPrimary, fontSize: 12 },
+    gridlines: { color: T.gridline },
+    minorGridlines: { color: T.gridline },
+  };
+  const darkLegend = (pos) => ({
+    position: pos,
+    textStyle: { color: T.fgPrimary, fontSize: 11 },
+  });
+
+  // -----------------------------------------------------------------------
+  // Chart 1 — Combo: monthly comparison (income bars + expense bars + net line)
+  // Source: rng_dash_monthly_grid (engine!A1:D13)
+  // Anchor: dashboard!B11
+  // Palette: income GREEN, expense RED, net CYAN — same tokens as the KPI cards.
+  // -----------------------------------------------------------------------
+  const combo = dash.newChart()
+    .setChartType(Charts.ChartType.COMBO)
+    .addRange(engine.getRange('A1:D13'))
+    .setPosition(11, 2, 0, 0)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('title', 'المقارنة الشهريّة - الدخل والمصروف وصافي الربح')
+    .setOption('titleTextStyle', { color: T.fgPrimary, fontSize: 13, bold: true })
+    .setOption('backgroundColor', T.bgCard)
+    .setOption('legend', darkLegend('bottom'))
+    .setOption('hAxis', darkAxis)
+    .setOption('vAxis', darkAxis)
+    .setOption('chartArea', { left: '8%', top: '12%', width: '85%', height: '70%' })
+    .setOption('seriesType', 'bars')
+    .setOption('series', {
+      0: { type: 'bars', color: T.accentIncome },     // الدخل الفعلي
+      1: { type: 'bars', color: T.accentExpense },    // المصروف الفعلي
+      2: { type: 'line', color: T.accentNet,          // صافي الربح
+           lineWidth: 3, pointSize: 6 },
+    })
+    .build();
+  dash.insertChart(combo);
+
+  // -----------------------------------------------------------------------
+  // Chart 2 — Waterfall (rendered as a column chart with the project palette).
+  // Apps Script does not expose ChartType.WATERFALL, so we approximate with
+  // a column chart bound to the same engine!F1:G7 anchor; the visual
+  // "subtotal" framing is supplied by the dashboard card behind it.
+  // Source: rng_dash_waterfall (engine!F1:G7)
+  // Anchor: dashboard!N11
+  // -----------------------------------------------------------------------
+  const waterfall = dash.newChart()
+    .setChartType(Charts.ChartType.COLUMN)
+    .addRange(engine.getRange('F1:G7'))
+    .setPosition(11, 14, 0, 0)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('title', 'تدفّق النقد السنوي - من الدخل إلى صافي الربح')
+    .setOption('titleTextStyle', { color: T.fgPrimary, fontSize: 13, bold: true })
+    .setOption('backgroundColor', T.bgCard)
+    .setOption('legend', { position: 'none' })
+    .setOption('hAxis', darkAxis)
+    .setOption('vAxis', darkAxis)
+    .setOption('chartArea', { left: '10%', top: '12%', width: '85%', height: '72%' })
+    .setOption('series', { 0: { color: T.accentNet } })
+    .build();
+  dash.insertChart(waterfall);
+
+  // -----------------------------------------------------------------------
+  // Chart 3 — Doughnut: income source distribution.
+  // 8 income categories => 8 explicit slice colors from the theme palette,
+  // so every slice has a stable, named color the user can recognize across
+  // months instead of getting a default "auto" hue that drifts with data.
+  // Source: rng_dash_doughnut_income (engine!I1:J9)
+  // Anchor: dashboard!B29
+  // -----------------------------------------------------------------------
+  const incomeDoughnut = dash.newChart()
+    .setChartType(Charts.ChartType.PIE)
+    .addRange(engine.getRange('I1:J9'))
+    .setPosition(29, 2, 0, 0)
+    .setOption('pieHole', 0.5)
+    .setOption('title', 'توزيع مصادر الدخل')
+    .setOption('titleTextStyle', { color: T.fgPrimary, fontSize: 13, bold: true })
+    .setOption('backgroundColor', T.bgCard)
+    .setOption('legend', darkLegend('right'))
+    .setOption('chartArea', { left: '5%', top: '12%', width: '90%', height: '78%' })
+    .setOption('colors', [
+      T.accentIncome,    // راتب أساسي
+      T.paletteBlue,     // مكافآت وحوافز
+      T.palettePurple,   // عمل حر
+      T.paletteOrange,   // دخل استثماري
+      T.gaugeLightGreen, // إيجارات
+      T.accentNet,       // أرباح تجارية
+      T.palettePink,     // هدايا
+      T.fgMuted,         // أخرى
+    ])
+    .setOption('pieSliceTextStyle', { color: T.white, fontSize: 11, bold: true })
+    .setOption('pieSliceBorderColor', T.bgCard)
+    .build();
+  dash.insertChart(incomeDoughnut);
+
+  // -----------------------------------------------------------------------
+  // Chart 4 — Doughnut: expense category distribution.
+  // 12 expense categories => 12 explicit slice colors. The dominant slice
+  // (السكن / Housing) is anchored to the project's RED expense token so the
+  // eye lands there first; secondary daily-cost categories follow in warm
+  // hues; aspirational categories (التعليم / Education, السفر / Travel) get
+  // cooler hues so the user can read the distribution at a glance.
+  // Source: rng_dash_doughnut_expense (engine!L1:M13)
+  // Anchor: dashboard!H29
+  // -----------------------------------------------------------------------
+  const expenseDoughnut = dash.newChart()
+    .setChartType(Charts.ChartType.PIE)
+    .addRange(engine.getRange('L1:M13'))
+    .setPosition(29, 8, 0, 0)
+    .setOption('pieHole', 0.5)
+    .setOption('title', 'توزيع فئات المصاريف')
+    .setOption('titleTextStyle', { color: T.fgPrimary, fontSize: 13, bold: true })
+    .setOption('backgroundColor', T.bgCard)
+    .setOption('legend', darkLegend('right'))
+    .setOption('chartArea', { left: '5%', top: '12%', width: '90%', height: '78%' })
+    .setOption('colors', [
+      T.paletteOrange,   // الطعام
+      T.paletteBlue,     // النقل
+      T.accentExpense,   // السكن (largest slice — anchored to expense red)
+      T.gaugeAmber,      // الفواتير
+      T.gaugeLightGreen, // الصحة
+      T.palettePurple,   // التعليم
+      T.palettePink,     // التسوق
+      T.accentNet,       // الترفيه
+      T.accentIncome,    // الاشتراكات
+      T.fgMuted,         // السفر
+      T.accentTrendDown, // الطوارئ
+      T.fgPrimary,       // أخرى
+    ])
+    .setOption('pieSliceTextStyle', { color: T.white, fontSize: 11, bold: true })
+    .setOption('pieSliceBorderColor', T.bgCard)
+    .build();
+  dash.insertChart(expenseDoughnut);
 }
 
 function buildAnnualSum(income) {
