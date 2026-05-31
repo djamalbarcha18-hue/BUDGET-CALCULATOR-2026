@@ -88,7 +88,67 @@ const TEXTS = {
       exportSubmenu:   '📄 تصدير التقارير',
       exportMonth:     '📅 تصدير الشهر الحالي PDF',
       exportDashboard: '📊 تصدير لوحة التحكم PDF',
-      exportAnnual:    '📚 تصدير التقرير السنوي PDF'
+      exportAnnual:    '📚 تصدير التقرير السنوي PDF',
+      onboarding:      '🧙 معالج الإعداد'
+    },
+
+    // Onboarding Wizard (Module 09_Onboarding.gs + OnboardingSidebar.html)
+    onboarding: {
+      // Sidebar shell
+      sidebarTitle:     '🧙 معالج إعداد SmartBudget',
+      stepLabel:        ({n, total}) => `الخطوة ${n} من ${total}`,
+      btnNext:          'التالي ←',
+      btnBack:          '→ السابق',
+      btnSkip:          'تخطّي',
+      btnFinish:        '🎉 إنهاء الإعداد',
+      btnLater:         'لاحقاً',
+
+      // Step 1 - Welcome
+      step1Title:       'مرحباً بك في SmartBudget Pro',
+      step1Sub:         'سنرشدك في 5 خطوات سريعة لإعداد قالبك المالي',
+      step1Body:        'هذا القالب يحوي محرّك عملات حيّ، 12 ورقة شهريّة، نظام أهداف ادخار، ' +
+                        'لوحة تحكم متقدّمة، ومحرّك تحقّق من سلامة الصيغ. كلّ شيء جاهز للاستخدام بمجرد إكمال الإعداد.',
+
+      // Step 2 - Language
+      step2Title:       'اختر لغة الواجهة',
+      step2Sub:         'يمكنك تغييرها لاحقاً من قائمة 🌐 اللغة',
+      langArOption:     '🇸🇦 العربية',
+      langEnOption:     '🇬🇧 English',
+
+      // Step 3 - Main Currency
+      step3Title:       'اختر عملتك الرئيسيّة',
+      step3Sub:         'كل المبالغ ستُعرض بهذه العملة افتراضياً. يمكنك تبديلها لحظياً من لوحة التحكم.',
+      step3Help:        'العملات المدعومة بأسعار حيّة من GOOGLEFINANCE',
+
+      // Step 4 - Demo Data
+      step4Title:       'هل ترغب ببيانات تجريبيّة؟',
+      step4Sub:         'مفيدة لاكتشاف ميزات القالب قبل إدخال بياناتك الحقيقيّة',
+      step4OptionYes:   'نعم — املأ القالب ببيانات تجريبيّة (60 دخل + 60 مصاريف)',
+      step4OptionNo:    'لا — أريد قالباً فارغاً جاهزاً لبياناتي الحقيقيّة',
+
+      // Step 5 - Done
+      step5Title:       '🎉 الإعداد مكتمل!',
+      step5Sub:         'كلّ شيء جاهز. يمكنك البدء الآن.',
+      step5Tip1:        '💡 افتح "لوحة التحكم" لمعاينة ملخّصك المالي',
+      step5Tip2:        '💡 استخدم قائمة 💎 SmartBudget للتنقّل السريع',
+      step5Tip3:        '💡 شغّل "🩺 فحص صحّة النظام" أسبوعياً للتأكّد من سلامة الصيغ',
+      step5OpenDash:    '📊 افتح لوحة التحكم',
+      step5OpenWelcome: '🏠 ابقَ على صفحة الترحيب',
+
+      // Server-side prompts
+      applyTitle:       'تطبيق إعدادات المعالج',
+      applyingLang:     'جاري تطبيق اللغة...',
+      applyingCurrency: 'جاري تطبيق العملة الرئيسيّة...',
+      applyingDemo:     'جاري تعبئة البيانات التجريبيّة... (30-60 ث)',
+      applySuccess:     'تمّ تطبيق جميع الإعدادات بنجاح',
+      applyError:       ({err}) => `حدث خطأ: ${err}`,
+
+      // Already-completed prompt (shown if user re-opens wizard)
+      alreadyDoneTitle: 'تمّ الإعداد سابقاً',
+      alreadyDoneBody:  'لقد أكملت معالج الإعداد من قبل. هل تريد إعادة تشغيله؟',
+
+      // Auto-prompt on first open
+      firstOpenPrompt:  'مرحباً! يبدو أنّك تستعمل SmartBudget لأوّل مرّة. هل تريد فتح معالج الإعداد لإرشادك؟'
     },
 
     // Export Engine (Module 08_Export.gs) — Phase 4
@@ -320,7 +380,58 @@ const TEXTS = {
       exportSubmenu:   '📄 Export Reports',
       exportMonth:     '📅 Export Current Month as PDF',
       exportDashboard: '📊 Export Dashboard as PDF',
-      exportAnnual:    '📚 Export Annual Report as PDF'
+      exportAnnual:    '📚 Export Annual Report as PDF',
+      onboarding:      '🧙 Setup Wizard'
+    },
+
+    onboarding: {
+      sidebarTitle:     '🧙 SmartBudget Setup Wizard',
+      stepLabel:        ({n, total}) => `Step ${n} of ${total}`,
+      btnNext:          'Next →',
+      btnBack:          '← Back',
+      btnSkip:          'Skip',
+      btnFinish:        '🎉 Finish Setup',
+      btnLater:         'Later',
+
+      step1Title:       'Welcome to SmartBudget Pro',
+      step1Sub:         'We will guide you through 5 quick steps to set up your financial template',
+      step1Body:        'This template includes a live currency engine, 12 monthly sheets, a savings goals ' +
+                        'system, an advanced dashboard, and a formula integrity engine. Everything is ready ' +
+                        'to use once setup completes.',
+
+      step2Title:       'Choose your interface language',
+      step2Sub:         'You can change it later from the 🌐 Language menu',
+      langArOption:     '🇸🇦 العربية',
+      langEnOption:     '🇬🇧 English',
+
+      step3Title:       'Pick your main currency',
+      step3Sub:         'All amounts will display in this currency by default. You can switch live from the dashboard.',
+      step3Help:        'Currencies supported with live GOOGLEFINANCE rates',
+
+      step4Title:       'Want demo data?',
+      step4Sub:         'Useful for exploring template features before entering your real data',
+      step4OptionYes:   'Yes — fill the template with demo data (60 income + 60 expenses)',
+      step4OptionNo:    'No — I want an empty template ready for my real data',
+
+      step5Title:       '🎉 Setup complete!',
+      step5Sub:         'Everything is ready. You can start now.',
+      step5Tip1:        '💡 Open the Dashboard to see your financial summary',
+      step5Tip2:        '💡 Use the 💎 SmartBudget menu for quick navigation',
+      step5Tip3:        '💡 Run "🩺 System Health Check" weekly to verify formula integrity',
+      step5OpenDash:    '📊 Open Dashboard',
+      step5OpenWelcome: '🏠 Stay on Welcome page',
+
+      applyTitle:       'Applying wizard settings',
+      applyingLang:     'Applying language...',
+      applyingCurrency: 'Applying main currency...',
+      applyingDemo:     'Filling demo data... (30-60s)',
+      applySuccess:     'All settings applied successfully',
+      applyError:       ({err}) => `An error occurred: ${err}`,
+
+      alreadyDoneTitle: 'Setup already completed',
+      alreadyDoneBody:  'You have already completed the setup wizard. Do you want to run it again?',
+
+      firstOpenPrompt:  'Welcome! It looks like this is your first time using SmartBudget. Want to open the setup wizard to guide you?'
     },
 
     export: {

@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<!--
+  SmartBudget Pro 2026 - Onboarding Wizard Sidebar
+  ============================================================================
+  5-step bilingual setup wizard. First HTML sidebar in the project.
+
+  ARCHITECTURE
+  ------------
+  - All UI text is fetched from server via google.script.run.getWizardBootstrap()
+  - getWizardBootstrap returns the active-language strings + currencies + state
+  - Direction (rtl / ltr) and font are applied dynamically based on language
+  - User choices are submitted in ONE call via applyWizardChoices()
+
+  PASTE INSTRUCTIONS (Apps Script editor)
+  ---------------------------------------
+  1. Apps Script editor -> File -> New -> HTML file
+  2. Name it: OnboardingSidebar (no extension - Apps Script adds .html)
+  3. Paste this entire content
+  4. Save (Ctrl+S)
+-->
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-page:        #0F172A;
+        --bg-card:        #1E293B;
+        --bg-card-soft:   #243042;
+        --glass-border:   #334155;
+        --fg-primary:     #F1F5F9;
+        --fg-muted:       #94A3B8;
+        --accent:         #10B981;
+        --accent-hover:   #059669;
+        --expense:        #DC2626;
+        --net:            #06B6D4;
+        --warning:        #F59E0B;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--bg-page);
+        color: var(--fg-primary);
+        font-family: 'Cairo', 'Inter', sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      body[dir="rtl"] { direction: rtl; }
+      body[dir="ltr"] { direction: ltr; }
+
+      .wizard {
+        padding: 16px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* --- Progress bar --- */
+      .progress-wrap {
+        margin-bottom: 16px;
+      }
+      .progress-label {
+        font-size: 12px;
+        color: var(--fg-muted);
+        margin-bottom: 6px;
+        text-align: center;
+      }
+      .progress-track {
+        height: 6px;
+        background: var(--glass-border);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--accent);
+        transition: width 0.3s ease;
+      }
+
+      /* --- Step container --- */
+      .step {
+        flex: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 20px 18px;
+        margin-bottom: 14px;
+        overflow-y: auto;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      h2 {
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--fg-primary);
+      }
+
+      .sub {
+        font-size: 13px;
+        color: var(--fg-muted);
+        margin: 0 0 16px 0;
+      }
+
+      .body-text {
+        font-size: 13px;
+        color: var(--fg-primary);
+        line-height: 1.7;
+      }
+
+      /* --- Option buttons (lang, demo) --- */
+      .option {
+        display: block;
+        width: 100%;
+        text-align: start;
+        background: var(--bg-card-soft);
+        border: 1.5px solid var(--glass-border);
+        color: var(--fg-primary);
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 14px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .option:hover {
+        border-color: var(--accent);
+        background: var(--glass-border);
+      }
+      .option.selected {
+        border-color: var(--accent);
+        background: rgba(16, 185, 129, 0.12);
+        font-weight: 600;
+      }
+
+      /* --- Currency dropdown --- */
+      select {
+        width: 100%;
+        background: var(--bg-card-soft);
+        border: 1.5px solid var(--glass-border);
+        color: var(--fg-primary);
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      select:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .help-text {
+        font-size: 11px;
+        color: var(--fg-muted);
+        margin-top: 8px;
+      }
+
+      /* --- Tips list (final step) --- */
+      .tip {
+        background: var(--bg-card-soft);
+        border-inline-start: 3px solid var(--accent);
+        padding: 8px 12px;
+        margin-bottom: 8px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+
+      /* --- Nav buttons --- */
+      .nav {
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+      button.btn {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1.5px solid var(--glass-border);
+        background: var(--bg-card-soft);
+        color: var(--fg-primary);
+        transition: all 0.2s;
+      }
+      button.btn:hover:not(:disabled) {
+        border-color: var(--fg-muted);
+      }
+      button.btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      button.btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #FFFFFF;
+      }
+      button.btn.primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      /* --- Loading state --- */
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 30px 16px;
+      }
+      .loading.active { display: block; }
+
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--glass-border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 14px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* --- Error state --- */
+      .error {
+        background: rgba(220, 38, 38, 0.12);
+        border: 1px solid var(--expense);
+        color: var(--fg-primary);
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .error.active { display: block; }
+    </style>
+  </head>
+
+  <body>
+    <div class="wizard">
+
+      <!-- Progress bar -->
+      <div class="progress-wrap">
+        <div class="progress-label" id="step-label">Step 1 of 5</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill" style="width: 20%;"></div>
+        </div>
+      </div>
+
+      <!-- Loading overlay -->
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Working...</div>
+      </div>
+
+      <!-- Error display -->
+      <div class="error" id="error-display"></div>
+
+      <!-- Step container (content swapped by JS) -->
+      <div class="step" id="step-container"></div>
+
+      <!-- Navigation -->
+      <div class="nav">
+        <button class="btn" id="btn-back" onclick="goBack()">Back</button>
+        <button class="btn primary" id="btn-next" onclick="goNext()">Next</button>
+      </div>
+
+    </div>
+
+    <script>
+      // ===================================================================
+      // STATE
+      // ===================================================================
+      let bootstrap = null;          // { lang, direction, texts, currencies, ... }
+      let currentStep = 1;
+      const totalSteps = 5;
+
+      // User choices accumulated as wizard progresses
+      const choices = {
+        language: null,
+        currency: null,
+        fillDemo: null
+      };
+
+      // ===================================================================
+      // INIT
+      // ===================================================================
+      window.addEventListener('DOMContentLoaded', function() {
+        showLoading('Loading...');
+        google.script.run
+          .withSuccessHandler(onBootstrap)
+          .withFailureHandler(onError)
+          .getWizardBootstrap();
+      });
+
+      function onBootstrap(data) {
+        bootstrap = data;
+        document.body.setAttribute('dir', data.direction);
+        document.body.style.fontFamily = data.fontFamily + ', sans-serif';
+
+        // Pre-fill defaults from current state
+        choices.language = data.currentLang;
+        choices.currency = data.currentCurrency;
+        choices.fillDemo = false;
+
+        hideLoading();
+        renderStep(1);
+      }
+
+      function onError(err) {
+        hideLoading();
+        showError(err.message || String(err));
+      }
+
+      // ===================================================================
+      // RENDER
+      // ===================================================================
+      function renderStep(n) {
+        currentStep = n;
+        const T = bootstrap.texts;
+        const c = document.getElementById('step-container');
+
+        // Update progress
+        document.getElementById('step-label').textContent =
+          T.stepLabel ? T.stepLabel.replace('${n}', n).replace('${total}', totalSteps)
+                      : ('Step ' + n + ' of ' + totalSteps);
+        // Manual template fallback - server can't send template fns over the bridge
+        document.getElementById('step-label').textContent = renderStepLabel(n);
+        document.getElementById('progress-fill').style.width = (n / totalSteps * 100) + '%';
+
+        // Update buttons
+        document.getElementById('btn-back').disabled = (n === 1);
+        const btnNext = document.getElementById('btn-next');
+        btnNext.textContent = (n === totalSteps) ? T.btnFinish : T.btnNext;
+
+        // Render step body
+        let html = '';
+        switch (n) {
+          case 1: html = renderStep1(T); break;
+          case 2: html = renderStep2(T); break;
+          case 3: html = renderStep3(T); break;
+          case 4: html = renderStep4(T); break;
+          case 5: html = renderStep5(T); break;
+        }
+        c.innerHTML = html;
+
+        // Wire interactivity for the step that just rendered
+        wireStepInteractivity(n);
+      }
+
+      function renderStepLabel(n) {
+        // Server templates can't cross the bridge - reproduce here.
+        const lang = bootstrap.lang;
+        if (lang === 'ar') return 'الخطوة ' + n + ' من ' + totalSteps;
+        return 'Step ' + n + ' of ' + totalSteps;
+      }
+
+      function renderStep1(T) {
+        return '<h2>' + T.step1Title + '</h2>' +
+               '<p class="sub">' + T.step1Sub + '</p>' +
+               '<p class="body-text">' + T.step1Body + '</p>';
+      }
+
+      function renderStep2(T) {
+        return '<h2>' + T.step2Title + '</h2>' +
+               '<p class="sub">' + T.step2Sub + '</p>' +
+               '<button class="option" data-lang="ar" id="opt-ar">' + T.langArOption + '</button>' +
+               '<button class="option" data-lang="en" id="opt-en">' + T.langEnOption + '</button>';
+      }
+
+      function renderStep3(T) {
+        let opts = '';
+        bootstrap.currencies.forEach(function(c) {
+          const sel = (c.code === choices.currency) ? ' selected' : '';
+          opts += '<option value="' + c.code + '"' + sel + '>' +
+                  c.code + ' - ' + c.name + '</option>';
+        });
+        return '<h2>' + T.step3Title + '</h2>' +
+               '<p class="sub">' + T.step3Sub + '</p>' +
+               '<select id="currency-picker">' + opts + '</select>' +
+               '<p class="help-text">' + T.step3Help + '</p>';
+      }
+
+      function renderStep4(T) {
+        const yesSel = choices.fillDemo === true  ? ' selected' : '';
+        const noSel  = choices.fillDemo === false ? ' selected' : '';
+        return '<h2>' + T.step4Title + '</h2>' +
+               '<p class="sub">' + T.step4Sub + '</p>' +
+               '<button class="option' + yesSel + '" data-demo="yes" id="demo-yes">' +
+               T.step4OptionYes + '</button>' +
+               '<button class="option' + noSel + '" data-demo="no" id="demo-no">' +
+               T.step4OptionNo + '</button>';
+      }
+
+      function renderStep5(T) {
+        return '<h2>' + T.step5Title + '</h2>' +
+               '<p class="sub">' + T.step5Sub + '</p>' +
+               '<div class="tip">' + T.step5Tip1 + '</div>' +
+               '<div class="tip">' + T.step5Tip2 + '</div>' +
+               '<div class="tip">' + T.step5Tip3 + '</div>' +
+               '<div style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">' +
+                 '<button class="option" id="opt-open-dash">' + T.step5OpenDash + '</button>' +
+                 '<button class="option" id="opt-stay-welcome">' + T.step5OpenWelcome + '</button>' +
+               '</div>';
+      }
+
+      function wireStepInteractivity(n) {
+        if (n === 2) {
+          ['ar','en'].forEach(function(code) {
+            const el = document.getElementById('opt-' + code);
+            if (!el) return;
+            // Highlight pre-selected
+            if (choices.language === code) el.classList.add('selected');
+            el.onclick = function() {
+              choices.language = code;
+              document.getElementById('opt-ar').classList.remove('selected');
+              document.getElementById('opt-en').classList.remove('selected');
+              el.classList.add('selected');
+            };
+          });
+        }
+        if (n === 4) {
+          const yes = document.getElementById('demo-yes');
+          const no  = document.getElementById('demo-no');
+          if (choices.fillDemo === true)  yes.classList.add('selected');
+          if (choices.fillDemo === false) no.classList.add('selected');
+          yes.onclick = function() {
+            choices.fillDemo = true;
+            yes.classList.add('selected');
+            no.classList.remove('selected');
+          };
+          no.onclick = function() {
+            choices.fillDemo = false;
+            no.classList.add('selected');
+            yes.classList.remove('selected');
+          };
+        }
+        if (n === 5) {
+          document.getElementById('opt-open-dash').onclick = function() {
+            google.script.run.wizardFinishOpenDashboard();
+            google.script.host.close();
+          };
+          document.getElementById('opt-stay-welcome').onclick = function() {
+            google.script.run.wizardFinishOpenWelcome();
+            google.script.host.close();
+          };
+        }
+      }
+
+      // ===================================================================
+      // NAV
+      // ===================================================================
+      function goNext() {
+        // Capture step 3 currency selection before leaving step
+        if (currentStep === 3) {
+          const picker = document.getElementById('currency-picker');
+          if (picker) choices.currency = picker.value;
+        }
+
+        if (currentStep < totalSteps) {
+          // Validate as we go (only language is strictly required)
+          if (currentStep === 2 && !choices.language) {
+            showError(bootstrap.texts.applyError ?
+              'Please select a language' : 'الرجاء اختيار لغة');
+            return;
+          }
+          renderStep(currentStep + 1);
+        } else {
+          // Last step pressed → apply choices
+          applyAll();
+        }
+      }
+
+      function goBack() {
+        if (currentStep > 1) renderStep(currentStep - 1);
+      }
+
+      // ===================================================================
+      // APPLY
+      // ===================================================================
+      function applyAll() {
+        const T = bootstrap.texts;
+        showLoading(T.applyingDemo);  // generic working message
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            hideLoading();
+            if (result && result.ok) {
+              // Final step shows tips + close buttons. Already at step 5
+              // visually (we just finished it). Show the "all done" feel
+              // by re-rendering step 5 cleanly.
+              renderStep(5);
+            } else {
+              showError((result && result.error) || 'Unknown error');
+            }
+          })
+          .withFailureHandler(function(err) {
+            hideLoading();
+            showError(err.message || String(err));
+          })
+          .applyWizardChoices(choices);
+      }
+
+      // ===================================================================
+      // UI HELPERS
+      // ===================================================================
+      function showLoading(msg) {
+        document.getElementById('loading-text').textContent = msg || '...';
+        document.getElementById('loading').classList.add('active');
+        document.getElementById('step-container').style.display = 'none';
+      }
+      function hideLoading() {
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('step-container').style.display = '';
+      }
+      function showError(msg) {
+        const e = document.getElementById('error-display');
+        e.textContent = msg;
+        e.classList.add('active');
+        setTimeout(function() { e.classList.remove('active'); }, 5000);
+      }
+    </script>
+  </body>
+</html>
