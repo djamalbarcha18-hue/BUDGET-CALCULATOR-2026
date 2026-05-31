@@ -1416,3 +1416,94 @@ function tryFullDemoSmartBudget() {
     );
   }
 }
+
+
+// ============================================================================
+// 20. NUCLEAR RESET - wipe everything to bare workbook
+// ----------------------------------------------------------------------------
+// Use this if a previous install left validations / protections / named
+// ranges in a state that subsequent installs cannot recover from.
+//
+// What it does:
+//   1. Deletes every sheet except ONE renamed placeholder
+//   2. Removes every named range
+//   3. Removes every protection on the placeholder sheet
+//   4. Removes every data validation on the placeholder sheet
+//
+// After this, the workbook is essentially as fresh as a brand-new
+// https://sheets.new spreadsheet. Then run tryFullDemoSmartBudget normally.
+// ============================================================================
+function resetWorkbookCompletely() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.alert(
+    'تحذير: سيتم حذف كل البيانات',
+    'سيتم حذف جميع الأوراق والصيغ والبيانات في هذا المصنف. ' +
+    'هذه العملية لا يمكن التراجع عنها. ' +
+    'متابعة؟',
+    ui.ButtonSet.YES_NO
+  );
+  if (r !== ui.Button.YES) return;
+
+  var ss = SpreadsheetApp.getActive();
+  Logger.log('=== NUCLEAR RESET START ===');
+
+  // 1. Delete all named ranges
+  try {
+    var named = ss.getNamedRanges();
+    for (var i = 0; i < named.length; i++) {
+      try { named[i].remove(); } catch (e) {}
+    }
+    Logger.log('Removed ' + named.length + ' named ranges');
+  } catch (e) {
+    Logger.log('Named range removal error: ' + e);
+  }
+
+  // 2. Insert a placeholder sheet (must keep at least one sheet alive)
+  var placeholder = ss.insertSheet('_TEMP_RESET_' + new Date().getTime());
+
+  // 3. Delete every other sheet
+  var allSheets = ss.getSheets();
+  var deleted = 0;
+  for (var j = 0; j < allSheets.length; j++) {
+    var sh = allSheets[j];
+    if (sh.getName() !== placeholder.getName()) {
+      try {
+        ss.deleteSheet(sh);
+        deleted++;
+      } catch (e) {
+        Logger.log('Could not delete ' + sh.getName() + ': ' + e);
+      }
+    }
+  }
+  Logger.log('Deleted ' + deleted + ' sheets');
+
+  // 4. Strip everything from the placeholder
+  try {
+    placeholder.clear();
+    var maxR = placeholder.getMaxRows();
+    var maxC = placeholder.getMaxColumns();
+    placeholder.getRange(1, 1, maxR, maxC).clearDataValidations();
+    var prots = placeholder.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+    for (var k = 0; k < prots.length; k++) {
+      try { prots[k].remove(); } catch (e) {}
+    }
+    var sprots = placeholder.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    for (var l = 0; l < sprots.length; l++) {
+      try { sprots[l].remove(); } catch (e) {}
+    }
+  } catch (e) {
+    Logger.log('Placeholder cleanup error: ' + e);
+  }
+
+  // 5. Rename placeholder to a clean default name
+  try { placeholder.setName('Sheet1'); } catch (e) {}
+
+  SpreadsheetApp.flush();
+  Logger.log('=== NUCLEAR RESET DONE ===');
+
+  ui.alert(
+    'تم إعادة الضبط',
+    'المصنف نظيف تماما. الآن شغل tryFullDemoSmartBudget لإنشاء القالب من جديد.',
+    ui.ButtonSet.OK
+  );
+}
