@@ -1507,3 +1507,248 @@ function resetWorkbookCompletely() {
     ui.ButtonSet.OK
   );
 }
+
+
+// ============================================================================
+// 21. CUSTOM MENU - SaaS command bar (auto-loads on workbook open)
+// ----------------------------------------------------------------------------
+// onOpen() is a reserved trigger name in Apps Script. Whenever the user opens
+// the spreadsheet, this function fires automatically and adds the SmartBudget
+// menu to the menu bar. The user never has to enter the Apps Script editor
+// again - every workflow is one click away.
+//
+// To activate: after pasting the code, RELOAD the spreadsheet tab once.
+// onOpen will fire and the menu appears.
+// ============================================================================
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('💎 SmartBudget')
+    .addItem('🚀 تجربة القالب بالبيانات التجريبية', 'menuFreshDemo')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('🔀 التنقل السريع')
+      .addItem('🏠 صفحة الترحيب', 'gotoWelcome')
+      .addItem('📊 لوحة التحكم', 'gotoDashboard')
+      .addItem('💰 الإعدادات', 'gotoSettings')
+      .addItem('🎯 الأهداف', 'gotoGoals'))
+    .addSeparator()
+    .addItem('🩺 فحص صحة النظام', 'runHealthCheck')
+    .addItem('♻️ إعادة بناء اللوحة', 'repairDashboardV2')
+    .addSeparator()
+    .addItem('📥 تعبئة بيانات تجريبية', 'fillAllMonthsWithDemoData')
+    .addItem('🧹 مسح البيانات التجريبية', 'clearAllDemoData')
+    .addSeparator()
+    .addItem('⚠️ إعادة الضبط الكامل', 'resetWorkbookCompletely')
+    .addItem('🛠️ إعادة التثبيت', 'installSmartBudgetPro2026')
+    .addToUi();
+}
+
+// ----------------------------------------------------------------------------
+// Bulletproof one-click demo: reset workbook completely first, THEN install,
+// THEN fill demo data, THEN add monthly analytics. Cannot fail on re-run
+// because it always starts from a fully-cleaned state.
+// ----------------------------------------------------------------------------
+function menuFreshDemo() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.alert(
+    'تجربة القالب بالبيانات التجريبية',
+    'سيتم مسح أي بيانات حالية في المصنف ثم بناء النموذج التجريبي الكامل.\n\n' +
+    'الوقت المتوقع: 60-90 ثانية. متابعة؟',
+    ui.ButtonSet.YES_NO
+  );
+  if (r !== ui.Button.YES) return;
+
+  var ss = SpreadsheetApp.getActive();
+
+  // Inline reset (skip the confirmation dialog inside resetWorkbookCompletely)
+  Logger.log('Fresh demo: nuclear reset...');
+  try {
+    var named = ss.getNamedRanges();
+    for (var i = 0; i < named.length; i++) {
+      try { named[i].remove(); } catch (e) {}
+    }
+  } catch (e) {}
+  var placeholder = ss.insertSheet('_RESET_' + new Date().getTime());
+  var allSheets = ss.getSheets();
+  for (var j = 0; j < allSheets.length; j++) {
+    if (allSheets[j].getName() !== placeholder.getName()) {
+      try { ss.deleteSheet(allSheets[j]); } catch (e) {}
+    }
+  }
+  try {
+    placeholder.clear();
+    var maxR = placeholder.getMaxRows();
+    var maxC = placeholder.getMaxColumns();
+    placeholder.getRange(1, 1, maxR, maxC).clearDataValidations();
+    var prots = placeholder.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+    for (var k = 0; k < prots.length; k++) { try { prots[k].remove(); } catch (e) {} }
+    var sprots = placeholder.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    for (var l = 0; l < sprots.length; l++) { try { sprots[l].remove(); } catch (e) {} }
+  } catch (e) {}
+  try { placeholder.setName('Sheet1'); } catch (e) {}
+  SpreadsheetApp.flush();
+
+  Logger.log('Fresh demo: running tryFullDemoSmartBudget...');
+  tryFullDemoSmartBudget();
+}
+
+// Navigation shortcuts ------------------------------------------------------
+function gotoWelcome()   { _gotoSheet(SHEET_NAMES.welcome); }
+function gotoDashboard() { _gotoSheet(SHEET_NAMES.dashboard); }
+function gotoSettings()  { _gotoSheet(SHEET_NAMES.settings); }
+function gotoGoals()     { _gotoSheet(SHEET_NAMES.goals); }
+
+function _gotoSheet(name) {
+  var ss = SpreadsheetApp.getActive();
+  var s = ss.getSheetByName(name);
+  if (s) {
+    ss.setActiveSheet(s);
+  } else {
+    SpreadsheetApp.getUi().alert(
+      'الورقة غير موجودة',
+      'الرجاء تشغيل التثبيت أولا من قائمة SmartBudget.',
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  }
+}
+
+// ============================================================================
+// 22. SYSTEM HEALTH CENTER
+// ----------------------------------------------------------------------------
+// Diagnostic engine. Inspects the live state of the workbook and reports:
+//   - Sheet integrity (all 17 sheets present?)
+//   - Named range integrity (all 11 rng_* defined?)
+//   - Critical formula integrity (XLOOKUP on settings B4, GOOGLEFINANCE on FX)
+//   - Chart integrity (5 charts on dashboard?)
+//   - Validation integrity (sample monthly sheets have category dropdowns?)
+//   - Protection integrity (engine sheet locked?)
+// ============================================================================
+function runHealthCheck() {
+  var ss = SpreadsheetApp.getActive();
+  var checks = { passes: [], warnings: [], errors: [] };
+
+  Logger.log('=== Health Check START ' + new Date().toISOString() + ' ===');
+
+  // Check 1: All expected sheets present
+  var expected = [SHEET_NAMES.welcome, SHEET_NAMES.settings, SHEET_NAMES.goals,
+                  SHEET_NAMES.dashboard, SHEET_NAMES.engine, SHEET_NAMES.fx]
+                  .concat(MONTHS);
+  var missing = [];
+  for (var i = 0; i < expected.length; i++) {
+    if (!ss.getSheetByName(expected[i])) missing.push(expected[i]);
+  }
+  if (missing.length === 0) {
+    checks.passes.push('17 ورقة موجودة');
+  } else {
+    checks.errors.push('أوراق ناقصة (' + missing.length + '): ' + missing.join('، '));
+  }
+
+  // Check 2: Named ranges
+  var expectedNames = ['rng_MainCurrency','rng_ActiveFormat','rng_MainRate',
+    'rng_Currencies','rng_CurrencyNames','rng_CurrencyRates',
+    'rng_FormatStrings','rng_CurrencyTable','rng_IncomeCategories',
+    'rng_ExpenseCategories','rng_PaymentMethods'];
+  var existingNames = ss.getNamedRanges().map(function(n) { return n.getName(); });
+  var missingNames = [];
+  for (var ii = 0; ii < expectedNames.length; ii++) {
+    if (existingNames.indexOf(expectedNames[ii]) < 0) missingNames.push(expectedNames[ii]);
+  }
+  if (missingNames.length === 0) {
+    checks.passes.push('11 نطاق مسمى موجود');
+  } else {
+    checks.errors.push('نطاقات ناقصة: ' + missingNames.join('، '));
+  }
+
+  // Check 3: Dashboard charts
+  var dash = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (dash) {
+    var nCharts = dash.getCharts().length;
+    if (nCharts >= 5) checks.passes.push(nCharts + ' رسم بياني على لوحة التحكم');
+    else if (nCharts > 0) checks.warnings.push('عدد الرسوم البيانية ناقص: ' + nCharts + '/5');
+    else checks.errors.push('لا توجد رسوم بيانية على لوحة التحكم');
+  }
+
+  // Check 4: Critical formulas - settings B4 (XLOOKUP)
+  var settings = ss.getSheetByName(SHEET_NAMES.settings);
+  if (settings) {
+    var f = settings.getRange('B4').getFormula();
+    if (f.indexOf('XLOOKUP') >= 0) checks.passes.push('صيغة العملة النشطة (XLOOKUP) سليمة');
+    else checks.errors.push('صيغة الإعدادات B4 محذوفة أو معطلة');
+  }
+
+  // Check 5: FX engine
+  var fx = ss.getSheetByName(SHEET_NAMES.fx);
+  if (fx) {
+    var fxF = fx.getRange('B2').getFormula();
+    if (fxF.indexOf('GOOGLEFINANCE') >= 0) {
+      checks.passes.push('محرك العملات الحي (GOOGLEFINANCE) متصل');
+    } else {
+      checks.warnings.push('محرك العملات يستخدم أسعار ثابتة فقط');
+    }
+  }
+
+  // Check 6: Engine protection
+  var engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (engine) {
+    var prots = engine.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    if (prots.length > 0) checks.passes.push('ورقة المحرك محمية');
+    else checks.warnings.push('ورقة المحرك غير محمية - بيانات حساسة معرضة');
+  }
+
+  // Check 7: Monthly validations (sample first 3 months)
+  var withValidation = 0;
+  for (var m = 0; m < Math.min(3, MONTHS.length); m++) {
+    var ms = ss.getSheetByName(MONTHS[m]);
+    if (ms && ms.getRange('C10').getDataValidation()) withValidation++;
+  }
+  if (withValidation === 3) {
+    checks.passes.push('قوائم الفئات (dropdown) نشطة على الأوراق الشهرية');
+  } else {
+    checks.warnings.push('قواعد التحقق ناقصة: ' + withValidation + '/3 ورقة فحصت');
+  }
+
+  // Check 8: Dashboard year + currency selectors
+  if (dash) {
+    var b4 = dash.getRange('B4').getValue();
+    var d4 = dash.getRange('D4').getValue();
+    if (b4 && d4) checks.passes.push('محددات السنة (' + b4 + ') والعملة (' + d4 + ') مضبوطة');
+    else checks.warnings.push('محددات السنة أو العملة فارغة على لوحة التحكم');
+  }
+
+  // Build report
+  var ts = new Date().toLocaleString('ar-DZ');
+  var report = '🩺 تقرير صحة النظام\n';
+  report += 'وقت الفحص: ' + ts + '\n';
+  report += '═══════════════════════════\n\n';
+
+  if (checks.errors.length > 0) {
+    report += '🔴 أخطاء حرجة (' + checks.errors.length + ')\n';
+    for (var e = 0; e < checks.errors.length; e++) report += '  • ' + checks.errors[e] + '\n';
+    report += '\n';
+  }
+  if (checks.warnings.length > 0) {
+    report += '🟡 تحذيرات (' + checks.warnings.length + ')\n';
+    for (var w = 0; w < checks.warnings.length; w++) report += '  • ' + checks.warnings[w] + '\n';
+    report += '\n';
+  }
+  if (checks.passes.length > 0) {
+    report += '✅ يعمل بشكل صحيح (' + checks.passes.length + ')\n';
+    for (var p = 0; p < checks.passes.length; p++) report += '  • ' + checks.passes[p] + '\n';
+    report += '\n';
+  }
+
+  report += '═══════════════════════════\n';
+  if (checks.errors.length > 0) {
+    report += 'موصى به: قائمة SmartBudget → إعادة بناء اللوحة\n';
+    report += 'إن استمرت المشاكل: قائمة SmartBudget → إعادة الضبط الكامل';
+  } else if (checks.warnings.length > 0) {
+    report += 'النظام يعمل، لكن راجع التحذيرات أعلاه';
+  } else {
+    report += '🎉 النظام في حالة ممتازة';
+  }
+
+  Logger.log(report);
+  Logger.log('=== Health Check DONE ===');
+
+  SpreadsheetApp.getUi().alert('فحص صحة النظام', report,
+    SpreadsheetApp.getUi().ButtonSet.OK);
+}
