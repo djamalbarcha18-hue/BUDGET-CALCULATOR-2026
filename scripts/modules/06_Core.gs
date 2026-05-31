@@ -115,6 +115,7 @@ function onOpen() {
       .addItem(t('menu.langArabic'),  'setLanguageAr')
       .addItem(t('menu.langEnglish'), 'setLanguageEn'))
     .addSeparator()
+    .addItem(t('menu.onboarding'),       'menuOpenOnboarding')
     .addItem(t('menu.healthCheck'),     'runHealthCheck')
     .addItem(t('menu.verifyFormulas'),  'menuVerifyFormulaIntegrity')
     .addItem(t('menu.autoRepair'),      'menuAutoRepairFormulas')
@@ -131,6 +132,11 @@ function onOpen() {
     .addItem(t('menu.reset'),     'resetWorkbookCompletely')
     .addItem(t('menu.reinstall'), 'installSmartBudgetPro2026')
     .addToUi();
+
+  // First-open auto-suggestion for the onboarding wizard.
+  // Wrapped in try/catch inside the helper itself so any failure is silent —
+  // we never want a bad property read to block onOpen.
+  maybePromptOnboarding();
 }
 
 // ============================================================================
