@@ -204,6 +204,28 @@ function getOrCreateSheet(ss, name) {
   if (!s) s = ss.insertSheet(name);
   s.setRightToLeft(true);
   s.setHiddenGridlines(true);
+
+  // Defensive cleanup for re-runs over an existing workbook.
+  // s.clear() does not remove data validations or protections, so a prior
+  // install leaves rules on cells like Settings!B3 that reject the new
+  // formula on the next run with "Data violates validation". Wipe both
+  // surfaces every time so re-runs are idempotent.
+  try {
+    var maxR = s.getMaxRows();
+    var maxC = s.getMaxColumns();
+    s.getRange(1, 1, maxR, maxC).clearDataValidations();
+  } catch (e) {}
+  try {
+    var pRange = s.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+    for (var i = 0; i < pRange.length; i++) {
+      try { pRange[i].remove(); } catch (e2) {}
+    }
+    var pSheet = s.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    for (var j = 0; j < pSheet.length; j++) {
+      try { pSheet[j].remove(); } catch (e3) {}
+    }
+  } catch (e) {}
+
   return s;
 }
 
