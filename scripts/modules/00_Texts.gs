@@ -82,7 +82,35 @@ const TEXTS = {
       reinstall:       '🛠️ إعادة التثبيت',
       langSubmenu:     '🌐 اللغة',
       langArabic:      '🇸🇦 العربية',
-      langEnglish:     '🇬🇧 English'
+      langEnglish:     '🇬🇧 English',
+      verifyFormulas:  '🔍 فحص سلامة الصيغ',
+      autoRepair:      '🔧 إصلاح تلقائي للصيغ'
+    },
+
+    // Formula integrity manifest (Module 07_Manifest.gs)
+    integrity: {
+      reportTitle:   'تقرير سلامة الصيغ',
+      header:        ({timestamp, total}) =>
+        `🔍 فحص سلامة الصيغ\nوقت الفحص: ${timestamp}\nإجمالي الصيغ المراقبة: ${total}\n═══════════════════════════\n\n`,
+      allHealthy:    '✅ كل الصيغ سليمة. النظام في حالة ممتازة.',
+      foundIssues:   ({n}) => `🔴 تم اكتشاف ${n} مشكلة في الصيغ:\n\n`,
+      issueRow:      ({sheet, cell, status}) => `  • ${sheet}!${cell} — ${status}\n`,
+      statusMissing: 'الصيغة مفقودة (الخلية فارغة)',
+      statusAltered: 'الصيغة معدلة عن النسخة الأصلية',
+      statusSheetMissing: 'الورقة غير موجودة',
+      footerWithIssues: '\nاضغط "إصلاح تلقائي" من قائمة SmartBudget لاستعادة الصيغ.',
+
+      repairTitle:   'الإصلاح التلقائي للصيغ',
+      repairConfirm: ({n}) =>
+        `سيتم استعادة ${n} صيغة إلى نسختها الأصلية. ` +
+        'القيم التي تكتبها في خلايا الإدخال لن تتأثر. متابعة؟',
+      repairDoneTitle: 'تم الإصلاح',
+      repairDoneBody:  ({n}) =>
+        `تم استعادة ${n} صيغة بنجاح. شغل "إعادة بناء اللوحة" إن لزم تحديث الرسوم.`,
+      repairNothingTitle: 'لا حاجة للإصلاح',
+      repairNothingBody:  'كل الصيغ سليمة بالفعل، لا يوجد ما يستلزم استعادته.',
+      repairSheetMissing: ({n}) =>
+        `${n} ورقة غير موجودة - شغل "إعادة التثبيت" بدل ذلك.`
     },
 
     // ------------------------------------------------------------------
@@ -253,7 +281,34 @@ const TEXTS = {
       reinstall:       '🛠️ Reinstall',
       langSubmenu:     '🌐 Language',
       langArabic:      '🇸🇦 العربية',
-      langEnglish:     '🇬🇧 English'
+      langEnglish:     '🇬🇧 English',
+      verifyFormulas:  '🔍 Verify Formula Integrity',
+      autoRepair:      '🔧 Auto-Repair Formulas'
+    },
+
+    integrity: {
+      reportTitle:   'Formula Integrity Report',
+      header:        ({timestamp, total}) =>
+        `🔍 Formula Integrity Scan\nScan time: ${timestamp}\nFormulas tracked: ${total}\n═══════════════════════════\n\n`,
+      allHealthy:    '✅ All tracked formulas intact. System in excellent condition.',
+      foundIssues:   ({n}) => `🔴 ${n} formula issue${n === 1 ? '' : 's'} detected:\n\n`,
+      issueRow:      ({sheet, cell, status}) => `  • ${sheet}!${cell} — ${status}\n`,
+      statusMissing: 'Formula missing (cell is empty)',
+      statusAltered: 'Formula has been modified from original',
+      statusSheetMissing: 'Parent sheet not found',
+      footerWithIssues: '\nClick "Auto-Repair Formulas" from the SmartBudget menu to restore.',
+
+      repairTitle:   'Formula Auto-Repair',
+      repairConfirm: ({n}) =>
+        `${n} formula${n === 1 ? '' : 's'} will be restored to original. ` +
+        'Values you have entered in input cells are NOT affected. Continue?',
+      repairDoneTitle: 'Repair complete',
+      repairDoneBody:  ({n}) =>
+        `${n} formula${n === 1 ? '' : 's'} restored successfully. Run "Rebuild Dashboard" if charts need refreshing.`,
+      repairNothingTitle: 'Nothing to repair',
+      repairNothingBody:  'All tracked formulas are already intact.',
+      repairSheetMissing: ({n}) =>
+        `${n} parent sheet${n === 1 ? '' : 's'} missing — run "Reinstall" instead.`
     },
 
     common: {

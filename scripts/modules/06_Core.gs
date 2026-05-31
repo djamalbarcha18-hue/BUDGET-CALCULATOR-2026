@@ -116,6 +116,8 @@ function onOpen() {
       .addItem(t('menu.langEnglish'), 'setLanguageEn'))
     .addSeparator()
     .addItem(t('menu.healthCheck'),     'runHealthCheck')
+    .addItem(t('menu.verifyFormulas'),  'menuVerifyFormulaIntegrity')
+    .addItem(t('menu.autoRepair'),      'menuAutoRepairFormulas')
     .addItem(t('menu.repairDashboard'), 'repairDashboardV2')
     .addSeparator()
     .addItem(t('menu.fillDemo'),  'fillAllMonthsWithDemoData')
@@ -287,6 +289,21 @@ function runHealthCheck() {
     const currency = dash.getRange('D4').getValue();
     if (year && currency) checks.passes.push(t('health.selectorsOK', { year, currency }));
     else                  checks.warnings.push(t('health.selectorsEmpty'));
+  }
+
+  // Check 9 (Phase 3): Formula integrity via the manifest
+  // Lightweight summary — if anything is wrong, point user at the dedicated
+  // Verify Formula Integrity menu item for the full report.
+  try {
+    const integrity = verifyFormulaIntegrity();
+    const issues = integrity.missing.length + integrity.altered.length;
+    if (issues === 0) {
+      checks.passes.push(`✅ سلامة الصيغ (${integrity.total} صيغة سليمة)`);
+    } else {
+      checks.errors.push(`🔧 ${issues} صيغة تحتاج إصلاح — استخدم "إصلاح تلقائي للصيغ"`);
+    }
+  } catch (e) {
+    Logger.log(`Manifest check skipped: ${e}`);
   }
 
   // Build report (header + sections + footer)

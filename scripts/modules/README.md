@@ -1,6 +1,6 @@
 # SmartBudget Pro 2026 — Modular Architecture
 
-Phases 1–2 of the Strategic Refactor Plan. Apps Script loads every `.gs`
+Phases 1, 2 & 3 of the Strategic Refactor Plan. Apps Script loads every `.gs`
 file in a project into one global scope, so this is a **visual** split with
 zero runtime cost.
 
@@ -9,15 +9,16 @@ zero runtime cost.
 | File | Purpose | Lines | Functions |
 |---|---|---:|---:|
 | `00_Config.gs` | Theme palette, seed data, format constants, manifests | 185 | 0 |
-| `00_Texts.gs` | **Centralized UI text dictionary + `t()` helper** | 247 | 1 |
+| `00_Texts.gs` | **AR + EN dictionary, runtime language switching, `t()`** | 461 | 6 |
 | `01_Helpers.gs` | DRY helpers (style, format, formula, reset) | 281 | 14 |
 | `02_Sheets.gs` | Settings, Goals, Monthly, FX, Welcome builders | 381 | 5 |
 | `03_Dashboard.gs` | Dashboard layout, engine, charts | 390 | 8 |
 | `04_System.gs` | Named ranges, validations, protection, tab order | 113 | 3 |
 | `05_Demo_QA.gs` | Demo data, monthly analytics, repair, reset | 264 | 11 |
-| `06_Core.gs` | Entry points, onOpen menu, navigation, health check | 264 | 9 |
+| `06_Core.gs` | Entry points, onOpen menu, navigation, health check | 339 | 11 |
+| `07_Manifest.gs` | **Formula integrity manifest + auto-repair** | 342 | 6 |
 
-**Total: 2,125 lines, 50 functions** (vs. monolith: 1,754 lines, 42 functions).
+**Total: 2,756 lines, 61 functions** (vs. monolith: 1,754 lines, 42 functions).
 
 ## Loading Order
 
