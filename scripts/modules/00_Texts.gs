@@ -84,7 +84,40 @@ const TEXTS = {
       langArabic:      '🇸🇦 العربية',
       langEnglish:     '🇬🇧 English',
       verifyFormulas:  '🔍 فحص سلامة الصيغ',
-      autoRepair:      '🔧 إصلاح تلقائي للصيغ'
+      autoRepair:      '🔧 إصلاح تلقائي للصيغ',
+      exportSubmenu:   '📄 تصدير التقارير',
+      exportMonth:     '📅 تصدير الشهر الحالي PDF',
+      exportDashboard: '📊 تصدير لوحة التحكم PDF',
+      exportAnnual:    '📚 تصدير التقرير السنوي PDF'
+    },
+
+    // Export Engine (Module 08_Export.gs) — Phase 4
+    export: {
+      pickerTitle:     'اختر الشهر للتصدير',
+      pickerPrompt:    'أدخل اسم الشهر تماماً كما يظهر في التبويب (مثال: جانفي):',
+      monthNotFound:   ({name}) => `الورقة "${name}" غير موجودة. تحقق من الاسم.`,
+      activeNotMonth:  'الورقة النشطة ليست ورقة شهرية. افتح أحد الأشهر (جانفي - ديسمبر) ثم أعد المحاولة.',
+      generating:      'جاري إنشاء ملف PDF... قد يستغرق 5-15 ثانية.',
+      successTitle:    'تم التصدير بنجاح',
+      successBody:     ({fileName, folderName}) =>
+        `تم إنشاء التقرير:\n\n${fileName}\n\n` +
+        `📁 الموقع في Drive: ${folderName}\n` +
+        `يمكنك فتح الملف من Google Drive أو مشاركته عبر الرابط.`,
+      successWithLink: ({fileName, folderName, url}) =>
+        `تم إنشاء التقرير:\n\n${fileName}\n\n` +
+        `📁 الموقع: ${folderName}\n\n` +
+        `🔗 رابط مباشر:\n${url}`,
+      failureTitle:    'فشل التصدير',
+      failureBody:     ({err}) =>
+        `حدث خطأ أثناء التصدير:\n\n${err}\n\n` +
+        'تأكد من منح الصلاحيات الكاملة لـ Apps Script (Drive + Spreadsheets) وأعد المحاولة.',
+      annualConfirm:   'سيتم تصدير 14 ورقة (12 شهر + لوحة التحكم + الأهداف) في PDF واحد. ' +
+                       'قد يستغرق العمل 30-60 ثانية. متابعة؟',
+      progressMonth:   ({n}) => `جاري تصدير الشهر ${n}/12...`,
+      folderName:      'SmartBudget Reports',
+      filePrefixMonth: 'SmartBudget_Month',
+      filePrefixDash:  'SmartBudget_Dashboard',
+      filePrefixAnnual:'SmartBudget_Annual_Report'
     },
 
     // Formula integrity manifest (Module 07_Manifest.gs)
@@ -283,7 +316,39 @@ const TEXTS = {
       langArabic:      '🇸🇦 العربية',
       langEnglish:     '🇬🇧 English',
       verifyFormulas:  '🔍 Verify Formula Integrity',
-      autoRepair:      '🔧 Auto-Repair Formulas'
+      autoRepair:      '🔧 Auto-Repair Formulas',
+      exportSubmenu:   '📄 Export Reports',
+      exportMonth:     '📅 Export Current Month as PDF',
+      exportDashboard: '📊 Export Dashboard as PDF',
+      exportAnnual:    '📚 Export Annual Report as PDF'
+    },
+
+    export: {
+      pickerTitle:     'Pick a month to export',
+      pickerPrompt:    'Enter the month name exactly as it appears on the tab (e.g. جانفي):',
+      monthNotFound:   ({name}) => `Sheet "${name}" not found. Check the name.`,
+      activeNotMonth:  'The active sheet is not a monthly sheet. Open one of the months (Jan-Dec) and try again.',
+      generating:      'Generating PDF... 5-15 seconds.',
+      successTitle:    'Export successful',
+      successBody:     ({fileName, folderName}) =>
+        `Report created:\n\n${fileName}\n\n` +
+        `📁 Drive location: ${folderName}\n` +
+        `Open from Google Drive or share via link.`,
+      successWithLink: ({fileName, folderName, url}) =>
+        `Report created:\n\n${fileName}\n\n` +
+        `📁 Location: ${folderName}\n\n` +
+        `🔗 Direct link:\n${url}`,
+      failureTitle:    'Export failed',
+      failureBody:     ({err}) =>
+        `An error occurred during export:\n\n${err}\n\n` +
+        'Make sure Apps Script has full permissions (Drive + Spreadsheets) and try again.',
+      annualConfirm:   '14 sheets (12 months + dashboard + goals) will be exported into a single PDF. ' +
+                       'May take 30-60 seconds. Continue?',
+      progressMonth:   ({n}) => `Exporting month ${n}/12...`,
+      folderName:      'SmartBudget Reports',
+      filePrefixMonth: 'SmartBudget_Month',
+      filePrefixDash:  'SmartBudget_Dashboard',
+      filePrefixAnnual:'SmartBudget_Annual_Report'
     },
 
     integrity: {
