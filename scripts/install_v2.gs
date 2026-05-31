@@ -142,7 +142,7 @@ var DEMO_OVERSPEND = [2,5,8,11];
 // ============================================================================
 // 3. MAIN ENTRY POINT
 // ============================================================================
-function installSmartBudgetPro2026() {
+function installSmartBudgetPro2026(silent) {
   var startTime = new Date();
   var ss = SpreadsheetApp.getActive();
   var ui = SpreadsheetApp.getUi();
@@ -186,11 +186,14 @@ function installSmartBudgetPro2026() {
   ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
 
   var elapsed = Math.round((new Date() - startTime) / 1000);
-  ui.alert('SMARTBUDGET PRO 2026 - تم التركيب',
-    'تم تركيب ' + (4 + MONTHS.length) + ' ورقة في ' + elapsed + ' ثانية.\n\n' +
-    'افتح "لوحة التحكم"، اختر السنة في B4 والعملة في D4.\n\n' +
-    'دوال إضافية: fillAllMonthsWithDemoData, addMonthlyVisualAnalytics.',
-    ui.ButtonSet.OK);
+  if (!silent) {
+    ui.alert('SMARTBUDGET PRO 2026 - تم التركيب',
+      'تم تركيب ' + (4 + MONTHS.length) + ' ورقة في ' + elapsed + ' ثانية.\n\n' +
+      'افتح "لوحة التحكم"، اختر السنة في B4 والعملة في D4.\n\n' +
+      'دوال إضافية: fillAllMonthsWithDemoData, addMonthlyVisualAnalytics.',
+      ui.ButtonSet.OK);
+  }
+  return elapsed;
 }
 
 // ============================================================================
@@ -1112,7 +1115,7 @@ function reorderTabsV2(ss) {
 // ============================================================================
 // 16. DEMO DATA FILLER
 // ============================================================================
-function fillAllMonthsWithDemoData() {
+function fillAllMonthsWithDemoData(silent) {
   var startTime = new Date();
   var ss = SpreadsheetApp.getActive();
   var totalI = 0, totalE = 0, processed = 0;
@@ -1131,9 +1134,12 @@ function fillAllMonthsWithDemoData() {
   SpreadsheetApp.flush();
   var el = Math.round((new Date() - startTime) / 1000);
   Logger.log('DONE ' + el + 's. ' + totalI + ' income + ' + totalE + ' expense rows.');
-  SpreadsheetApp.getUi().alert('تمت تعبئة البيانات التجريبية',
-    processed + ' ورقة، ' + totalI + ' دخل + ' + totalE + ' مصاريف، ' + el + ' ث.',
-    SpreadsheetApp.getUi().ButtonSet.OK);
+  if (!silent) {
+    SpreadsheetApp.getUi().alert('تمت تعبئة البيانات التجريبية',
+      processed + ' ورقة، ' + totalI + ' دخل + ' + totalE + ' مصاريف، ' + el + ' ث.',
+      SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+  return { processed: processed, income: totalI, expense: totalE, elapsed: el };
 }
 
 function demoFillIncome(sheet, mi, overspend) {
@@ -1212,7 +1218,7 @@ function clearAllDemoData() {
 // ============================================================================
 // 17. MONTHLY VISUAL ANALYTICS
 // ============================================================================
-function addMonthlyVisualAnalytics() {
+function addMonthlyVisualAnalytics(silent) {
   var ss = SpreadsheetApp.getActive();
   var processed = 0;
   Logger.log('=== Monthly Visual Analytics ===');
@@ -1227,9 +1233,12 @@ function addMonthlyVisualAnalytics() {
     processed++;
   }
   SpreadsheetApp.flush();
-  SpreadsheetApp.getUi().alert('تمت إضافة التحليل البصري',
-    processed + ' ورقة، 2 مخطط لكل منها.',
-    SpreadsheetApp.getUi().ButtonSet.OK);
+  if (!silent) {
+    SpreadsheetApp.getUi().alert('تمت إضافة التحليل البصري',
+      processed + ' ورقة، 2 مخطط لكل منها.',
+      SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+  return processed;
 }
 
 function monthlyAnalyticsHelpers(s) {
@@ -1322,4 +1331,66 @@ function repairDashboardV2() {
   SpreadsheetApp.getUi().alert('تم الإصلاح',
     'أعيد بناء صيغ المحرك والرسوم البيانية.',
     SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+
+// ============================================================================
+// 19. ONE-CLICK FULL DEMO - install + fill + monthly analytics
+// ----------------------------------------------------------------------------
+// Run this single function to get a fully populated workbook for testing.
+// Sequence:
+//   1. installSmartBudgetPro2026() - builds all sheets, dashboard, charts
+//   2. fillAllMonthsWithDemoData() - 5 income + 5 expense per month
+//   3. addMonthlyVisualAnalytics() - column + doughnut inside each month
+//   4. repairDashboardV2() - rebuild engine + charts so demo data flows in
+// All sub-calls run silently; one final alert summarizes the result.
+// ============================================================================
+function tryFullDemoSmartBudget() {
+  var startTime = new Date();
+  var ui = SpreadsheetApp.getActive() ? SpreadsheetApp.getUi() : null;
+
+  Logger.log('===== FULL DEMO START =====');
+
+  // 1. Install
+  Logger.log('Step 1/4: Installing workbook...');
+  installSmartBudgetPro2026(true);
+
+  // 2. Fill demo data
+  Logger.log('Step 2/4: Filling demo data...');
+  var demo = fillAllMonthsWithDemoData(true);
+
+  // 3. Monthly visual analytics
+  Logger.log('Step 3/4: Adding monthly charts...');
+  addMonthlyVisualAnalytics(true);
+
+  // 4. Rebuild engine + dashboard charts so the demo data flows through
+  Logger.log('Step 4/4: Refreshing dashboard engine + charts...');
+  var ss = SpreadsheetApp.getActive();
+  buildDashboardEngineV2(ss);
+  SpreadsheetApp.flush();
+  buildDashboardChartsV2(ss);
+
+  // Land on the dashboard so user sees the populated charts immediately
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.dashboard));
+
+  var elapsed = Math.round((new Date() - startTime) / 1000);
+  Logger.log('===== FULL DEMO DONE in ' + elapsed + ' seconds =====');
+
+  if (ui) {
+    ui.alert(
+      'SMARTBUDGET PRO 2026 - النسخة التجريبية جاهزة',
+      'تم تركيب القالب بالكامل وتعبئته ببيانات تجريبية:\n\n' +
+      '• 12 ورقة شهرية (جانفي - ديسمبر)\n' +
+      '• ' + demo.income + ' صف دخل + ' + demo.expense + ' صف مصاريف\n' +
+      '• 4 أهداف ادخار في حالات مختلفة\n' +
+      '• لوحة تحكم بـ 6 بطاقات KPI + 5 رسوم بيانية\n' +
+      '• مخططات شهرية داخل كل ورقة\n' +
+      '• محرك تحويل عملات (USD/EUR/SAR/DZD/...)\n\n' +
+      'استغرق التنفيذ ' + elapsed + ' ثانية.\n\n' +
+      'الآن: في "لوحة التحكم" غير السنة (B4) والعملة (D4) لرؤية ' +
+      'التحديث اللحظي.\n\n' +
+      'لاحقا: clearAllDemoData لمسح البيانات التجريبية وبدء الاستخدام الفعلي.',
+      ui.ButtonSet.OK
+    );
+  }
 }
