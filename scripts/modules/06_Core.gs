@@ -22,8 +22,8 @@ function installSmartBudgetPro2026(silent) {
   const nonEmpty = sheets.some(s => s.getLastRow() > 0 || s.getLastColumn() > 1);
   if (!silent && (sheets.length > 1 || nonEmpty)) {
     const r = ui.alert(
-      'تحذير',
-      'يبدو أن المصنف يحوي بيانات. الأوراق ذات الأسماء المتطابقة ستستبدل. متابعة؟',
+      t('common.warningTitle'),
+      t('install.preflight'),
       ui.ButtonSet.YES_NO);
     if (r !== ui.Button.YES) return;
   }
@@ -55,10 +55,8 @@ function installSmartBudgetPro2026(silent) {
   const elapsed = Math.round((new Date() - startTime) / 1000);
   if (!silent) {
     ui.alert(
-      'SMARTBUDGET PRO 2026 - تم التركيب',
-      `تم تركيب ${4 + MONTHS.length} ورقة في ${elapsed} ثانية.\n\n` +
-      'افتح "لوحة التحكم"، اختر السنة في B4 والعملة في D4.\n\n' +
-      'دوال إضافية: fillAllMonthsWithDemoData, addMonthlyVisualAnalytics.',
+      t('install.successTitle'),
+      t('install.successBody', { sheets: 4 + MONTHS.length, secs: elapsed }),
       ui.ButtonSet.OK);
   }
   return elapsed;
@@ -94,18 +92,8 @@ function tryFullDemoSmartBudget() {
 
   if (ui) {
     ui.alert(
-      'SMARTBUDGET PRO 2026 - النسخة التجريبية جاهزة',
-      'تم تركيب القالب بالكامل وتعبئته ببيانات تجريبية:\n\n' +
-      '• 12 ورقة شهرية (جانفي - ديسمبر)\n' +
-      `• ${demo.income} صف دخل + ${demo.expense} صف مصاريف\n` +
-      '• 4 أهداف ادخار في حالات مختلفة\n' +
-      '• لوحة تحكم بـ 6 بطاقات KPI + 5 رسوم بيانية\n' +
-      '• مخططات شهرية داخل كل ورقة\n' +
-      '• محرك تحويل عملات (USD/EUR/SAR/DZD/...)\n\n' +
-      `استغرق التنفيذ ${elapsed} ثانية.\n\n` +
-      'الآن: في "لوحة التحكم" غير السنة (B4) والعملة (D4) لرؤية ' +
-      'التحديث اللحظي.\n\n' +
-      'لاحقا: clearAllDemoData لمسح البيانات التجريبية وبدء الاستخدام الفعلي.',
+      t('demo.readyTitle'),
+      t('demo.readyBody', { income: demo.income, expense: demo.expense, secs: elapsed }),
       ui.ButtonSet.OK);
   }
 }
@@ -115,23 +103,23 @@ function tryFullDemoSmartBudget() {
 // ============================================================================
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('💎 SmartBudget')
-    .addItem('🚀 تجربة القالب بالبيانات التجريبية', 'menuFreshDemo')
+  ui.createMenu(t('menu.title'))
+    .addItem(t('menu.freshDemo'), 'menuFreshDemo')
     .addSeparator()
-    .addSubMenu(ui.createMenu('🔀 التنقل السريع')
-      .addItem('🏠 صفحة الترحيب', 'gotoWelcome')
-      .addItem('📊 لوحة التحكم', 'gotoDashboard')
-      .addItem('💰 الإعدادات', 'gotoSettings')
-      .addItem('🎯 الأهداف', 'gotoGoals'))
+    .addSubMenu(ui.createMenu(t('menu.navSubmenu'))
+      .addItem(t('menu.navWelcome'),   'gotoWelcome')
+      .addItem(t('menu.navDashboard'), 'gotoDashboard')
+      .addItem(t('menu.navSettings'),  'gotoSettings')
+      .addItem(t('menu.navGoals'),     'gotoGoals'))
     .addSeparator()
-    .addItem('🩺 فحص صحة النظام', 'runHealthCheck')
-    .addItem('♻️ إعادة بناء اللوحة', 'repairDashboardV2')
+    .addItem(t('menu.healthCheck'),     'runHealthCheck')
+    .addItem(t('menu.repairDashboard'), 'repairDashboardV2')
     .addSeparator()
-    .addItem('📥 تعبئة بيانات تجريبية', 'fillAllMonthsWithDemoData')
-    .addItem('🧹 مسح البيانات التجريبية', 'clearAllDemoData')
+    .addItem(t('menu.fillDemo'),  'fillAllMonthsWithDemoData')
+    .addItem(t('menu.clearDemo'), 'clearAllDemoData')
     .addSeparator()
-    .addItem('⚠️ إعادة الضبط الكامل', 'resetWorkbookCompletely')
-    .addItem('🛠️ إعادة التثبيت', 'installSmartBudgetPro2026')
+    .addItem(t('menu.reset'),     'resetWorkbookCompletely')
+    .addItem(t('menu.reinstall'), 'installSmartBudgetPro2026')
     .addToUi();
 }
 
@@ -142,9 +130,8 @@ function onOpen() {
 function menuFreshDemo() {
   const ui = SpreadsheetApp.getUi();
   const r = ui.alert(
-    'تجربة القالب بالبيانات التجريبية',
-    'سيتم مسح أي بيانات حالية في المصنف ثم بناء النموذج التجريبي الكامل.\n\n' +
-    'الوقت المتوقع: 60-90 ثانية. متابعة؟',
+    t('demo.menuPromptTitle'),
+    t('demo.menuPromptBody'),
     ui.ButtonSet.YES_NO);
   if (r !== ui.Button.YES) return;
 
@@ -180,54 +167,51 @@ function runHealthCheck() {
   ];
   const missing = expected.filter(name => !ss.getSheetByName(name));
   if (missing.length === 0) {
-    checks.passes.push('17 ورقة موجودة');
+    checks.passes.push(t('health.sheetsOK'));
   } else {
-    checks.errors.push(`أوراق ناقصة (${missing.length}): ${missing.join('، ')}`);
+    checks.errors.push(t('health.sheetsMissing', { n: missing.length, list: missing.join('، ') }));
   }
 
   // Check 2: Named ranges
   const existingNames = ss.getNamedRanges().map(n => n.getName());
   const missingNames = EXPECTED_NAMED_RANGES.filter(n => existingNames.indexOf(n) < 0);
   if (missingNames.length === 0) {
-    checks.passes.push('11 نطاق مسمى موجود');
+    checks.passes.push(t('health.namesOK'));
   } else {
-    checks.errors.push(`نطاقات ناقصة: ${missingNames.join('، ')}`);
+    checks.errors.push(t('health.namesMissing', { list: missingNames.join('، ') }));
   }
 
   // Check 3: Dashboard charts
   const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
   if (dash) {
     const nCharts = dash.getCharts().length;
-    if (nCharts >= 5)      checks.passes.push(`${nCharts} رسم بياني على لوحة التحكم`);
-    else if (nCharts > 0)  checks.warnings.push(`عدد الرسوم البيانية ناقص: ${nCharts}/5`);
-    else                   checks.errors.push('لا توجد رسوم بيانية على لوحة التحكم');
+    if (nCharts >= 5)      checks.passes.push(t('health.chartsOK', { n: nCharts }));
+    else if (nCharts > 0)  checks.warnings.push(t('health.chartsPartial', { n: nCharts }));
+    else                   checks.errors.push(t('health.chartsNone'));
   }
 
   // Check 4: Critical formulas — settings B4 (XLOOKUP)
   const settings = ss.getSheetByName(SHEET_NAMES.settings);
   if (settings) {
     const f = settings.getRange('B4').getFormula();
-    if (f.indexOf('XLOOKUP') >= 0) checks.passes.push('صيغة العملة النشطة (XLOOKUP) سليمة');
-    else                            checks.errors.push('صيغة الإعدادات B4 محذوفة أو معطلة');
+    if (f.indexOf('XLOOKUP') >= 0) checks.passes.push(t('health.formulaB4OK'));
+    else                            checks.errors.push(t('health.formulaB4Bad'));
   }
 
   // Check 5: FX engine
   const fx = ss.getSheetByName(SHEET_NAMES.fx);
   if (fx) {
     const fxF = fx.getRange('B2').getFormula();
-    if (fxF.indexOf('GOOGLEFINANCE') >= 0) {
-      checks.passes.push('محرك العملات الحي (GOOGLEFINANCE) متصل');
-    } else {
-      checks.warnings.push('محرك العملات يستخدم أسعار ثابتة فقط');
-    }
+    if (fxF.indexOf('GOOGLEFINANCE') >= 0) checks.passes.push(t('health.fxLive'));
+    else                                    checks.warnings.push(t('health.fxFallback'));
   }
 
   // Check 6: Engine protection
   const engine = ss.getSheetByName(SHEET_NAMES.engine);
   if (engine) {
     const prots = engine.getProtections(SpreadsheetApp.ProtectionType.SHEET);
-    if (prots.length > 0) checks.passes.push('ورقة المحرك محمية');
-    else                  checks.warnings.push('ورقة المحرك غير محمية - بيانات حساسة معرضة');
+    if (prots.length > 0) checks.passes.push(t('health.engineProtected'));
+    else                  checks.warnings.push(t('health.engineExposed'));
   }
 
   // Check 7: Monthly validations (sample first 3 months)
@@ -236,53 +220,45 @@ function runHealthCheck() {
     const ms = ss.getSheetByName(MONTHS[m]);
     if (ms && ms.getRange('C10').getDataValidation()) withValidation++;
   }
-  if (withValidation === 3) {
-    checks.passes.push('قوائم الفئات (dropdown) نشطة على الأوراق الشهرية');
-  } else {
-    checks.warnings.push(`قواعد التحقق ناقصة: ${withValidation}/3 ورقة فحصت`);
-  }
+  if (withValidation === 3) checks.passes.push(t('health.validationsOK'));
+  else                       checks.warnings.push(t('health.validationsBad', { n: withValidation }));
 
   // Check 8: Dashboard year + currency selectors
   if (dash) {
-    const b4 = dash.getRange('B4').getValue();
-    const d4 = dash.getRange('D4').getValue();
-    if (b4 && d4) checks.passes.push(`محددات السنة (${b4}) والعملة (${d4}) مضبوطة`);
-    else          checks.warnings.push('محددات السنة أو العملة فارغة على لوحة التحكم');
+    const year     = dash.getRange('B4').getValue();
+    const currency = dash.getRange('D4').getValue();
+    if (year && currency) checks.passes.push(t('health.selectorsOK', { year, currency }));
+    else                  checks.warnings.push(t('health.selectorsEmpty'));
   }
 
-  // Build report
+  // Build report (header + sections + footer)
   const ts = new Date().toLocaleString('ar-DZ');
-  let report = `🩺 تقرير صحة النظام\nوقت الفحص: ${ts}\n═══════════════════════════\n\n`;
+  let report = t('health.header', { timestamp: ts });
 
   if (checks.errors.length > 0) {
-    report += `🔴 أخطاء حرجة (${checks.errors.length})\n`;
+    report += t('health.sectionErrors', { n: checks.errors.length });
     checks.errors.forEach(e => { report += `  • ${e}\n`; });
     report += '\n';
   }
   if (checks.warnings.length > 0) {
-    report += `🟡 تحذيرات (${checks.warnings.length})\n`;
+    report += t('health.sectionWarnings', { n: checks.warnings.length });
     checks.warnings.forEach(w => { report += `  • ${w}\n`; });
     report += '\n';
   }
   if (checks.passes.length > 0) {
-    report += `✅ يعمل بشكل صحيح (${checks.passes.length})\n`;
+    report += t('health.sectionPasses', { n: checks.passes.length });
     checks.passes.forEach(p => { report += `  • ${p}\n`; });
     report += '\n';
   }
 
-  report += '═══════════════════════════\n';
-  if (checks.errors.length > 0) {
-    report += 'موصى به: قائمة SmartBudget → إعادة بناء اللوحة\n';
-    report += 'إن استمرت المشاكل: قائمة SmartBudget → إعادة الضبط الكامل';
-  } else if (checks.warnings.length > 0) {
-    report += 'النظام يعمل، لكن راجع التحذيرات أعلاه';
-  } else {
-    report += '🎉 النظام في حالة ممتازة';
-  }
+  report += t('health.footer');
+  if      (checks.errors.length > 0)   report += t('health.remedyErrors');
+  else if (checks.warnings.length > 0) report += t('health.remedyWarnings');
+  else                                  report += t('health.remedyHealthy');
 
   Logger.log(report);
   Logger.log('=== Health Check DONE ===');
 
-  SpreadsheetApp.getUi().alert('فحص صحة النظام', report,
+  SpreadsheetApp.getUi().alert(t('health.reportTitle'), report,
     SpreadsheetApp.getUi().ButtonSet.OK);
 }

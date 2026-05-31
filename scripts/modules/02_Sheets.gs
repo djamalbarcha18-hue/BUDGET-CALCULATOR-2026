@@ -312,21 +312,18 @@ function buildWelcomeV2(ss) {
   for (let j = 3; j <= 6; j++) s.setRowHeight(j, 56);
 
   // Hero 48pt
-  mergeAndStyle(s, 'B3:Q6', 'SMARTBUDGET PRO 2026',
+  mergeAndStyle(s, 'B3:Q6', t('welcome.hero'),
     { bg: T.bgCard, fg: T.fgPrimary, size: 48, bold: true,
       align: 'center', vAlign: 'middle', wrap: true, fontFamily: FONT });
   applyGlassBorder(s.getRange('B3:Q6'));
 
   // Sub-tagline 24pt
-  mergeAndStyle(s, 'B8:Q9', 'Premium Arabic Fintech Template',
+  mergeAndStyle(s, 'B8:Q9', t('welcome.subtag'),
     { bg: T.bgPage, fg: T.fgMuted, size: 24, align: 'center', wrap: true, fontFamily: FONT });
   s.setRowHeight(8, 36); s.setRowHeight(9, 36);
 
   // Body 16pt
-  mergeAndStyle(s, 'B11:Q14',
-    'محرك عملات متعدد، 12 ورقة شهرية، نظام أهداف وادخار، ' +
-    'لوحة تحكم بنظام عابر للسنوات (Evergreen) مع تحويل عملات حي ' +
-    'وعداد صحة مالية تفاعلي.',
+  mergeAndStyle(s, 'B11:Q14', t('welcome.body'),
     { bg: T.bgPage, fg: T.fgPrimary, size: 16, align: 'center', wrap: true, fontFamily: FONT });
   for (let b = 11; b <= 14; b++) s.setRowHeight(b, 28);
 
@@ -338,38 +335,31 @@ function buildWelcomeV2(ss) {
       { bg: T.income, fg: T.white, size: 20, bold: true,
         align: 'center', vAlign: 'middle', fontFamily: FONT });
     s.getRange('G16').setFormula(
-      `=HYPERLINK("#gid=${gid}","🚀  Get Started - ابدأ الإعداد")`);
+      `=HYPERLINK("#gid=${gid}","${t('welcome.ctaLabel')}")`);
     s.getRange('G16:L18').setBorder(true, true, true, true, false, false,
       T.income, SpreadsheetApp.BorderStyle.SOLID_THICK);
     for (let g = 16; g <= 18; g++) s.setRowHeight(g, 32);
   }
 
-  // 3 Quick Start cards
-  const cards = [
-    { id: '01', title: 'اضبط الإعدادات أولا',
-      body: 'افتح ورقة الإعدادات واختر العملة الرئيسية وحدث أسعار الصرف.',
-      target: SHEET_NAMES.settings, accent: T.netCyan, link: '📘 الإعدادات' },
-    { id: '02', title: 'أدخل بياناتك الشهرية',
-      body: 'افتح ورقة الشهر الحالي وأدخل المداخيل في A10:H28 والمصاريف في A33:G62.',
-      target: 'جانفي', accent: T.income, link: '📅 جانفي' },
-    { id: '03', title: 'افتح لوحة التحكم',
-      body: 'بعد الإدخال، افتح لوحة التحكم. اختر السنة والعملة في الأعلى.',
-      target: SHEET_NAMES.dashboard, accent: T.paletteOrange, link: '📊 لوحة التحكم' }
-  ];
-  const cardCols = [['B', 'F'], ['G', 'K'], ['L', 'P']];
+  // 3 Quick Start cards — content from TEXTS.welcome.cards, hyperlink targets
+  // are still resolved here because they depend on live sheet IDs.
+  const cardTargets = [SHEET_NAMES.settings, 'جانفي', SHEET_NAMES.dashboard];
+  const cardAccents = [T.netCyan, T.income, T.paletteOrange];
+  const cardCols    = [['B', 'F'], ['G', 'K'], ['L', 'P']];
 
-  cards.forEach((c, i) => {
+  TEXTS[ACTIVE_LANG].welcome.cards.forEach((c, i) => {
     const [cs, ce] = cardCols[i];
+    const accent   = cardAccents[i];
     applyCardSurface(s, `${cs}21:${ce}34`);
-    s.getRange(`${cs}21:${ce}21`).setBackground(c.accent);
+    s.getRange(`${cs}21:${ce}21`).setBackground(accent);
     mergeAndStyle(s, `${cs}22:${ce}23`, c.id,
-      { bg: T.bgCard, fg: c.accent, size: 32, bold: true, align: 'right', fontFamily: FONT });
+      { bg: T.bgCard, fg: accent, size: 32, bold: true, align: 'right', fontFamily: FONT });
     mergeAndStyle(s, `${cs}24:${ce}25`, c.title,
       { bg: T.bgCard, fg: T.fgPrimary, size: 18, bold: true, align: 'right', fontFamily: FONT });
     mergeAndStyle(s, `${cs}26:${ce}32`, c.body,
       { bg: T.bgCard, fg: T.fgMuted, size: 16, align: 'right', wrap: true, fontFamily: FONT });
 
-    const tgt = ss.getSheetByName(c.target);
+    const tgt = ss.getSheetByName(cardTargets[i]);
     if (tgt) {
       const tgid = tgt.getSheetId();
       mergeAndStyle(s, `${cs}33:${ce}34`, '', { bg: T.bgCard, align: 'right' });
@@ -381,11 +371,11 @@ function buildWelcomeV2(ss) {
 
   // Signature card
   applyCardSurface(s, 'B37:Q41');
-  mergeAndStyle(s, 'B37:Q38', '💎 Developed by: Boulahdid Djamal Eddine',
+  mergeAndStyle(s, 'B37:Q38', t('welcome.developer'),
     { bg: T.bgCard, fg: T.fgPrimary, size: 18, bold: true,
       align: 'center', vAlign: 'middle', fontFamily: FONT });
-  mergeAndStyle(s, 'B39:Q40', '📩 boulahdiddjamaleddine@gmail.com',
+  mergeAndStyle(s, 'B39:Q40', t('welcome.contact'),
     { bg: T.bgCard, fg: T.fgMuted, size: 16, align: 'center', vAlign: 'middle', fontFamily: FONT });
-  mergeAndStyle(s, 'B41:Q41', 'SMARTBUDGET PRO 2026 - v2.0',
+  mergeAndStyle(s, 'B41:Q41', t('welcome.version'),
     { bg: T.bgCard, fg: T.fgMuted, size: 12, align: 'center', fontFamily: FONT });
 }

@@ -35,8 +35,8 @@ function fillAllMonthsWithDemoData(silent) {
 
   if (!silent) {
     SpreadsheetApp.getUi().alert(
-      'تمت تعبئة البيانات التجريبية',
-      `${processed} ورقة، ${totalI} دخل + ${totalE} مصاريف، ${el} ث.`,
+      t('demo.filledTitle'),
+      t('demo.filledBody', { processed, income: totalI, expense: totalE, secs: el }),
       SpreadsheetApp.getUi().ButtonSet.OK);
   }
   return { processed, income: totalI, expense: totalE, elapsed: el };
@@ -98,8 +98,8 @@ function demoFillExpense(sheet, mi, overspend) {
 function clearAllDemoData() {
   const ui = SpreadsheetApp.getUi();
   const r = ui.alert(
-    'مسح البيانات التجريبية',
-    'سيتم مسح صفوف A10:H14 و A33:G37 في كل الأشهر. متابعة؟',
+    t('demo.clearPromptTitle'),
+    t('demo.clearPromptBody'),
     ui.ButtonSet.YES_NO);
   if (r !== ui.Button.YES) return;
 
@@ -117,7 +117,7 @@ function clearAllDemoData() {
   });
 
   SpreadsheetApp.flush();
-  ui.alert('تم المسح', `${cleared} ورقة.`, ui.ButtonSet.OK);
+  ui.alert(t('demo.clearedTitle'), t('demo.clearedBody', { n: cleared }), ui.ButtonSet.OK);
 }
 
 // ============================================================================
@@ -142,8 +142,8 @@ function addMonthlyVisualAnalytics(silent) {
   SpreadsheetApp.flush();
   if (!silent) {
     SpreadsheetApp.getUi().alert(
-      'تمت إضافة التحليل البصري',
-      `${processed} ورقة، 2 مخطط لكل منها.`,
+      t('analytics.addedTitle'),
+      t('analytics.addedBody', { n: processed }),
       SpreadsheetApp.getUi().ButtonSet.OK);
   }
   return processed;
@@ -211,8 +211,8 @@ function monthlyAnalyticsDoughnut(s) {
 function removeMonthlyVisualAnalytics() {
   const ui = SpreadsheetApp.getUi();
   const r  = ui.alert(
-    'إزالة التحليل البصري الشهري',
-    'سيتم حذف المخططات والبيانات المساعدة من 12 ورقة. متابعة؟',
+    t('analytics.removeTitle'),
+    t('analytics.removePrompt'),
     ui.ButtonSet.YES_NO);
   if (r !== ui.Button.YES) return;
 
@@ -227,7 +227,7 @@ function removeMonthlyVisualAnalytics() {
   });
 
   SpreadsheetApp.flush();
-  ui.alert('تمت الإزالة', `${removed} ورقة.`, ui.ButtonSet.OK);
+  ui.alert(t('analytics.removedTitle'), t('analytics.removedBody', { n: removed }), ui.ButtonSet.OK);
 }
 
 // ============================================================================
@@ -239,8 +239,8 @@ function repairDashboardV2() {
   SpreadsheetApp.flush();
   buildDashboardChartsV2(ss);
   SpreadsheetApp.getUi().alert(
-    'تم الإصلاح',
-    'أعيد بناء صيغ المحرك والرسوم البيانية.',
+    t('repair.doneTitle'),
+    t('repair.doneBody'),
     SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
@@ -250,16 +250,15 @@ function repairDashboardV2() {
 function resetWorkbookCompletely() {
   const ui = SpreadsheetApp.getUi();
   const r = ui.alert(
-    'تحذير: سيتم حذف كل البيانات',
-    'سيتم حذف جميع الأوراق والصيغ والبيانات في هذا المصنف. ' +
-    'هذه العملية لا يمكن التراجع عنها. متابعة؟',
+    t('reset.promptTitle'),
+    t('reset.promptBody'),
     ui.ButtonSet.YES_NO);
   if (r !== ui.Button.YES) return;
 
   nuclearReset(SpreadsheetApp.getActive());
 
   ui.alert(
-    'تم إعادة الضبط',
-    'المصنف نظيف تماما. الآن شغل tryFullDemoSmartBudget لإنشاء القالب من جديد.',
+    t('reset.doneTitle'),
+    t('reset.doneBody'),
     ui.ButtonSet.OK);
 }

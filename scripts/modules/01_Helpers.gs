@@ -226,8 +226,8 @@ function _gotoSheet(name) {
     ss.setActiveSheet(s);
   } else {
     SpreadsheetApp.getUi().alert(
-      'الورقة غير موجودة',
-      'الرجاء تشغيل التثبيت أولا من قائمة SmartBudget.',
+      t('common.sheetMissingTitle'),
+      t('common.sheetMissingBody'),
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   }

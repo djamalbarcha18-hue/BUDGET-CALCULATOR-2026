@@ -1,6 +1,6 @@
 # SmartBudget Pro 2026 — Modular Architecture
 
-Phase 1 refactor of the consolidated installer. Apps Script loads every `.gs`
+Phases 1–2 of the Strategic Refactor Plan. Apps Script loads every `.gs`
 file in a project into one global scope, so this is a **visual** split with
 zero runtime cost.
 
@@ -9,15 +9,15 @@ zero runtime cost.
 | File | Purpose | Lines | Functions |
 |---|---|---:|---:|
 | `00_Config.gs` | Theme palette, seed data, format constants, manifests | 185 | 0 |
+| `00_Texts.gs` | **Centralized UI text dictionary + `t()` helper** | 247 | 1 |
 | `01_Helpers.gs` | DRY helpers (style, format, formula, reset) | 281 | 14 |
-| `02_Sheets.gs` | Settings, Goals, Monthly, FX, Welcome builders | 391 | 5 |
+| `02_Sheets.gs` | Settings, Goals, Monthly, FX, Welcome builders | 381 | 5 |
 | `03_Dashboard.gs` | Dashboard layout, engine, charts | 390 | 8 |
 | `04_System.gs` | Named ranges, validations, protection, tab order | 113 | 3 |
-| `05_Demo_QA.gs` | Demo data, monthly analytics, repair, reset | 265 | 11 |
-| `06_Core.gs` | Entry points, onOpen menu, navigation, health check | 288 | 9 |
+| `05_Demo_QA.gs` | Demo data, monthly analytics, repair, reset | 264 | 11 |
+| `06_Core.gs` | Entry points, onOpen menu, navigation, health check | 264 | 9 |
 
-**Total: 1,913 lines, 50 functions** (vs. monolith: 1,754 lines, 42 functions).
-The +159 lines come from 8 new DRY helpers + JSDoc + reformatted readability.
+**Total: 2,125 lines, 50 functions** (vs. monolith: 1,754 lines, 42 functions).
 
 ## Loading Order
 
@@ -30,8 +30,9 @@ guarantees:
 4. System wiring exists before the entry point orchestrates everything
 5. Entry point + menu live last (they reference everything else)
 
-## DRY Wins (Phase 1)
+## DRY Wins
 
+### Phase 1 — Style helpers
 | Helper | Replaces | Call sites |
 |---|---|---:|
 | `wipeSheetSurfaces()` | 4 inline `clearDataValidations` + `getProtections().remove()` blocks | 3 |
@@ -43,6 +44,17 @@ guarantees:
 | `alphaSplit()` | 5 inline regex + destructure | 5 |
 | `nuclearReset()` | 3 duplicate copies of full-reset logic | 2 |
 | `FORMATS` constant | Hardcoded `'[$-en-US]...'` strings repeated 41 times | 41 |
+
+### Phase 2 — Centralized UI text dictionary
+| Helper | Replaces | Call sites |
+|---|---|---:|
+| `t('section.key')` | ~80 hardcoded Arabic UI strings spread across 4 modules | 76 |
+| `TEXTS.<lang>.<section>` | Strings inside alerts, menu items, log messages, hyperlink labels | — |
+
+### i18n readiness
+- `ACTIVE_LANG = 'ar'` is the single language switch
+- Adding English = define a `TEXTS.en` object with the same shape as `TEXTS.ar`
+- No other module needs changes — every UI string flows through `t()` already
 
 ## Removed
 
