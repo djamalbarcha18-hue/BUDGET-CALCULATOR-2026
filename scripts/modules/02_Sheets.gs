@@ -347,7 +347,7 @@ function buildWelcomeV2(ss) {
   const cardAccents = [T.netCyan, T.income, T.paletteOrange];
   const cardCols    = [['B', 'F'], ['G', 'K'], ['L', 'P']];
 
-  TEXTS[ACTIVE_LANG].welcome.cards.forEach((c, i) => {
+  TEXTS[getActiveLang()].welcome.cards.forEach((c, i) => {
     const [cs, ce] = cardCols[i];
     const accent   = cardAccents[i];
     applyCardSurface(s, `${cs}21:${ce}34`);

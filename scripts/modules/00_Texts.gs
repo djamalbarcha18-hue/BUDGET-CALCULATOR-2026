@@ -38,9 +38,25 @@
  */
 
 // ============================================================================
-// ACTIVE LANGUAGE — change this single value to switch UI language globally
+// ACTIVE LANGUAGE — read at runtime from PropertiesService so the user's
+// menu selection persists across sessions. Falls back to 'ar' on first install.
 // ============================================================================
-const ACTIVE_LANG = 'ar';
+const SUPPORTED_LANGS = ['ar', 'en'];
+const LANG_PROPERTY_KEY = 'sb_active_lang';
+
+function getActiveLang() {
+  try {
+    const stored = PropertiesService.getDocumentProperties().getProperty(LANG_PROPERTY_KEY);
+    return SUPPORTED_LANGS.indexOf(stored) >= 0 ? stored : 'ar';
+  } catch (e) {
+    return 'ar';
+  }
+}
+
+function setActiveLang(lang) {
+  if (SUPPORTED_LANGS.indexOf(lang) < 0) return;
+  PropertiesService.getDocumentProperties().setProperty(LANG_PROPERTY_KEY, lang);
+}
 
 // ============================================================================
 // TEXTS DICTIONARY
@@ -63,7 +79,10 @@ const TEXTS = {
       fillDemo:        '📥 تعبئة بيانات تجريبية',
       clearDemo:       '🧹 مسح البيانات التجريبية',
       reset:           '⚠️ إعادة الضبط الكامل',
-      reinstall:       '🛠️ إعادة التثبيت'
+      reinstall:       '🛠️ إعادة التثبيت',
+      langSubmenu:     '🌐 اللغة',
+      langArabic:      '🇸🇦 العربية',
+      langEnglish:     '🇬🇧 English'
     },
 
     // ------------------------------------------------------------------
@@ -212,19 +231,159 @@ const TEXTS = {
           link: '📊 لوحة التحكم' }
       ]
     }
+  },
+
+  // ====================================================================
+  // ENGLISH LANGUAGE PACK — same shape as TEXTS.ar, parallel keys
+  // ====================================================================
+  en: {
+    menu: {
+      title:           '💎 SmartBudget',
+      freshDemo:       '🚀 Try template with demo data',
+      navSubmenu:      '🔀 Quick Navigation',
+      navWelcome:      '🏠 Welcome page',
+      navDashboard:    '📊 Dashboard',
+      navSettings:     '💰 Settings',
+      navGoals:        '🎯 Goals',
+      healthCheck:     '🩺 System Health Check',
+      repairDashboard: '♻️ Rebuild Dashboard',
+      fillDemo:        '📥 Fill with demo data',
+      clearDemo:       '🧹 Clear demo data',
+      reset:           '⚠️ Full Reset',
+      reinstall:       '🛠️ Reinstall',
+      langSubmenu:     '🌐 Language',
+      langArabic:      '🇸🇦 العربية',
+      langEnglish:     '🇬🇧 English'
+    },
+
+    common: {
+      warningTitle:      'Warning',
+      sheetMissingTitle: 'Sheet not found',
+      sheetMissingBody:  'Please run install first from the SmartBudget menu.'
+    },
+
+    install: {
+      preflight:    'The workbook appears to contain data. Sheets with matching names will be replaced. Continue?',
+      successTitle: 'SMARTBUDGET PRO 2026 - Installed',
+      successBody:  ({sheets, secs}) =>
+        `Installed ${sheets} sheets in ${secs} seconds.\n\n` +
+        'Open "Dashboard", select year in B4 and currency in D4.\n\n' +
+        'Optional: fillAllMonthsWithDemoData, addMonthlyVisualAnalytics.'
+    },
+
+    demo: {
+      readyTitle: 'SMARTBUDGET PRO 2026 - Demo ready',
+      readyBody:  ({income, expense, secs}) =>
+        'Template installed and populated with demo data:\n\n' +
+        '• 12 monthly sheets (Jan - Dec)\n' +
+        `• ${income} income rows + ${expense} expense rows\n` +
+        '• 4 savings goals in different states\n' +
+        '• Dashboard with 6 KPI cards + 5 charts\n' +
+        '• Mini charts inside each monthly sheet\n' +
+        '• Multi-currency engine (USD/EUR/SAR/DZD/...)\n\n' +
+        `Completed in ${secs} seconds.\n\n` +
+        'Now: in "Dashboard" change year (B4) and currency (D4) to see live updates.\n\n' +
+        'Later: clearAllDemoData wipes demo rows so you can start real entry.',
+
+      menuPromptTitle: 'Try template with demo data',
+      menuPromptBody:  'All current data in this workbook will be wiped, then the demo template will be rebuilt.\n\n' +
+                       'Estimated time: 60-90 seconds. Continue?',
+
+      filledTitle: 'Demo data filled',
+      filledBody:  ({processed, income, expense, secs}) =>
+        `${processed} sheets, ${income} income + ${expense} expenses, ${secs}s.`,
+
+      clearPromptTitle: 'Clear demo data',
+      clearPromptBody:  'Rows A10:H14 and A33:G37 in every monthly sheet will be cleared. Continue?',
+      clearedTitle:     'Cleared',
+      clearedBody:      ({n}) => `${n} sheets.`
+    },
+
+    analytics: {
+      addedTitle:    'Visual analytics added',
+      addedBody:     ({n}) => `${n} sheets, 2 charts each.`,
+      removeTitle:   'Remove monthly visual analytics',
+      removePrompt:  'Charts and helper data will be removed from 12 sheets. Continue?',
+      removedTitle:  'Removed',
+      removedBody:   ({n}) => `${n} sheets.`
+    },
+
+    repair: {
+      doneTitle: 'Repair complete',
+      doneBody:  'Dashboard engine formulas and charts have been rebuilt.'
+    },
+
+    reset: {
+      promptTitle: 'Warning: all data will be deleted',
+      promptBody:  'All sheets, formulas, and data in this workbook will be deleted. ' +
+                   'This cannot be undone. Continue?',
+      doneTitle:   'Reset complete',
+      doneBody:    'Workbook is fully clean. Now run tryFullDemoSmartBudget to rebuild the template.'
+    },
+
+    health: {
+      reportTitle: 'System Health Check',
+      header:      ({timestamp}) =>
+        `🩺 System Health Report\nScan time: ${timestamp}\n═══════════════════════════\n\n`,
+
+      sectionErrors:   ({n}) => `🔴 Critical errors (${n})\n`,
+      sectionWarnings: ({n}) => `🟡 Warnings (${n})\n`,
+      sectionPasses:   ({n}) => `✅ Working correctly (${n})\n`,
+
+      footer:         '═══════════════════════════\n',
+      remedyErrors:   'Recommended: SmartBudget menu -> Rebuild Dashboard\n' +
+                      'If problems persist: SmartBudget menu -> Full Reset',
+      remedyWarnings: 'System is functional, but review the warnings above',
+      remedyHealthy:  '🎉 System is in excellent condition',
+
+      sheetsOK:        '17 sheets present',
+      sheetsMissing:   ({n, list}) => `Missing sheets (${n}): ${list}`,
+      namesOK:         '11 named ranges defined',
+      namesMissing:    ({list}) => `Missing named ranges: ${list}`,
+      chartsOK:        ({n}) => `${n} charts on dashboard`,
+      chartsPartial:   ({n}) => `Chart count incomplete: ${n}/5`,
+      chartsNone:      'No charts on dashboard',
+      formulaB4OK:     'Active currency formula (XLOOKUP) intact',
+      formulaB4Bad:    'Settings B4 formula deleted or corrupted',
+      fxLive:          'Live FX engine (GOOGLEFINANCE) connected',
+      fxFallback:      'FX engine using static fallback rates only',
+      engineProtected: 'Engine sheet is protected',
+      engineExposed:   'Engine sheet not protected - sensitive data exposed',
+      validationsOK:   'Category dropdowns active on monthly sheets',
+      validationsBad:  ({n}) => `Validations incomplete: ${n}/3 sheets checked`,
+      selectorsOK:     ({year, currency}) => `Year (${year}) and currency (${currency}) selectors set`,
+      selectorsEmpty:  'Year or currency selector empty on dashboard'
+    },
+
+    welcome: {
+      ctaLabel:  '🚀  Get Started',
+      hero:      'SMARTBUDGET PRO 2026',
+      subtag:    'Premium Multi-Currency Fintech Template',
+      body:      'Multi-currency engine, 12 monthly budget sheets, savings goals system, ' +
+                 'evergreen dashboard with live FX conversion and an interactive financial ' +
+                 'health gauge.',
+      developer: '💎 Developed by: Boulahdid Djamal Eddine',
+      contact:   '📩 boulahdiddjamaleddine@gmail.com',
+      version:   'SMARTBUDGET PRO 2026 - v2.0',
+
+      cards: [
+        { id: '01', title: 'Configure settings first',
+          body: 'Open the Settings sheet, choose your main currency, and update FX rates.',
+          link: '📘 Settings' },
+        { id: '02', title: 'Enter your monthly data',
+          body: 'Open the current month sheet and enter income in A10:H28 and expenses in A33:G62.',
+          link: '📅 January' },
+        { id: '03', title: 'Open the Dashboard',
+          body: 'After data entry, open the Dashboard. Select year and currency at the top.',
+          link: '📊 Dashboard' }
+      ]
+    }
   }
 };
-
-// ============================================================================
-// t() — string lookup with template substitution
-// ----------------------------------------------------------------------------
-//   t('install.successTitle')                -> static string
-//   t('install.successBody', {sheets, secs}) -> calls the function
-// ----------------------------------------------------------------------------
 function t(path, params) {
-  const dict = TEXTS[ACTIVE_LANG];
+  const dict = TEXTS[getActiveLang()];
   if (!dict) {
-    Logger.log(`[t] no language pack for ${ACTIVE_LANG}`);
+    Logger.log(`[t] no language pack for ${getActiveLang()}`);
     return path;
   }
 

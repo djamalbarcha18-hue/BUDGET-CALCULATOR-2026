@@ -111,6 +111,9 @@ function onOpen() {
       .addItem(t('menu.navDashboard'), 'gotoDashboard')
       .addItem(t('menu.navSettings'),  'gotoSettings')
       .addItem(t('menu.navGoals'),     'gotoGoals'))
+    .addSubMenu(ui.createMenu(t('menu.langSubmenu'))
+      .addItem(t('menu.langArabic'),  'setLanguageAr')
+      .addItem(t('menu.langEnglish'), 'setLanguageEn'))
     .addSeparator()
     .addItem(t('menu.healthCheck'),     'runHealthCheck')
     .addItem(t('menu.repairDashboard'), 'repairDashboardV2')
@@ -121,6 +124,61 @@ function onOpen() {
     .addItem(t('menu.reset'),     'resetWorkbookCompletely')
     .addItem(t('menu.reinstall'), 'installSmartBudgetPro2026')
     .addToUi();
+}
+
+// ============================================================================
+// LANGUAGE SWITCHING
+// ----------------------------------------------------------------------------
+// Persists the choice to PropertiesService so it survives across sessions,
+// then rebuilds:
+//   1. The Welcome sheet (hero, sub-tagline, body, CTA, cards, signature)
+//   2. The custom menu itself (so menu items appear in the new language)
+//
+// IMPORTANT — what is NOT translated:
+//   - Monthly tab names (جانفي, فيفري, ...) — these strings are interpolated
+//     into 80+ cross-sheet formulas. Renaming them at runtime would require
+//     a full workbook reinstall and would break existing data references.
+//   - Sheet column headers, KPI labels, category names — these are seeded
+//     into cells as plain values during install; switching them after the
+//     fact would require a full sheet rebuild and would discard user data.
+//
+// What IS translated by this command:
+//   - All alert dialogs (preflight, success, errors, prompts)
+//   - All custom menu items
+//   - All Logger.log messages
+//   - The Welcome page in full (it has no user data, so safe to rebuild)
+//   - The System Health Check report
+// ============================================================================
+function setLanguageAr() { _switchLanguage('ar'); }
+function setLanguageEn() { _switchLanguage('en'); }
+
+function _switchLanguage(lang) {
+  setActiveLang(lang);
+  const ss = SpreadsheetApp.getActive();
+
+  // Rebuild the welcome page so its visible content reflects the new language.
+  // Welcome is purely decorative/onboarding — no user data, safe to rebuild.
+  if (ss.getSheetByName(SHEET_NAMES.welcome)) {
+    buildWelcomeV2(ss);
+  }
+
+  // Rebuild the custom menu so its labels reflect the new language.
+  onOpen();
+
+  SpreadsheetApp.flush();
+
+  // Confirmation alert — already in the new language (t() reads getActiveLang).
+  const title = lang === 'ar' ? 'تم تغيير اللغة' : 'Language changed';
+  const body  = lang === 'ar'
+    ? 'تم تحديث جميع نصوص الواجهة وصفحة الترحيب. ' +
+      'ملاحظة: أسماء الأوراق الشهرية (جانفي ... ديسمبر) وعناوين الأعمدة ' +
+      'تبقى كما هي لأنها مرتبطة بصيغ المصنف. إعادة التثبيت الكامل ' +
+      'تستبدلها عبر إعادة البناء.'
+    : 'All UI text and the Welcome page have been updated. ' +
+      'Note: monthly tab names and column headers stay in their original ' +
+      'language because they are referenced by 80+ workbook formulas. ' +
+      'A full reinstall replaces them via complete rebuild.';
+  SpreadsheetApp.getUi().alert(title, body, SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 /**
