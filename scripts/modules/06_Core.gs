@@ -116,6 +116,9 @@ function onOpen() {
       .addItem(t('menu.langEnglish'), 'setLanguageEn'))
     .addSeparator()
     .addItem(t('menu.onboarding'),       'menuOpenOnboarding')
+    .addSubMenu(ui.createMenu(t('menu.notifications'))
+      .addItem(t('menu.checkAlertsNow'),       'menuShowNotifications')
+      .addItem(t('menu.notificationSettings'), 'menuToggleAutoCheck'))
     .addItem(t('menu.healthCheck'),     'runHealthCheck')
     .addItem(t('menu.verifyFormulas'),  'menuVerifyFormulaIntegrity')
     .addItem(t('menu.autoRepair'),      'menuAutoRepairFormulas')
@@ -137,6 +140,11 @@ function onOpen() {
   // Wrapped in try/catch inside the helper itself so any failure is silent —
   // we never want a bad property read to block onOpen.
   maybePromptOnboarding();
+
+  // Phase 6: Smart Notifications auto-check on workbook open.
+  // Internally guarded — silent if no alerts, anti-spammed per session,
+  // user-toggleable from the notifications submenu.
+  autoCheckOnOpen();
 }
 
 // ============================================================================
