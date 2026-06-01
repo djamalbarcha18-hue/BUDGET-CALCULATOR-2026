@@ -96,7 +96,12 @@ const TEXTS = {
       forecast:        '🔮 توقّعات الميزانيّة',
       buildForecast:   '📈 بناء/تحديث توقّعات الميزانيّة',
       viewForecast:    '👁️ عرض ورقة التوقّعات',
-      removeForecast:  '🗑️ حذف ورقة التوقّعات'
+      removeForecast:  '🗑️ حذف ورقة التوقّعات',
+      helpSubmenu:     '❓ المساعدة والدليل',
+      openHelp:        '📖 افتح المساعدة التفاعليّة',
+      buildGuideSheet: '📚 بناء/تحديث ورقة الدليل',
+      enableTooltips:  '💡 تفعيل تلميحات الخلايا',
+      removeTooltips:  '🚫 إزالة تلميحات الخلايا'
     },
 
     // Onboarding Wizard (Module 09_Onboarding.gs + OnboardingSidebar.html)
@@ -252,6 +257,175 @@ const TEXTS = {
       removedBody:       'تمّ حذف ورقة التوقّعات بنجاح.',
       notFoundTitle:     'الورقة غير موجودة',
       notFoundBody:      'ورقة التوقّعات غير موجودة. شغّل "بناء التوقّعات" أولاً.'
+    },
+
+    // Embedded User Guide System (Module 12_UserGuide.gs + UserGuideSidebar.html) — Phase 8
+    help: {
+      // Sidebar shell
+      sidebarTitle:       '📖 دليل SmartBudget التفاعلي',
+      currentSheetLabel:  'الورقة الحاليّة:',
+      noActiveTopic:      'لا يوجد دليل خاصّ بهذه الورقة. تصفّح المواضيع أدناه.',
+      searchPlaceholder:  'ابحث في الدليل...',
+      sectionAllTopics:   'كل المواضيع',
+      sectionLinks:       'روابط مفيدة',
+      noSearchResults:    'لا نتائج. جرّب كلمة أخرى.',
+
+      // Guide sheet labels
+      guideSheetTitle:    '📚 دليل استخدام SmartBudget Pro 2026',
+      guideSheetSub:      'مرجع كامل قابل للطباعة لكلّ ميزات القالب',
+      tocTitle:           'الفهرس',
+
+      // Tooltip enable/disable confirmations
+      tooltipsAddedTitle: 'تمّ تفعيل التلميحات',
+      tooltipsAddedBody:  ({n}) =>
+        `تمّ إضافة ${n} تلميحاً على خلايا الإدخال الرئيسيّة. حُم بمؤشّر الفأرة فوق أيّ خليّة لرؤية الشرح.`,
+      tooltipsRemovedTitle: 'تمّت إزالة التلميحات',
+      tooltipsRemovedBody:  'تمّ إزالة تلميحات الخلايا. يمكنك إعادة تفعيلها لاحقاً من قائمة المساعدة.',
+      guideBuiltTitle:    'تمّ بناء ورقة الدليل',
+      guideBuiltBody:     'افتح ورقة "📚 الدليل" لتصفّح المرجع الكامل.',
+
+      // Topics — main content. Each topic has a title + sections array.
+      topics: {
+        general: {
+          title: '🏠 نظرة عامّة على SmartBudget',
+          sections: [
+            {
+              h: 'ما هو SmartBudget Pro 2026؟',
+              p: 'قالب فينتك عربي احترافي لإدارة الميزانيّة الشخصيّة. يجمع 12 ورقة شهريّة، نظام أهداف، لوحة تحكّم متقدّمة، محرّك توقّعات إحصائي، تصدير PDF، وإشعارات ذكيّة في حزمة واحدة.'
+            },
+            {
+              h: 'كيف يعمل النظام؟',
+              p: '1) الإعدادات تحدّد عملتك الرئيسيّة. 2) الأوراق الشهريّة تستقبل بياناتك. 3) المحرّك المخفي يجمع البيانات. 4) لوحة التحكّم تعرض النتائج. 5) الإشعارات تنبّهك للتنبيهات. 6) Forecasting يتنبّأ بالشهر القادم.'
+            },
+            {
+              h: 'البدء السريع',
+              p: 'افتح قائمة 💎 SmartBudget في شريط القوائم. اختر "🧙 معالج الإعداد" لجولة موجَّهة في 5 خطوات. أو ابدأ يدوياً من ورقة "الإعدادات" ثمّ أحد الأشهر.'
+            }
+          ]
+        },
+
+        settings: {
+          title: '⚙️ ورقة الإعدادات',
+          sections: [
+            {
+              h: 'العملة الرئيسيّة (B3)',
+              p: 'هذه أهمّ خليّة في القالب. كلّ المبالغ تُعرض بهذه العملة. غيّرها من القائمة المنسدلة في B3 — كل أوراق الشهور والأهداف ستحدّث تلقائياً.'
+            },
+            {
+              h: 'جدول العملات (A7:D20)',
+              p: '14 عملة محدَّدة مسبقاً. عمود C يُحدَّث تلقائياً عبر GOOGLEFINANCE. لو فشل التحديث (للعملات النادرة) يُستخدم السعر الافتراضي.'
+            },
+            {
+              h: 'فئات الدخل والمصاريف (F7 / G7 / H7)',
+              p: 'هذه قوائم منسدلة تظهر في الأوراق الشهريّة. غيّرها هنا = التغيير ينعكس على كل الأشهر مباشرة. لا تترك فئة فارغة.'
+            }
+          ]
+        },
+
+        monthly: {
+          title: '📅 الأوراق الشهريّة (جانفي - ديسمبر)',
+          sections: [
+            {
+              h: 'كتلة الدخل (A10:H28)',
+              p: 'العمود A: المداخيل (مصدر الدخل، اختياري). B: التاريخ. C: الفئة (قائمة منسدلة). D: الوصف. E: الدخل المتوقّع. F: الدخل الفعلي. G: الفرق (محسوب آلياً). H: طريقة الدفع.'
+            },
+            {
+              h: 'كتلة المصاريف (A33:H62)',
+              p: 'A: التاريخ. B: الفئة. C: الوصف. D: المصروف المتوقّع. E: الفعلي. F: الفرق (محسوب). G: طريقة الدفع. H: حالة التنبيه (محسوبة، 🟢/🟡/🔴).'
+            },
+            {
+              h: 'لوحة المؤشّرات أعلى الورقة (A2:H5)',
+              p: 'إجماليات الدخل والمصاريف، نسبة الادّخار، أعلى فئة استنزاف. كلّها صيغ آليّة. لا تعدِّلها يدوياً.'
+            },
+            {
+              h: 'محرّك التنبيه الذكي (F2)',
+              p: '🟢 ممتاز = أداء جيّد. 🟡 اقتراب = تجاوزت 90% من الميزانيّة. 🔴 تجاوز = الفعلي تجاوز المتوقّع.'
+            }
+          ]
+        },
+
+        goals: {
+          title: '🎯 ورقة الأهداف',
+          sections: [
+            {
+              h: 'إضافة هدف',
+              p: 'املأ الأعمدة A-C-E: اسم الهدف، التكلفة، التاريخ المستهدَف. الأعمدة D/F/G/H/I تُحسَب آلياً.'
+            },
+            {
+              h: 'حالة الهدف (العمود H)',
+              p: '🟢 مكتمل = نسبة الإنجاز >= 100%. 🟡 قيد الادخار = بدأت لكن لم تنتهِ. ⚪ لم يبدأ = لم تضع أيّ مبلغ مدّخَر.'
+            },
+            {
+              h: 'التوصية الذكيّة (العمود I)',
+              p: 'يُحسَب القسط المطلوب آلياً بناءً على الفرق المتبقّي والأشهر المتاحة. هذا الرقم يُعرض في القائمة كهدف شهري.'
+            }
+          ]
+        },
+
+        dashboard: {
+          title: '📊 لوحة التحكّم',
+          sections: [
+            {
+              h: 'محدّدات السنة والعملة (B4 و D4)',
+              p: 'هذان الـ dropdown يتحكّمان بكلّ شيء على اللوحة. غيّر السنة → كلّ الـ KPIs تتفلتر. غيّر العملة → كلّ الأرقام تُحوَّل لحظياً.'
+            },
+            {
+              h: 'بطاقات KPI الستّ',
+              p: 'الدخل، المصاريف، صافي الربح، الأصول، معدّل الادّخار، اتّجاه الشهر الماضي. كلّها محسوبة من المحرّك المخفي _DashboardEngine.'
+            },
+            {
+              h: 'الرسوم البيانيّة',
+              p: 'Cash Flow (السيولة)، Gauge (الصحّة الماليّة)، Combo (12 شهر)، 2 Doughnuts (توزيع الدخل والمصاريف). كلّها ترسم آلياً.'
+            }
+          ]
+        },
+
+        forecast: {
+          title: '🔮 محرّك التوقّعات',
+          sections: [
+            {
+              h: 'كيف تعمل التوقّعات؟',
+              p: '3 تقنيّات إحصائيّة: متوسّط متحرّك (3 أشهر) + Trend خطّي + Standard Deviation للتفاوت. النتيجة: ميزانيّة مقترحة للشهر القادم لكلّ فئة.'
+            },
+            {
+              h: 'متطلّبات التشغيل',
+              p: 'يلزم بيانات من 3 أشهر مكتملة على الأقلّ. لو شغّلتها مع شهر واحد فقط، سترى تحذيراً.'
+            },
+            {
+              h: 'هامش الأمان (10%)',
+              p: 'الميزانيّة المقترحة = max(المتوسّط, التوقّع) × 1.10. الـ 10% buffer يحميك من التقلّبات الطبيعيّة.'
+            }
+          ]
+        },
+
+        notifications: {
+          title: '🔔 الإشعارات الذكيّة',
+          sections: [
+            {
+              h: 'القنوات الخمس',
+              p: '🔴 تجاوز الميزانيّة. 🟡 اقتراب من الحدّ. 🎯 هدف وشيك. 📅 شهر فارغ. 🩺 مشاكل في الصيغ.'
+            },
+            {
+              h: 'الفحص التلقائي',
+              p: 'يُشغَّل عند فتح المصنّف. إذا لا تنبيهات = صامت. إذا توجد = يسأل المستخدم مرّة في اليوم.'
+            }
+          ]
+        },
+
+        export: {
+          title: '📄 تصدير PDF',
+          sections: [
+            {
+              h: 'الخيارات الثلاثة',
+              p: 'تصدير الشهر الحالي، لوحة التحكّم وحدها، التقرير السنوي الكامل (12 شهر + لوحة + أهداف).'
+            },
+            {
+              h: 'مكان الملفّات',
+              p: 'تُحفَظ في مجلّد "SmartBudget Reports" داخل Drive. يُنشأ تلقائياً عند أوّل تصدير.'
+            }
+          ]
+        }
+      }
     },
 
     // Export Engine (Module 08_Export.gs) — Phase 4
@@ -491,7 +665,12 @@ const TEXTS = {
       forecast:        '🔮 Budget Forecast',
       buildForecast:   '📈 Build / Refresh Forecast',
       viewForecast:    '👁️ View Forecast Sheet',
-      removeForecast:  '🗑️ Remove Forecast Sheet'
+      removeForecast:  '🗑️ Remove Forecast Sheet',
+      helpSubmenu:     '❓ Help & Guide',
+      openHelp:        '📖 Open Interactive Help',
+      buildGuideSheet: '📚 Build / Refresh Guide Sheet',
+      enableTooltips:  '💡 Enable Cell Tooltips',
+      removeTooltips:  '🚫 Remove Cell Tooltips'
     },
 
     onboarding: {
@@ -624,6 +803,170 @@ const TEXTS = {
       removedBody:       'Forecast sheet deleted successfully.',
       notFoundTitle:     'Sheet not found',
       notFoundBody:      'No forecast sheet exists. Run "Build Forecast" first.'
+    },
+
+    help: {
+      sidebarTitle:       '📖 SmartBudget Interactive Help',
+      currentSheetLabel:  'Current sheet:',
+      noActiveTopic:      'No specific guide for this sheet. Browse topics below.',
+      searchPlaceholder:  'Search the guide...',
+      sectionAllTopics:   'All Topics',
+      sectionLinks:       'Useful Links',
+      noSearchResults:    'No results. Try a different keyword.',
+
+      guideSheetTitle:    '📚 SmartBudget Pro 2026 User Guide',
+      guideSheetSub:      'Complete printable reference for every template feature',
+      tocTitle:           'Table of Contents',
+
+      tooltipsAddedTitle: 'Tooltips enabled',
+      tooltipsAddedBody:  ({n}) =>
+        `${n} tooltip${n === 1 ? '' : 's'} added on key input cells. Hover over any cell to see the explanation.`,
+      tooltipsRemovedTitle: 'Tooltips removed',
+      tooltipsRemovedBody:  'Cell tooltips removed. You can re-enable them anytime from the Help menu.',
+      guideBuiltTitle:    'Guide sheet built',
+      guideBuiltBody:     'Open the "📚 Guide" sheet to browse the full reference.',
+
+      topics: {
+        general: {
+          title: '🏠 SmartBudget Overview',
+          sections: [
+            {
+              h: 'What is SmartBudget Pro 2026?',
+              p: 'A premium Arabic-first fintech template for personal budgeting. Combines 12 monthly sheets, a goals system, advanced dashboard, statistical forecasting engine, PDF export, and smart notifications in one package.'
+            },
+            {
+              h: 'How does it work?',
+              p: '1) Settings define your main currency. 2) Monthly sheets receive your data. 3) The hidden engine aggregates everything. 4) Dashboard displays results. 5) Notifications alert you. 6) Forecasting predicts next month.'
+            },
+            {
+              h: 'Quick Start',
+              p: 'Open the 💎 SmartBudget menu in the menu bar. Pick "🧙 Setup Wizard" for a guided 5-step tour. Or start manually from the Settings sheet then a month.'
+            }
+          ]
+        },
+
+        settings: {
+          title: '⚙️ Settings Sheet',
+          sections: [
+            {
+              h: 'Main Currency (B3)',
+              p: 'The most important cell in the template. Every amount displays in this currency. Change it from the dropdown in B3 — every monthly sheet and goals sheet updates automatically.'
+            },
+            {
+              h: 'Currency Table (A7:D20)',
+              p: '14 pre-defined currencies. Column C updates automatically via GOOGLEFINANCE. If a rate update fails (rare currencies), the manual fallback is used.'
+            },
+            {
+              h: 'Income/Expense Categories (F7 / G7 / H7)',
+              p: 'These are the dropdown lists shown on monthly sheets. Change them here = the change cascades to every month immediately. Never leave a category blank.'
+            }
+          ]
+        },
+
+        monthly: {
+          title: '📅 Monthly Sheets (Jan - Dec)',
+          sections: [
+            {
+              h: 'Income Block (A10:H28)',
+              p: 'Col A: Revenue source (optional). B: Date. C: Category (dropdown). D: Description. E: Expected income. F: Actual income. G: Difference (auto). H: Payment method.'
+            },
+            {
+              h: 'Expense Block (A33:H62)',
+              p: 'A: Date. B: Category. C: Description. D: Expected expense. E: Actual. F: Difference (auto). G: Payment method. H: Alert status (auto, 🟢/🟡/🔴).'
+            },
+            {
+              h: 'KPI Panel at top (A2:H5)',
+              p: 'Total income/expense, savings rate, top spending category. All formulas. Do not edit manually.'
+            },
+            {
+              h: 'Smart Alert Engine (F2)',
+              p: '🟢 Excellent = good performance. 🟡 Approaching = exceeded 90% of budget. 🔴 Exceeded = actual surpassed planned.'
+            }
+          ]
+        },
+
+        goals: {
+          title: '🎯 Goals Sheet',
+          sections: [
+            {
+              h: 'Adding a Goal',
+              p: 'Fill columns A-C-E: name, cost, target date. Columns D/F/G/H/I are auto-calculated.'
+            },
+            {
+              h: 'Goal Status (Column H)',
+              p: '🟢 Complete = progress >= 100%. 🟡 In progress = started but not finished. ⚪ Not started = no saved amount yet.'
+            },
+            {
+              h: 'Smart Recommendation (Column I)',
+              p: 'Required monthly installment is calculated from the remaining gap and available months. This number appears as a monthly target.'
+            }
+          ]
+        },
+
+        dashboard: {
+          title: '📊 Dashboard',
+          sections: [
+            {
+              h: 'Year & Currency Selectors (B4 & D4)',
+              p: 'These two dropdowns control everything on the dashboard. Change the year → all KPIs filter. Change the currency → every number is converted live.'
+            },
+            {
+              h: 'Six KPI Cards',
+              p: 'Income, Expense, Net profit, Assets, Savings rate, Last-month trend. All computed from the hidden _DashboardEngine.'
+            },
+            {
+              h: 'Charts',
+              p: 'Cash Flow, Gauge (financial health), Combo (12 months), 2 Doughnuts (income & expense distribution). All draw automatically.'
+            }
+          ]
+        },
+
+        forecast: {
+          title: '🔮 Forecast Engine',
+          sections: [
+            {
+              h: 'How does forecasting work?',
+              p: '3 statistical techniques: 3-month moving average + linear TREND + standard deviation for variance. Result: a suggested budget for next month per category.'
+            },
+            {
+              h: 'Run Requirements',
+              p: 'At least 3 completed months of data are required. With only 1 month, you will see a warning.'
+            },
+            {
+              h: 'Safety Buffer (10%)',
+              p: 'Suggested budget = max(average, forecast) × 1.10. The 10% buffer protects against natural fluctuation.'
+            }
+          ]
+        },
+
+        notifications: {
+          title: '🔔 Smart Notifications',
+          sections: [
+            {
+              h: 'Five Channels',
+              p: '🔴 Budget exceeded. 🟡 Approaching limit. 🎯 Goal deadline soon. 📅 Empty past month. 🩺 Formula issues.'
+            },
+            {
+              h: 'Auto-check',
+              p: 'Runs on workbook open. If no alerts = silent. If alerts exist = prompts the user once per day.'
+            }
+          ]
+        },
+
+        export: {
+          title: '📄 PDF Export',
+          sections: [
+            {
+              h: 'Three Options',
+              p: 'Export current month, dashboard alone, or full annual report (12 months + dashboard + goals).'
+            },
+            {
+              h: 'File Location',
+              p: 'Saved in the "SmartBudget Reports" folder inside Drive. Created automatically on first export.'
+            }
+          ]
+        }
+      }
     },
 
     export: {

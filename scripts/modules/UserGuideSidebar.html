@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<!--
+  SmartBudget Pro 2026 - Interactive User Guide Sidebar
+  ===========================================================================
+  Phase 8 Help System.
+
+  ARCHITECTURE
+  ------------
+  - Bootstrap once via google.script.run.getHelpBootstrap()
+  - Bootstrap returns: lang, direction, font, active sheet, active topic,
+    full topics tree, localized labels
+  - Auto-selects the topic matching the active sheet on open
+  - Live search filters topics + sections by keyword (client-side)
+  - "Open this sheet" deep-links call helpJumpToSheet() server-side
+
+  PASTE INSTRUCTION (Apps Script editor)
+  --------------------------------------
+  File -> New -> HTML file -> name: UserGuideSidebar (no extension)
+  Paste this entire content. Save.
+-->
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-page:      #0F172A;
+        --bg-card:      #1E293B;
+        --bg-card-soft: #243042;
+        --glass-border: #334155;
+        --fg-primary:   #F1F5F9;
+        --fg-muted:     #94A3B8;
+        --accent:       #10B981;
+        --accent-hover: #059669;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: var(--bg-page);
+        color: var(--fg-primary);
+        font-family: 'Cairo', 'Inter', sans-serif;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      body[dir="rtl"] { direction: rtl; }
+      body[dir="ltr"] { direction: ltr; }
+
+      .help {
+        padding: 14px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* --- Active sheet banner --- */
+      .active-banner {
+        background: var(--bg-card-soft);
+        border: 1px solid var(--glass-border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        font-size: 12px;
+      }
+      .active-banner .label {
+        color: var(--fg-muted);
+        margin-inline-end: 6px;
+      }
+      .active-banner .name {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      /* --- Search --- */
+      input.search {
+        width: 100%;
+        background: var(--bg-card-soft);
+        border: 1.5px solid var(--glass-border);
+        color: var(--fg-primary);
+        padding: 9px 12px;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+      input.search:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      /* --- Topic list (sidebar nav) --- */
+      .topic-list {
+        margin-bottom: 14px;
+      }
+      .section-label {
+        font-size: 11px;
+        color: var(--fg-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+        padding-inline-start: 4px;
+      }
+      .topic-btn {
+        display: block;
+        width: 100%;
+        text-align: start;
+        background: transparent;
+        border: 1px solid var(--glass-border);
+        color: var(--fg-primary);
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 13px;
+        margin-bottom: 5px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .topic-btn:hover {
+        background: var(--bg-card-soft);
+        border-color: var(--fg-muted);
+      }
+      .topic-btn.active {
+        background: rgba(16, 185, 129, 0.15);
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+
+      /* --- Topic content panel --- */
+      .topic-panel {
+        flex: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 16px;
+        overflow-y: auto;
+        margin-bottom: 12px;
+      }
+      .topic-panel h2 {
+        margin: 0 0 12px 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--fg-primary);
+      }
+      .topic-panel h3 {
+        margin: 14px 0 4px 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--accent);
+      }
+      .topic-panel p {
+        margin: 0 0 8px 0;
+        font-size: 12.5px;
+        color: var(--fg-muted);
+        line-height: 1.7;
+      }
+
+      /* --- Empty state --- */
+      .empty {
+        color: var(--fg-muted);
+        font-size: 12px;
+        text-align: center;
+        padding: 30px 14px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="help">
+
+      <!-- Active sheet banner -->
+      <div class="active-banner" id="active-banner" style="display:none;">
+        <span class="label" id="active-label"></span>
+        <span class="name" id="active-name"></span>
+      </div>
+
+      <!-- Search -->
+      <input class="search" id="search" type="text" placeholder="" />
+
+      <!-- Topic content panel -->
+      <div class="topic-panel" id="topic-panel">
+        <div class="empty" id="loading">Loading...</div>
+      </div>
+
+      <!-- Topic list -->
+      <div class="topic-list">
+        <div class="section-label" id="all-topics-label">All Topics</div>
+        <div id="topic-buttons"></div>
+      </div>
+
+    </div>
+
+    <script>
+      let bootstrap = null;
+      let activeKey = null;
+
+      window.addEventListener('DOMContentLoaded', function() {
+        google.script.run
+          .withSuccessHandler(onBootstrap)
+          .withFailureHandler(onError)
+          .getHelpBootstrap();
+      });
+
+      function onBootstrap(data) {
+        bootstrap = data;
+        document.body.setAttribute('dir', data.direction);
+        document.body.style.fontFamily = data.fontFamily + ', sans-serif';
+
+        // Static labels
+        const L = data.labels;
+        document.getElementById('active-label').textContent = L.currentSheetLabel;
+        document.getElementById('all-topics-label').textContent = L.sectionAllTopics;
+        document.getElementById('search').placeholder = L.searchPlaceholder;
+
+        // Active sheet banner
+        if (data.activeSheetName) {
+          document.getElementById('active-banner').style.display = '';
+          document.getElementById('active-name').textContent = data.activeSheetName;
+        }
+
+        // Render topic buttons
+        renderTopicButtons();
+
+        // Open the active topic, or 'general' as fallback
+        activeKey = data.activeTopicKey || 'general';
+        renderTopic(activeKey);
+
+        // Wire search
+        document.getElementById('search').addEventListener('input', onSearch);
+      }
+
+      function onError(err) {
+        document.getElementById('loading').textContent =
+          'Error: ' + (err.message || err);
+      }
+
+      function renderTopicButtons() {
+        const wrap = document.getElementById('topic-buttons');
+        wrap.innerHTML = '';
+        Object.keys(bootstrap.topics).forEach(function(key) {
+          const btn = document.createElement('button');
+          btn.className = 'topic-btn';
+          btn.textContent = bootstrap.topics[key].title;
+          btn.setAttribute('data-key', key);
+          btn.addEventListener('click', function() {
+            activeKey = key;
+            renderTopic(key);
+            updateActiveButton();
+          });
+          wrap.appendChild(btn);
+        });
+        updateActiveButton();
+      }
+
+      function updateActiveButton() {
+        const btns = document.querySelectorAll('.topic-btn');
+        btns.forEach(function(b) {
+          if (b.getAttribute('data-key') === activeKey) {
+            b.classList.add('active');
+          } else {
+            b.classList.remove('active');
+          }
+        });
+      }
+
+      function renderTopic(key) {
+        const panel = document.getElementById('topic-panel');
+        const topic = bootstrap.topics[key];
+        if (!topic) {
+          panel.innerHTML = '<div class="empty">' +
+            (bootstrap.labels.noActiveTopic || '') + '</div>';
+          return;
+        }
+        let html = '<h2>' + escapeHtml(topic.title) + '</h2>';
+        topic.sections.forEach(function(s) {
+          html += '<h3>' + escapeHtml(s.h) + '</h3>';
+          html += '<p>' + escapeHtml(s.p) + '</p>';
+        });
+        panel.innerHTML = html;
+        panel.scrollTop = 0;
+      }
+
+      function onSearch(e) {
+        const q = (e.target.value || '').trim().toLowerCase();
+        if (!q) {
+          renderTopic(activeKey);
+          return;
+        }
+        // Search across all topics' sections
+        const panel = document.getElementById('topic-panel');
+        let html = '';
+        let hits = 0;
+        Object.keys(bootstrap.topics).forEach(function(key) {
+          const topic = bootstrap.topics[key];
+          const matchedSections = topic.sections.filter(function(s) {
+            return (s.h + ' ' + s.p).toLowerCase().indexOf(q) >= 0;
+          });
+          const titleMatches = topic.title.toLowerCase().indexOf(q) >= 0;
+          if (matchedSections.length === 0 && !titleMatches) return;
+
+          hits++;
+          html += '<h2>' + escapeHtml(topic.title) + '</h2>';
+          (matchedSections.length > 0 ? matchedSections : topic.sections).forEach(function(s) {
+            html += '<h3>' + escapeHtml(s.h) + '</h3>';
+            html += '<p>' + escapeHtml(s.p) + '</p>';
+          });
+        });
+        if (hits === 0) {
+          panel.innerHTML = '<div class="empty">' +
+            escapeHtml(bootstrap.labels.noSearchResults) + '</div>';
+        } else {
+          panel.innerHTML = html;
+          panel.scrollTop = 0;
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+    </script>
+  </body>
+</html>
