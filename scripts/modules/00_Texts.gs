@@ -92,7 +92,11 @@ const TEXTS = {
       onboarding:      '🧙 معالج الإعداد',
       notifications:   '🔔 الإشعارات الذكية',
       checkAlertsNow:  '🔍 فحص التنبيهات الآن',
-      notificationSettings: '⚙️ إعدادات الإشعارات'
+      notificationSettings: '⚙️ إعدادات الإشعارات',
+      forecast:        '🔮 توقّعات الميزانيّة',
+      buildForecast:   '📈 بناء/تحديث توقّعات الميزانيّة',
+      viewForecast:    '👁️ عرض ورقة التوقّعات',
+      removeForecast:  '🗑️ حذف ورقة التوقّعات'
     },
 
     // Onboarding Wizard (Module 09_Onboarding.gs + OnboardingSidebar.html)
@@ -196,6 +200,58 @@ const TEXTS = {
       toggleAutoCheck:   ({state}) => `الفحص التلقائي: ${state}. تغييره؟`,
       doneTitle:         'تمّ التحديث',
       doneBody:          'سيُطبَّق الإعداد الجديد عند فتح المصنّف القادم.'
+    },
+
+    // Budget Forecasting Engine (Module 11_Forecast.gs) - Phase 7
+    forecast: {
+      // Sheet labels
+      sheetTitle:        '🔮 توقّعات الميزانيّة - SmartBudget',
+      sheetSubtitle:     'تحليل اتّجاهات الأشهر السابقة + توقّع الشهر القادم',
+      sheetGenerated:    ({ts}) => `آخر تحديث: ${ts}`,
+
+      // Section headers
+      sectionMonthly:    '📅 توقّع الإجماليات للشهر القادم',
+      sectionCategory:   '📊 توقّع الإنفاق حسب الفئة',
+      sectionTrend:      '📈 الاتّجاه السنوي',
+      sectionSuggestion: '💡 اقتراح ميزانيّة محسَّنة',
+
+      // Monthly forecast table headers
+      colMetric:         'المؤشّر',
+      colHistorical:     'متوسّط 3 أشهر',
+      colTrend:          'التوقّع (Trend)',
+      colSuggestion:     'الميزانيّة المقترحة',
+
+      // Row labels
+      rowIncome:         'الدخل المتوقّع',
+      rowExpense:        'المصروف المتوقّع',
+      rowSavings:        'الادّخار المتوقّع',
+
+      // Category section
+      colCategory:       'الفئة',
+      colAvgSpend:       'متوسّط الإنفاق',
+      colVariance:       'التفاوت',
+      colForecastAmount: 'التوقّع للشهر القادم',
+      colSuggestedLimit: 'حدّ مقترح (+10%)',
+
+      // Suggestion / explanation
+      methodNote:        'المنهج: متوسّط متحرّك لـ 3 أشهر مكتملة + Trend خطّي. الحدّ المقترح يضيف 10% buffer للأمان.',
+      bufferLabel:       'هامش الأمان: 10%',
+      noDataYetTitle:    'بيانات غير كافية',
+      noDataYetBody:     'يلزم وجود بيانات لـ 3 أشهر مكتملة على الأقلّ لبناء توقّعات موثوقة. تابع إدخال بياناتك ثمّ أعد التشغيل.',
+
+      // Status messages
+      buildingTitle:     'جاري بناء التوقّعات',
+      buildingBody:      'تحليل البيانات وحساب الاتّجاهات...',
+      doneTitle:         'تمّت التوقّعات',
+      doneBody:          ({months}) =>
+        `تمّ تحليل ${months} شهر من البيانات. افتح ورقة "🔮 التوقّعات" للنتائج الكاملة.`,
+
+      removeConfirmTitle:'حذف ورقة التوقّعات',
+      removeConfirmBody: 'سيتم حذف ورقة التوقّعات. يمكنك إعادة بنائها لاحقاً. متابعة؟',
+      removedTitle:      'تمّ الحذف',
+      removedBody:       'تمّ حذف ورقة التوقّعات بنجاح.',
+      notFoundTitle:     'الورقة غير موجودة',
+      notFoundBody:      'ورقة التوقّعات غير موجودة. شغّل "بناء التوقّعات" أولاً.'
     },
 
     // Export Engine (Module 08_Export.gs) — Phase 4
@@ -431,7 +487,11 @@ const TEXTS = {
       onboarding:      '🧙 Setup Wizard',
       notifications:   '🔔 Smart Notifications',
       checkAlertsNow:  '🔍 Check Alerts Now',
-      notificationSettings: '⚙️ Notification Settings'
+      notificationSettings: '⚙️ Notification Settings',
+      forecast:        '🔮 Budget Forecast',
+      buildForecast:   '📈 Build / Refresh Forecast',
+      viewForecast:    '👁️ View Forecast Sheet',
+      removeForecast:  '🗑️ Remove Forecast Sheet'
     },
 
     onboarding: {
@@ -520,6 +580,50 @@ const TEXTS = {
       toggleAutoCheck:   ({state}) => `Auto-check: ${state}. Toggle it?`,
       doneTitle:         'Updated',
       doneBody:          'New setting will apply on the next workbook open.'
+    },
+
+    forecast: {
+      sheetTitle:        '🔮 Budget Forecast - SmartBudget',
+      sheetSubtitle:     'Trend analysis from past months + next-month projection',
+      sheetGenerated:    ({ts}) => `Last updated: ${ts}`,
+
+      sectionMonthly:    '📅 Next Month Total Forecast',
+      sectionCategory:   '📊 Per-Category Spending Forecast',
+      sectionTrend:      '📈 Annual Trend',
+      sectionSuggestion: '💡 Optimized Budget Suggestion',
+
+      colMetric:         'Metric',
+      colHistorical:     '3-month avg',
+      colTrend:          'Trend forecast',
+      colSuggestion:     'Suggested budget',
+
+      rowIncome:         'Expected income',
+      rowExpense:        'Expected expense',
+      rowSavings:        'Expected savings',
+
+      colCategory:       'Category',
+      colAvgSpend:       'Average spend',
+      colVariance:       'Variance',
+      colForecastAmount: 'Next-month forecast',
+      colSuggestedLimit: 'Suggested limit (+10%)',
+
+      methodNote:        'Method: 3-month moving average + linear TREND. Suggested limit adds 10% safety buffer.',
+      bufferLabel:       'Safety buffer: 10%',
+      noDataYetTitle:    'Not enough data',
+      noDataYetBody:     'At least 3 completed months of data are required for reliable forecasts. Keep entering your data and try again.',
+
+      buildingTitle:     'Building forecast',
+      buildingBody:      'Analyzing data and computing trends...',
+      doneTitle:         'Forecast complete',
+      doneBody:          ({months}) =>
+        `Analyzed ${months} months of data. Open the "🔮 Forecast" sheet for full results.`,
+
+      removeConfirmTitle:'Remove forecast sheet',
+      removeConfirmBody: 'The forecast sheet will be deleted. You can rebuild it later. Continue?',
+      removedTitle:      'Removed',
+      removedBody:       'Forecast sheet deleted successfully.',
+      notFoundTitle:     'Sheet not found',
+      notFoundBody:      'No forecast sheet exists. Run "Build Forecast" first.'
     },
 
     export: {
