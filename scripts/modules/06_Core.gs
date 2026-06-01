@@ -26,6 +26,13 @@ function installSmartBudgetPro2026(silent) {
       t('install.preflight'),
       ui.ButtonSet.YES_NO);
     if (r !== ui.Button.YES) return;
+
+    // Phase 9 defensive hook: take a pre-op snapshot before reinstalling
+    // over existing data, so the user can recover if they regret the reinstall.
+    // typeof guard means this is a no-op if Module 13 isn't loaded.
+    if (typeof takePreOpSnapshot === 'function') {
+      takePreOpSnapshot('Reinstall on existing workbook');
+    }
   }
 
   Logger.log(`SMARTBUDGET PRO 2026 install started ${startTime.toISOString()}`);
@@ -129,6 +136,12 @@ function onOpen() {
       .addSeparator()
       .addItem(t('menu.enableTooltips'),  'menuEnableTooltips')
       .addItem(t('menu.removeTooltips'),  'menuRemoveTooltips'))
+    .addSubMenu(ui.createMenu(t('menu.recoverySubmenu'))
+      .addItem(t('menu.makeSnapshot'),    'menuMakeSnapshot')
+      .addItem(t('menu.listSnapshots'),   'menuListSnapshots')
+      .addItem(t('menu.restoreSnapshot'), 'menuRestoreSnapshot')
+      .addSeparator()
+      .addItem(t('menu.cleanSnapshots'),  'menuCleanSnapshots'))
     .addItem(t('menu.healthCheck'),     'runHealthCheck')
     .addItem(t('menu.verifyFormulas'),  'menuVerifyFormulaIntegrity')
     .addItem(t('menu.autoRepair'),      'menuAutoRepairFormulas')

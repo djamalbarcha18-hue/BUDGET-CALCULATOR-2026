@@ -101,7 +101,12 @@ const TEXTS = {
       openHelp:        '📖 افتح المساعدة التفاعليّة',
       buildGuideSheet: '📚 بناء/تحديث ورقة الدليل',
       enableTooltips:  '💡 تفعيل تلميحات الخلايا',
-      removeTooltips:  '🚫 إزالة تلميحات الخلايا'
+      removeTooltips:  '🚫 إزالة تلميحات الخلايا',
+      recoverySubmenu: '🛡️ نظام الاسترداد',
+      makeSnapshot:    '📸 إنشاء لقطة احتياطيّة الآن',
+      listSnapshots:   '📋 عرض اللقطات المحفوظة',
+      restoreSnapshot: '↩️ استعادة من لقطة',
+      cleanSnapshots:  '🧹 حذف كل اللقطات'
     },
 
     // Onboarding Wizard (Module 09_Onboarding.gs + OnboardingSidebar.html)
@@ -428,6 +433,72 @@ const TEXTS = {
       }
     },
 
+    // Recovery Mode (Module 13_Recovery.gs) — Phase 9
+    recovery: {
+      // Snapshot creation
+      makeTitle:         'إنشاء لقطة احتياطيّة',
+      makeBody:          'سيتم حفظ نسخة من بيانات الأشهر الـ 12 + ورقة الأهداف. هذا لا يلامس الصيغ ولا الإعدادات. متابعة؟',
+      makeProgress:      'جاري حفظ اللقطة...',
+      makeSuccessTitle:  'تمّ حفظ اللقطة',
+      makeSuccessBody:   ({timestamp, totalCells, oldestKept}) =>
+        `تمّت اللقطة في ${timestamp}.\n\n` +
+        `• خلايا محفوظة: ${totalCells}\n` +
+        `• اللقطات المحتفظ بها: آخر 7 أيّام\n` +
+        `• أقدم لقطة: ${oldestKept}\n\n` +
+        'يمكنك الاسترداد من قائمة "الاسترداد" في أيّ وقت.',
+      makeAlreadyToday:  'توجد لقطة اليوم بالفعل. هل تريد استبدالها بلقطة جديدة؟',
+
+      // Listing
+      listTitle:         'اللقطات المحفوظة',
+      listEmpty:         'لا توجد لقطات بعد. أنشئ لقطتك الأولى من القائمة.',
+      listHeader:        ({n}) =>
+        `📋 ${n} لقطة محفوظة:\n\n`,
+      listRow:           ({index, timestamp, age, type, cells}) =>
+        `  ${index}. ${timestamp} (${age}) - ${type} - ${cells} خليّة\n`,
+      listFooter:        '\n💡 لاستعادة لقطة، اختر "استعادة من لقطة" من القائمة.',
+
+      // Restore picker
+      restoreTitle:      'استعادة من لقطة',
+      restorePrompt:     ({list}) =>
+        `اختر اللقطة بإدخال رقمها:\n\n${list}\nاكتب الرقم (1-7) ثمّ اضغط OK:`,
+      restoreInvalid:    'رقم غير صحيح. أعد المحاولة.',
+      restoreConfirmTitle: 'تأكيد الاستعادة',
+      restoreConfirmBody: ({timestamp, cells}) =>
+        `هل أنت متأكّد من استعادة بيانات ${timestamp}؟\n\n` +
+        `سيتم استبدال ${cells} خليّة في الأشهر + الأهداف. ` +
+        'الصيغ والإعدادات لن تتأثّر.\n\n' +
+        '⚠️ سنحفظ لقطة احتياطيّة من بياناتك الحاليّة قبل الاستعادة.',
+      restoreProgress:   'جاري استعادة البيانات...',
+      restoreSuccessTitle: 'تمّت الاستعادة',
+      restoreSuccessBody: ({timestamp, restored}) =>
+        `تمّ استرداد ${restored} خليّة من لقطة ${timestamp} بنجاح.\n\n` +
+        'تمّ حفظ بياناتك السابقة في لقطة طارئة (يمكنك التراجع منها).',
+
+      // Cleanup
+      cleanTitle:        'حذف كل اللقطات',
+      cleanConfirm:      ({n}) =>
+        `سيتم حذف ${n} لقطة. هذه العمليّة لا يمكن التراجع عنها. متابعة؟`,
+      cleanDoneTitle:    'تمّ الحذف',
+      cleanDoneBody:     ({n}) => `تمّ حذف ${n} لقطة.`,
+
+      // Auto-snapshot before destructive ops
+      autoSnapshotTitle: 'لقطة طارئة قبل العمليّة',
+      autoSnapshotBody:  ({operation}) =>
+        `أنشأنا لقطة احتياطيّة قبل تنفيذ "${operation}" لحمايتك من الفقدان غير المقصود.`,
+
+      // Snapshot type labels
+      typeManual:        'يدويّة',
+      typeAuto:          'تلقائيّة',
+      typeEmergency:     'طارئة',
+      typePreOp:         'قبل عمليّة خطرة',
+
+      // Errors
+      errorTitle:        'فشل العمليّة',
+      errorNoData:       'لا توجد بيانات لحفظها. أدخل بعض البيانات أوّلاً.',
+      errorSnapshotMissing: 'اللقطة المختارة غير موجودة.',
+      errorRestoreFailed: ({err}) => `فشل الاسترداد: ${err}`
+    },
+
     // Export Engine (Module 08_Export.gs) — Phase 4
     export: {
       pickerTitle:     'اختر الشهر للتصدير',
@@ -670,7 +741,12 @@ const TEXTS = {
       openHelp:        '📖 Open Interactive Help',
       buildGuideSheet: '📚 Build / Refresh Guide Sheet',
       enableTooltips:  '💡 Enable Cell Tooltips',
-      removeTooltips:  '🚫 Remove Cell Tooltips'
+      removeTooltips:  '🚫 Remove Cell Tooltips',
+      recoverySubmenu: '🛡️ Recovery Mode',
+      makeSnapshot:    '📸 Take Snapshot Now',
+      listSnapshots:   '📋 List Saved Snapshots',
+      restoreSnapshot: '↩️ Restore From Snapshot',
+      cleanSnapshots:  '🧹 Delete All Snapshots'
     },
 
     onboarding: {
@@ -967,6 +1043,64 @@ const TEXTS = {
           ]
         }
       }
+    },
+
+    recovery: {
+      makeTitle:         'Take Backup Snapshot',
+      makeBody:          'A copy of all 12 monthly sheets + goals will be saved. Formulas and settings are NOT touched. Continue?',
+      makeProgress:      'Saving snapshot...',
+      makeSuccessTitle:  'Snapshot saved',
+      makeSuccessBody:   ({timestamp, totalCells, oldestKept}) =>
+        `Snapshot taken at ${timestamp}.\n\n` +
+        `• Cells saved: ${totalCells}\n` +
+        `• Retention: last 7 days\n` +
+        `• Oldest snapshot: ${oldestKept}\n\n` +
+        'Restore anytime from the Recovery menu.',
+      makeAlreadyToday:  'A snapshot already exists for today. Replace it with a new one?',
+
+      listTitle:         'Saved Snapshots',
+      listEmpty:         'No snapshots yet. Create your first one from the menu.',
+      listHeader:        ({n}) =>
+        `📋 ${n} saved snapshot${n === 1 ? '' : 's'}:\n\n`,
+      listRow:           ({index, timestamp, age, type, cells}) =>
+        `  ${index}. ${timestamp} (${age}) - ${type} - ${cells} cells\n`,
+      listFooter:        '\n💡 To restore a snapshot, pick "Restore From Snapshot" in the menu.',
+
+      restoreTitle:      'Restore From Snapshot',
+      restorePrompt:     ({list}) =>
+        `Pick a snapshot by number:\n\n${list}\nEnter the number (1-7) and click OK:`,
+      restoreInvalid:    'Invalid number. Try again.',
+      restoreConfirmTitle: 'Confirm Restore',
+      restoreConfirmBody: ({timestamp, cells}) =>
+        `Restore data from ${timestamp}?\n\n` +
+        `${cells} cells across the monthly sheets + goals will be overwritten. ` +
+        'Formulas and settings are NOT affected.\n\n' +
+        '⚠️ Your current data will be saved as an emergency snapshot before restore.',
+      restoreProgress:   'Restoring data...',
+      restoreSuccessTitle: 'Restore complete',
+      restoreSuccessBody: ({timestamp, restored}) =>
+        `${restored} cells restored from the ${timestamp} snapshot.\n\n` +
+        'Your previous data was saved as an emergency snapshot (you can undo).',
+
+      cleanTitle:        'Delete All Snapshots',
+      cleanConfirm:      ({n}) =>
+        `${n} snapshot${n === 1 ? '' : 's'} will be deleted. This cannot be undone. Continue?`,
+      cleanDoneTitle:    'Deleted',
+      cleanDoneBody:     ({n}) => `${n} snapshot${n === 1 ? '' : 's'} deleted.`,
+
+      autoSnapshotTitle: 'Pre-operation Snapshot',
+      autoSnapshotBody:  ({operation}) =>
+        `We took a backup snapshot before running "${operation}" to protect against accidental data loss.`,
+
+      typeManual:        'Manual',
+      typeAuto:          'Automatic',
+      typeEmergency:     'Emergency',
+      typePreOp:         'Pre-destructive-op',
+
+      errorTitle:        'Operation failed',
+      errorNoData:       'No data to save. Enter some data first.',
+      errorSnapshotMissing: 'The selected snapshot does not exist.',
+      errorRestoreFailed: ({err}) => `Restore failed: ${err}`
     },
 
     export: {

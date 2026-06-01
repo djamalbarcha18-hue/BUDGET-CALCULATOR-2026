@@ -243,6 +243,12 @@ function _gotoSheet(name) {
 function nuclearReset(ss) {
   Logger.log('=== NUCLEAR RESET START ===');
 
+  // Phase 9 defensive hook: pre-op snapshot before destructive reset.
+  // typeof guard means this is a no-op if Module 13 isn't loaded.
+  if (typeof takePreOpSnapshot === 'function') {
+    takePreOpSnapshot('Nuclear Reset');
+  }
+
   // 1. Remove all named ranges
   try {
     const named = ss.getNamedRanges();
