@@ -89,7 +89,10 @@ const TEXTS = {
       exportMonth:     '📅 تصدير الشهر الحالي PDF',
       exportDashboard: '📊 تصدير لوحة التحكم PDF',
       exportAnnual:    '📚 تصدير التقرير السنوي PDF',
-      onboarding:      '🧙 معالج الإعداد'
+      onboarding:      '🧙 معالج الإعداد',
+      notifications:   '🔔 الإشعارات الذكية',
+      checkAlertsNow:  '🔍 فحص التنبيهات الآن',
+      notificationSettings: '⚙️ إعدادات الإشعارات'
     },
 
     // Onboarding Wizard (Module 09_Onboarding.gs + OnboardingSidebar.html)
@@ -149,6 +152,50 @@ const TEXTS = {
 
       // Auto-prompt on first open
       firstOpenPrompt:  'مرحباً! يبدو أنّك تستعمل SmartBudget لأوّل مرّة. هل تريد فتح معالج الإعداد لإرشادك؟'
+    },
+
+    // Smart Notifications Engine (Module 10_Notifications.gs) - Phase 6
+    notifications: {
+      // Report dialog
+      reportTitle:       '🔔 الإشعارات الذكيّة',
+      header:            ({timestamp}) =>
+        `🔔 لوحة الإشعارات\nوقت الفحص: ${timestamp}\n═══════════════════════════\n\n`,
+      footer:            '═══════════════════════════',
+      noAlertsTitle:     '🎉 لا توجد تنبيهات',
+      noAlertsBody:      'وضعك المالي ممتاز - لا توجد ميزانيّات متجاوزة، ولا أهداف على وشك الانتهاء.',
+
+      // Section labels
+      sectionExceeded:   ({n}) => `🔴 ميزانيّات متجاوزة (${n})\n`,
+      sectionWarning:    ({n}) => `🟡 تحذيرات اقتراب الحدّ (${n})\n`,
+      sectionGoals:      ({n}) => `🎯 أهداف على وشك الانتهاء (${n})\n`,
+      sectionReminders:  ({n}) => `📅 تذكيرات إدخال البيانات (${n})\n`,
+      sectionIntegrity:  ({n}) => `🩺 مشاكل في الصيغ (${n})\n`,
+
+      // Item lines
+      itemExceeded:      ({month, actual, budget, percent}) =>
+        `  • ${month}: تجاوز ${percent}% (الفعلي ${actual} مقابل ${budget})\n`,
+      itemWarning:       ({month, actual, budget, percent}) =>
+        `  • ${month}: ${percent}% من الميزانيّة (${actual} / ${budget})\n`,
+      itemGoalSoon:      ({name, monthsLeft, progress}) =>
+        `  • "${name}": ${monthsLeft} شهر متبقّي - أنجزت ${progress}\n`,
+      itemReminder:      ({month}) =>
+        `  • ${month}: لم تُدخَل أيّ بيانات بعدُ\n`,
+      itemIntegrity:     ({sheet, cell, status}) =>
+        `  • ${sheet}!${cell} - ${status}\n`,
+
+      // Auto-prompt on workbook open
+      autoPromptTitle:   'لديك تنبيهات جديدة',
+      autoPromptBody:    ({n}) =>
+        `${n} تنبيه ينتظر مراجعتك. هل تريد عرض اللوحة الآن؟`,
+
+      // Settings dialog
+      settingsTitle:     'إعدادات الإشعارات',
+      settingsBody:      'حدّد القنوات النشطة:',
+      autoCheckEnabled:  '✅ الفحص التلقائي عند فتح المصنّف مفعّل',
+      autoCheckDisabled: '⏸️  الفحص التلقائي عند فتح المصنّف معطَّل',
+      toggleAutoCheck:   ({state}) => `الفحص التلقائي: ${state}. تغييره؟`,
+      doneTitle:         'تمّ التحديث',
+      doneBody:          'سيُطبَّق الإعداد الجديد عند فتح المصنّف القادم.'
     },
 
     // Export Engine (Module 08_Export.gs) — Phase 4
@@ -381,7 +428,10 @@ const TEXTS = {
       exportMonth:     '📅 Export Current Month as PDF',
       exportDashboard: '📊 Export Dashboard as PDF',
       exportAnnual:    '📚 Export Annual Report as PDF',
-      onboarding:      '🧙 Setup Wizard'
+      onboarding:      '🧙 Setup Wizard',
+      notifications:   '🔔 Smart Notifications',
+      checkAlertsNow:  '🔍 Check Alerts Now',
+      notificationSettings: '⚙️ Notification Settings'
     },
 
     onboarding: {
@@ -432,6 +482,44 @@ const TEXTS = {
       alreadyDoneBody:  'You have already completed the setup wizard. Do you want to run it again?',
 
       firstOpenPrompt:  'Welcome! It looks like this is your first time using SmartBudget. Want to open the setup wizard to guide you?'
+    },
+
+    notifications: {
+      reportTitle:       '🔔 Smart Notifications',
+      header:            ({timestamp}) =>
+        `🔔 Notifications Dashboard\nScan time: ${timestamp}\n═══════════════════════════\n\n`,
+      footer:            '═══════════════════════════',
+      noAlertsTitle:     '🎉 No alerts',
+      noAlertsBody:      'Your financial position looks excellent - no budgets exceeded, no goals about to expire.',
+
+      sectionExceeded:   ({n}) => `🔴 Budgets exceeded (${n})\n`,
+      sectionWarning:    ({n}) => `🟡 Approaching-limit warnings (${n})\n`,
+      sectionGoals:      ({n}) => `🎯 Goals close to deadline (${n})\n`,
+      sectionReminders:  ({n}) => `📅 Data entry reminders (${n})\n`,
+      sectionIntegrity:  ({n}) => `🩺 Formula issues (${n})\n`,
+
+      itemExceeded:      ({month, actual, budget, percent}) =>
+        `  • ${month}: exceeded by ${percent}% (actual ${actual} vs ${budget})\n`,
+      itemWarning:       ({month, actual, budget, percent}) =>
+        `  • ${month}: ${percent}% of budget used (${actual} / ${budget})\n`,
+      itemGoalSoon:      ({name, monthsLeft, progress}) =>
+        `  • "${name}": ${monthsLeft} months remaining - ${progress} achieved\n`,
+      itemReminder:      ({month}) =>
+        `  • ${month}: no data entered yet\n`,
+      itemIntegrity:     ({sheet, cell, status}) =>
+        `  • ${sheet}!${cell} - ${status}\n`,
+
+      autoPromptTitle:   'You have new notifications',
+      autoPromptBody:    ({n}) =>
+        `${n} alert${n === 1 ? '' : 's'} waiting for review. Open the dashboard now?`,
+
+      settingsTitle:     'Notification Settings',
+      settingsBody:      'Configure active channels:',
+      autoCheckEnabled:  '✅ Auto-check on workbook open is ENABLED',
+      autoCheckDisabled: '⏸️  Auto-check on workbook open is DISABLED',
+      toggleAutoCheck:   ({state}) => `Auto-check: ${state}. Toggle it?`,
+      doneTitle:         'Updated',
+      doneBody:          'New setting will apply on the next workbook open.'
     },
 
     export: {
