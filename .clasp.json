@@ -1,0 +1,16 @@
+{
+  "scriptId": "<<ضع_معرّف_السكربت_هنا_SCRIPT_ID>>",
+  "rootDir": "deploy/dist",
+  "filePushOrder": [
+    "appsscript.json",
+    "00_Config.gs",
+    "00_Texts.gs",
+    "01_Helpers.gs",
+    "02_Sheets.gs",
+    "03_Dashboard.gs",
+    "04_System.gs",
+    "05_Demo_QA.gs",
+    "06_Core.gs",
+    "TopDialog.html"
+  ]
+}
