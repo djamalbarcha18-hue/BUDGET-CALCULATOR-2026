@@ -160,6 +160,7 @@ function installBudgetCalculator2026() {
   // Build in canonical order (settings first because everything else references it).
   buildSettings(ss);
   buildGoals(ss);
+  buildDebtsLedger(ss);        // <-- Phase 3b: جدول السلف والديون في ورقة الأهداف
   for (let i = 0; i < MONTHS.length; i++) buildMonth(ss, MONTHS[i]);
   buildDashboard(ss);          // <-- moved BEFORE the engine: card cells now exist
   buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
@@ -440,6 +441,171 @@ function buildGoals(ss) {
   s.setConditionalFormatRules(rules);
 
   s.setFrozenRows(6);
+  s.autoResizeColumns(1, 9);
+}
+
+// ============================================================================
+// PHASE 3b: DEBTS LEDGER (مفكرة السلف والديون - دائن ومدين)
+// ============================================================================
+/**
+ * يُنشئ جدول "مفكرة السلف والديون" داخل ورقة الأهداف المالية والادخار.
+ * يبدأ الجدول من الصف 29 (عنوان فرعي) مع رأس في الصف 30 وبيانات في 31:50.
+ *
+ * الأعمدة (A-I):
+ *   A: اسم الشخص
+ *   B: نوع العملية (أعطيته سلف / أخذت منه سلف)
+ *   C: المبلغ الكلي
+ *   D: العملة
+ *   E: تاريخ المعاملة
+ *   F: تاريخ السداد المتوقع
+ *   G: المبلغ المسدد
+ *   H: الرصيد المتبقي (معادلة تلقائية = C - G)
+ *   I: الحالة (مؤشر لوني: مكتمل / مسدد جزئياً / غير مسدد)
+ *
+ * التصميم: Fintech Dark Mode مطابق لباقي القالب.
+ * الأرقام: لاتينية حصراً (1,2,3) — التنسيق يُفرض عبر setNumberFormat.
+ */
+function buildDebtsLedger(ss) {
+  const s = ss.getSheetByName(SHEET_NAMES.goals);
+
+  // --- عنوان القسم الفرعي (صف 29) ---
+  mergeAndStyle(s, 'A29:I29', '📒 مفكرة السلف والديون الشخصية (دائن ومدين)', {
+    bg: T.bgPage, fg: T.accentNet, size: 14, bold: true, align: 'center'
+  });
+
+  // --- رأس الجدول (صف 30) - Dark fintech header ---
+  const debtHeader = [
+    'اسم الشخص',           // A
+    'نوع العملية',          // B
+    'المبلغ الكلي',         // C
+    'العملة',              // D
+    'تاريخ المعاملة',       // E
+    'تاريخ السداد المتوقع', // F
+    'المبلغ المسدد',        // G
+    'الرصيد المتبقي',       // H
+    'الحالة'               // I
+  ];
+  s.getRange('A30:I30').setValues([debtHeader])
+    .setFontWeight('bold')
+    .setBackground('#374151')
+    .setFontColor(T.fgPrimary)
+    .setHorizontalAlignment('center')
+    .setFontSize(11);
+
+  // --- بيانات أولية (3 سجلات نموذجية) للتوضيح ---
+  const DEBTS_SEED = [
+    ['أحمد محمد',   'أعطيته سلف', 5000,  'USD', new Date('2026-01-15'), new Date('2026-06-15'), 2000, '', ''],
+    ['سارة علي',    'أخذت منه سلف', 3000, 'USD', new Date('2026-02-01'), new Date('2026-07-01'), 1000, '', ''],
+    ['خالد يوسف',   'أعطيته سلف', 10000, 'USD', new Date('2025-11-01'), new Date('2026-12-31'), 0,    '', ''],
+  ];
+  s.getRange(31, 1, DEBTS_SEED.length, 9).setValues(DEBTS_SEED);
+
+  // --- تنسيق التواريخ بالأرقام اللاتينية (yyyy-mm-dd) ---
+  s.getRange('E31:E50').setNumberFormat('yyyy-mm-dd');
+  s.getRange('F31:F50').setNumberFormat('yyyy-mm-dd');
+
+  // --- تنسيق المبالغ بالأرقام اللاتينية ---
+  s.getRange('C31:C50').setNumberFormat('#,##0.00');
+  s.getRange('G31:G50').setNumberFormat('#,##0.00');
+  s.getRange('H31:H50').setNumberFormat('#,##0.00');
+
+  // --- معادلات تلقائية للصفوف 31 إلى 50 ---
+  for (let r = 31; r <= 50; r++) {
+    // H: الرصيد المتبقي = المبلغ الكلي - المبلغ المسدد
+    s.getRange('H' + r).setFormula(
+      `=IF(C${r}="", "", C${r} - G${r})`
+    );
+
+    // I: الحالة بمؤشر لوني ذكي
+    // 🟢 مسدد بالكامل | 🟡 مسدد جزئياً | 🔴 غير مسدد
+    s.getRange('I' + r).setFormula(
+      `=IFS(C${r}="", "", IFERROR(G${r}/C${r}, 0) >= 1, "🟢 مسدد بالكامل", IFERROR(G${r}/C${r}, 0) > 0, "🟡 مسدد جزئياً", TRUE, "🔴 غير مسدد")`
+    );
+  }
+
+  // --- قائمة منسدلة لعمود "نوع العملية" (B31:B50) ---
+  const dvType = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['أعطيته سلف', 'أخذت منه سلف'], true)
+    .setAllowInvalid(false)
+    .build();
+  s.getRange('B31:B50').setDataValidation(dvType);
+
+  // --- قائمة منسدلة لعمود "العملة" (D31:D50) ---
+  // تستخدم نفس قائمة العملات من ورقة الإعدادات
+  const dvCurrency = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(ss.getSheetByName(SHEET_NAMES.settings).getRange('A7:A20'), true)
+    .setAllowInvalid(false)
+    .build();
+  s.getRange('D31:D50').setDataValidation(dvCurrency);
+
+  // --- التنسيق الشرطي لعمود الحالة (I31:I50) - Fintech Dark Mode ---
+  const rules = s.getConditionalFormatRules();
+  const iRange = s.getRange('I31:I50');
+
+  rules.push(
+    // 🟢 مسدد بالكامل → أخضر
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$I31="🟢 مسدد بالكامل"')
+      .setBackground('#27AE60').setFontColor(T.white)
+      .setRanges([iRange]).build(),
+    // 🟡 مسدد جزئياً → أصفر/ذهبي
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$I31="🟡 مسدد جزئياً"')
+      .setBackground('#F59E0B').setFontColor('#000000')
+      .setRanges([iRange]).build(),
+    // 🔴 غير مسدد → أحمر
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$I31="🔴 غير مسدد"')
+      .setBackground('#DC2626').setFontColor(T.white)
+      .setRanges([iRange]).build()
+  );
+  s.setConditionalFormatRules(rules);
+
+  // --- لوحة ملخص السلف والديون (صفوف 52-55) ---
+  mergeAndStyle(s, 'A52:I52', '📊 ملخص السلف والديون', {
+    bg: T.bgCard, fg: T.accentNet, size: 12, bold: true, align: 'center'
+  });
+
+  // صف 53: عناوين الملخص
+  s.getRange('A53').setValue('إجمالي المبالغ المستحقة لي (دائن)')
+    .setFontWeight('bold').setFontColor(T.fgPrimary).setBackground(T.bgCard);
+  s.getRange('C53').setValue('إجمالي المبالغ المستحقة علي (مدين)')
+    .setFontWeight('bold').setFontColor(T.fgPrimary).setBackground(T.bgCard);
+  s.getRange('E53').setValue('عدد السلف النشطة')
+    .setFontWeight('bold').setFontColor(T.fgPrimary).setBackground(T.bgCard);
+  s.getRange('G53').setValue('أقرب موعد سداد قادم')
+    .setFontWeight('bold').setFontColor(T.fgPrimary).setBackground(T.bgCard);
+
+  // صف 54: المعادلات التلخيصية
+  // إجمالي المستحق لي = مجموع الرصيد المتبقي حيث نوع العملية = "أعطيته سلف"
+  s.getRange('A54').setFormula(
+    '=IFERROR(SUMIFS(H31:H50, B31:B50, "أعطيته سلف", I31:I50, "<>🟢 مسدد بالكامل"), 0)'
+  ).setFontColor(T.accentIncome).setFontSize(14).setFontWeight('bold')
+   .setBackground(T.bgCard).setNumberFormat('#,##0.00');
+
+  // إجمالي المستحق علي = مجموع الرصيد المتبقي حيث نوع العملية = "أخذت منه سلف"
+  s.getRange('C54').setFormula(
+    '=IFERROR(SUMIFS(H31:H50, B31:B50, "أخذت منه سلف", I31:I50, "<>🟢 مسدد بالكامل"), 0)'
+  ).setFontColor(T.accentExpense).setFontSize(14).setFontWeight('bold')
+   .setBackground(T.bgCard).setNumberFormat('#,##0.00');
+
+  // عدد السلف النشطة (غير مسددة بالكامل)
+  s.getRange('E54').setFormula(
+    '=IFERROR(COUNTIFS(C31:C50, "<>", I31:I50, "<>🟢 مسدد بالكامل"), 0)'
+  ).setFontColor(T.paletteOrange).setFontSize(14).setFontWeight('bold')
+   .setBackground(T.bgCard);
+
+  // أقرب موعد سداد قادم (أقل تاريخ مستقبلي في F31:F50 حيث الحالة ليست مكتملة)
+  s.getRange('G54').setFormula(
+    '=IFERROR(TEXT(MINIFS(F31:F50, F31:F50, ">"&TODAY(), I31:I50, "<>🟢 مسدد بالكامل"), "yyyy-mm-dd"), "لا يوجد")'
+  ).setFontColor(T.gaugeAmber).setFontSize(14).setFontWeight('bold')
+   .setBackground(T.bgCard);
+
+  // --- تنسيق منطقة البيانات (الخلفية الداكنة) ---
+  s.getRange('A31:I50').setBackground(T.bgPage).setFontColor(T.fgPrimary);
+  s.getRange('A53:I54').setBackground(T.bgCard);
+
+  // توسيع الأعمدة لتلائم المحتوى
   s.autoResizeColumns(1, 9);
 }
 
@@ -818,6 +984,54 @@ function buildDashboard(ss) {
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=$J48="مصروف"')
       .setBackground(T.accentExpense).setFontColor(T.white).setRanges([jRange]).build());
+  // ---- Module 4: ملخص السلف والديون (بطاقة تلخيصية) ----
+  // تسحب البيانات مباشرةً من جدول السلف في ورقة الأهداف (صفوف 31:50)
+  paintCard(s, 'B58:Y64');
+  mergeAndStyle(s, 'B58:Y58', '📒 ملخص السلف والديون الشخصية', {
+    bg: T.bgCard, fg: T.accentNet, size: 13, bold: true, align: 'center'
+  });
+
+  // صف 60: ثلاث بطاقات KPI مصغرة للديون
+  // بطاقة 1: إجمالي المبالغ المستحقة لي (دائن)
+  mergeAndStyle(s, 'B60:G60', 'إجمالي المبالغ المستحقة لي (دائن)', {
+    bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center'
+  });
+  mergeAndStyle(s, 'B61:G61', '', {
+    bg: T.bgCard, fg: T.accentIncome, size: 18, bold: true, align: 'center'
+  });
+  s.getRange('B61').setFormula(
+    `=IFERROR(SUMIFS('${SHEET_NAMES.goals}'!H31:H50, '${SHEET_NAMES.goals}'!B31:B50, "أعطيته سلف", '${SHEET_NAMES.goals}'!I31:I50, "<>🟢 مسدد بالكامل"), 0)`
+  ).setNumberFormat('#,##0.00');
+
+  // بطاقة 2: إجمالي المبالغ المستحقة علي (مدين)
+  mergeAndStyle(s, 'J60:O60', 'إجمالي المبالغ المستحقة علي (مدين)', {
+    bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center'
+  });
+  mergeAndStyle(s, 'J61:O61', '', {
+    bg: T.bgCard, fg: T.accentExpense, size: 18, bold: true, align: 'center'
+  });
+  s.getRange('J61').setFormula(
+    `=IFERROR(SUMIFS('${SHEET_NAMES.goals}'!H31:H50, '${SHEET_NAMES.goals}'!B31:B50, "أخذت منه سلف", '${SHEET_NAMES.goals}'!I31:I50, "<>🟢 مسدد بالكامل"), 0)`
+  ).setNumberFormat('#,##0.00');
+
+  // بطاقة 3: أقرب موعد سداد قادم (تنبيه)
+  mergeAndStyle(s, 'R60:Y60', '⏰ أقرب موعد سداد قادم', {
+    bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center'
+  });
+  mergeAndStyle(s, 'R61:Y61', '', {
+    bg: T.bgCard, fg: T.gaugeAmber, size: 18, bold: true, align: 'center'
+  });
+  s.getRange('R61').setFormula(
+    `=IFERROR(TEXT(MINIFS('${SHEET_NAMES.goals}'!F31:F50, '${SHEET_NAMES.goals}'!F31:F50, ">"&TODAY(), '${SHEET_NAMES.goals}'!I31:I50, "<>🟢 مسدد بالكامل"), "yyyy-mm-dd"), "لا يوجد مواعيد قادمة")`
+  );
+
+  // صف 63: صف توضيحي
+  mergeAndStyle(s, 'B63:Y63', 'تُسحب هذه البيانات تلقائياً من جدول السلف في ورقة "الأهداف المالية والادخار" — لا تُعدَّل يدوياً.',
+    { bg: T.bgCard, fg: T.fgMuted, size: 9, align: 'center' });
+
+  // حماية منطقة ملخص الديون
+  s.getRange('B58:Y64').protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
+
   s.setConditionalFormatRules(rules);
 
   // Stub anchors for the four charts (visible card backgrounds the user can drop charts onto).
@@ -1045,6 +1259,12 @@ function applyProtection(ss) {
   // Goals sheet - protect calculated columns (D, F, G, H, I from rows 7..26)
   const goals = ss.getSheetByName(SHEET_NAMES.goals);
   ['D7:D26', 'F7:F26', 'G7:G26', 'H7:H26', 'I7:I26'].forEach(r => {
+    goals.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
+  });
+
+  // Debts ledger - protect computed columns (H31:H50 الرصيد المتبقي, I31:I50 الحالة)
+  // and summary panel (A52:I54)
+  ['H31:H50', 'I31:I50', 'A52:I54'].forEach(r => {
     goals.getRange(r).protect().setDescription(WARN_CALC_CELL).setWarningOnly(true);
   });
 
