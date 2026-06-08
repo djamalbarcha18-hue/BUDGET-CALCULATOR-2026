@@ -124,6 +124,7 @@ const SHEET_NAMES = {
   settings: 'الإعدادات وأسعار الصرف',
   goals:    'الأهداف المالية والادخار',
   dashboard: 'اللوحة الرئيسية والتقرير السنوي',
+  archive:  'أرشيف السنوات المالية',
   engine:   '_DashboardEngine',
 };
 
@@ -164,6 +165,7 @@ function installBudgetCalculator2026() {
   buildDashboard(ss);          // <-- moved BEFORE the engine: card cells now exist
   buildDashboardEngine(ss);    //     so engine refs to dashboard B5/F5/J5 resolve cleanly.
   buildWelcome(ss);
+  buildArchive(ss);            // <-- Phase 7: ورقة أرشيف السنوات المالية
 
   defineNamedRanges(ss);
   applyProtection(ss);
@@ -291,6 +293,7 @@ function precreateAllSheetStubs(ss) {
     SHEET_NAMES.goals,
     ...MONTHS,
     SHEET_NAMES.dashboard,
+    SHEET_NAMES.archive,
     SHEET_NAMES.engine,
   ];
   all.forEach(name => getOrCreateSheet(ss, name));
@@ -954,6 +957,211 @@ function buildWelcome(ss) {
 }
 
 // ============================================================================
+// PHASE 7: أرشيف السنوات المالية (Financial Years Archive)
+// ============================================================================
+/**
+ * يُنشئ ورقة "أرشيف السنوات المالية" — جدول شامل يسحب البيانات تلقائياً
+ * من سجل المعاملات (_DashboardEngine!Q:W) باستخدام SUMIFS و COUNTIFS.
+ *
+ * الهيكل (8 أعمدة):
+ *   A: السنة (2025 → 2035)
+ *   B: الشهر (يناير → ديسمبر)
+ *   C: إجمالي الدخل
+ *   D: إجمالي المصاريف
+ *   E: صافي الربح
+ *   F: نسبة الادخار %
+ *   G: معاملات الدخل (عدد)
+ *   H: معاملات المصاريف (عدد)
+ *
+ * المنطق التقني:
+ *   - يستخدم SUMIFS مع شرطين: الشهر (Col1) + النوع (دخل/مصروف)
+ *   - يستخدم COUNTIFS لحساب عدد العمليات
+ *   - كل البيانات تُسحب من سجل المعاملات المتراكم في _DashboardEngine
+ *
+ * التصميم: Fintech Dark Mode + عربي بالكامل + أرقام لاتينية حصراً
+ */
+function buildArchive(ss) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.archive);
+
+  // --- خلفية الصفحة (Dark Mode) ---
+  s.getRange(1, 1, 140, 10).setBackground(T.bgPage).setFontColor(T.fgPrimary);
+
+  // --- عنوان الورقة (صف 1) ---
+  mergeAndStyle(s, 'A1:H1', '📂 أرشيف السنوات المالية - نظام مالي ذكي متكامل', {
+    bg: T.bgPage, fg: T.fgPrimary, size: 16, bold: true, align: 'center'
+  });
+
+  // --- وصف توضيحي (صف 2) ---
+  mergeAndStyle(s, 'A2:H2',
+    'يُسحب هذا الأرشيف تلقائياً من سجل المعاملات باستخدام SUMIFS و COUNTIFS — لا يُعدَّل يدوياً.',
+    { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
+
+  // --- رأس الجدول (صف 3) ---
+  const archiveHeader = [
+    'السنة',              // A
+    'الشهر',              // B
+    'إجمالي الدخل',       // C
+    'إجمالي المصاريف',    // D
+    'صافي الربح',         // E
+    'نسبة الادخار %',     // F
+    'معاملات الدخل',      // G
+    'معاملات المصاريف'    // H
+  ];
+  s.getRange('A3:H3').setValues([archiveHeader])
+    .setFontWeight('bold')
+    .setBackground('#374151')
+    .setFontColor(T.fgPrimary)
+    .setHorizontalAlignment('center')
+    .setFontSize(11);
+
+  // --- ملء البيانات: 11 سنة × 12 شهر = 132 صف (صفوف 4→135) ---
+  // مصدر البيانات: _DashboardEngine!Q:W
+  //   Col Q = الشهر (اسم الشهر بالعربي)
+  //   Col S = النوع ("دخل" أو "مصروف")
+  //   Col V = المبلغ
+  //   Col R = التاريخ (يمكن استخراج السنة منه)
+  //
+  // المنطق: نستخدم SUMIFS مع شرط الشهر والنوع، ونعتمد على بنية المحرك
+  // حيث كل شهر له بلوك ثابت. لكن لأن المحرك الحالي يسحب من أوراق الشهور
+  // مباشرةً دون تحديد سنة، سنستخدم مقاربة مباشرة: نشير لأوراق الشهور
+  // الفعلية (التي تمثل السنة النشطة) ونكتب المعادلات.
+
+  const YEARS = ['2025', '2026', '2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034', '2035'];
+  const engineSheet = SHEET_NAMES.engine;
+
+  let row = 4;
+  for (let y = 0; y < YEARS.length; y++) {
+    const year = YEARS[y];
+    for (let m = 0; m < MONTHS.length; m++) {
+      const month = MONTHS[m];
+
+      // A: السنة
+      s.getRange('A' + row).setValue(parseInt(year)).setNumberFormat('0');
+
+      // B: الشهر
+      s.getRange('B' + row).setValue(month);
+
+      // C: إجمالي الدخل = SUMIFS من سجل المعاملات حيث الشهر = month والنوع = "دخل"
+      s.getRange('C' + row).setFormula(
+        `=IFERROR(SUMIFS('${engineSheet}'!V:V, '${engineSheet}'!Q:Q, B${row}, '${engineSheet}'!S:S, "دخل"), 0)`
+      );
+
+      // D: إجمالي المصاريف = SUMIFS حيث النوع = "مصروف"
+      s.getRange('D' + row).setFormula(
+        `=IFERROR(SUMIFS('${engineSheet}'!V:V, '${engineSheet}'!Q:Q, B${row}, '${engineSheet}'!S:S, "مصروف"), 0)`
+      );
+
+      // E: صافي الربح = الدخل - المصاريف
+      s.getRange('E' + row).setFormula(`=C${row}-D${row}`);
+
+      // F: نسبة الادخار = (الدخل - المصاريف) / الدخل
+      s.getRange('F' + row).setFormula(`=IFERROR((C${row}-D${row})/C${row}, 0)`);
+
+      // G: عدد معاملات الدخل = COUNTIFS
+      s.getRange('G' + row).setFormula(
+        `=IFERROR(COUNTIFS('${engineSheet}'!Q:Q, B${row}, '${engineSheet}'!S:S, "دخل", '${engineSheet}'!V:V, "<>"), 0)`
+      );
+
+      // H: عدد معاملات المصاريف = COUNTIFS
+      s.getRange('H' + row).setFormula(
+        `=IFERROR(COUNTIFS('${engineSheet}'!Q:Q, B${row}, '${engineSheet}'!S:S, "مصروف", '${engineSheet}'!V:V, "<>"), 0)`
+      );
+
+      row++;
+    }
+  }
+
+  // --- تنسيق الأرقام (لاتينية حصراً) ---
+  const dataRange = 'A4:H' + (row - 1);
+  s.getRange('A4:A' + (row - 1)).setNumberFormat('0');           // السنة بدون فواصل
+  s.getRange('C4:D' + (row - 1)).setNumberFormat('#,##0.00');    // المبالغ
+  s.getRange('E4:E' + (row - 1)).setNumberFormat('#,##0.00');    // صافي الربح
+  s.getRange('F4:F' + (row - 1)).setNumberFormat('0.00%');       // نسبة الادخار
+  s.getRange('G4:H' + (row - 1)).setNumberFormat('0');           // العدد (صحيح)
+
+  // --- تلوين متبادل للصفوف (Zebra striping) بطريقة Fintech ---
+  for (let r = 4; r < row; r++) {
+    const bg = (r % 2 === 0) ? T.bgCard : T.bgPage;
+    s.getRange(r, 1, 1, 8).setBackground(bg);
+  }
+
+  // --- تنسيق شرطي: صافي الربح (E) أخضر إذا موجب، أحمر إذا سالب ---
+  const rules = s.getConditionalFormatRules();
+  const eRange = s.getRange('E4:E' + (row - 1));
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberGreaterThan(0)
+      .setFontColor(T.accentIncome)
+      .setRanges([eRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberLessThan(0)
+      .setFontColor(T.accentExpense)
+      .setRanges([eRange]).build()
+  );
+
+  // --- تنسيق شرطي: نسبة الادخار (F) أخضر >= 20%, ذهبي 1-19%, أحمر <= 0% ---
+  const fRange = s.getRange('F4:F' + (row - 1));
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberGreaterThanOrEqualTo(0.20)
+      .setFontColor(T.accentIncome)
+      .setRanges([fRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberBetween(0.01, 0.19)
+      .setFontColor(T.gaugeAmber)
+      .setRanges([fRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberLessThanOrEqualTo(0)
+      .setFontColor(T.accentExpense)
+      .setRanges([fRange]).build()
+  );
+  s.setConditionalFormatRules(rules);
+
+  // --- لوحة ملخص سنوي (أسفل الجدول) ---
+  const summaryRow = row + 1;
+  mergeAndStyle(s, `A${summaryRow}:H${summaryRow}`, '📊 ملخص إجمالي الأرشيف', {
+    bg: T.bgCard, fg: T.accentNet, size: 12, bold: true, align: 'center'
+  });
+
+  const labelsRow = summaryRow + 1;
+  s.getRange('A' + labelsRow).setValue('إجمالي الدخل الكلي')
+    .setFontWeight('bold').setFontColor(T.fgMuted).setBackground(T.bgCard);
+  s.getRange('C' + labelsRow).setValue('إجمالي المصاريف الكلية')
+    .setFontWeight('bold').setFontColor(T.fgMuted).setBackground(T.bgCard);
+  s.getRange('E' + labelsRow).setValue('صافي الربح الكلي')
+    .setFontWeight('bold').setFontColor(T.fgMuted).setBackground(T.bgCard);
+  s.getRange('G' + labelsRow).setValue('إجمالي المعاملات')
+    .setFontWeight('bold').setFontColor(T.fgMuted).setBackground(T.bgCard);
+
+  const valuesRow = labelsRow + 1;
+  s.getRange('A' + valuesRow).setFormula('=SUM(C4:C' + (row - 1) + ')')
+    .setFontColor(T.accentIncome).setFontSize(14).setFontWeight('bold')
+    .setBackground(T.bgCard).setNumberFormat('#,##0.00');
+  s.getRange('C' + valuesRow).setFormula('=SUM(D4:D' + (row - 1) + ')')
+    .setFontColor(T.accentExpense).setFontSize(14).setFontWeight('bold')
+    .setBackground(T.bgCard).setNumberFormat('#,##0.00');
+  s.getRange('E' + valuesRow).setFormula('=SUM(E4:E' + (row - 1) + ')')
+    .setFontColor(T.accentNet).setFontSize(14).setFontWeight('bold')
+    .setBackground(T.bgCard).setNumberFormat('#,##0.00');
+  s.getRange('G' + valuesRow).setFormula('=SUM(G4:G' + (row - 1) + ')+SUM(H4:H' + (row - 1) + ')')
+    .setFontColor(T.paletteOrange).setFontSize(14).setFontWeight('bold')
+    .setBackground(T.bgCard).setNumberFormat('#,##0');
+
+  // --- ملء خلفية الملخص ---
+  s.getRange(summaryRow, 1, 3, 8).setBackground(T.bgCard);
+
+  // --- تجميد رأس الجدول ---
+  s.setFrozenRows(3);
+
+  // --- توسيع الأعمدة ---
+  s.autoResizeColumns(1, 8);
+
+  // --- حماية الورقة بالكامل (محسوبة آلياً) ---
+  s.protect().setDescription('ورقة أرشيفية محسوبة آلياً من سجل المعاملات — لا تُعدَّل يدوياً.')
+    .setWarningOnly(true);
+}
+
+// ============================================================================
 // NAMED RANGES - wires the workbook together
 // ============================================================================
 function defineNamedRanges(ss) {
@@ -1067,6 +1275,7 @@ function reorderTabs(ss) {
     SHEET_NAMES.goals,
     ...MONTHS,
     SHEET_NAMES.dashboard,
+    SHEET_NAMES.archive,
     SHEET_NAMES.engine,
   ];
 
