@@ -1,0 +1,367 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  ملف المنطق المحاسبي الرئيسي  ·  Core.gs_06
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - بناء الورقة الشهريّة بكامل منطقها المحاسبي (الدخل/المصاريف/التنبيهات).
+ *    - بناء ورقة الأهداف المالية والادخار بمعادلاتها وتوصياتها الذكيّة.
+ *    - بناء مفكرة السلف والديون ومعادلات جدول الدائن والمدين (Debit/Credit).
+ *    - دوال بناء الصيغ المشتركة (تجميع الفئات) المستهلَكة من المحرّك الخلفي.
+ *
+ *  كل المعادلات مكتوبة بصيغة Google Sheets المتوافقة (XLOOKUP, ARRAYFORMULA,
+ *  IFS, SUMIF, QUERY) ومحصَّنة بـ IFERROR، وكل الأرقام والتواريخ لاتينيّة.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) بناء الورقة الشهريّة (المنطق المحاسبي الأساسي)
+ * ===========================================================================*/
+
+/**
+ * بناء ورقة شهر واحد لسنة معيّنة: لوحة المؤشّرات العلويّة، كتلة الدخل،
+ * كتلة المصاريف، أعمدة الفروقات، محرّك التنبيهات، والإجماليّات.
+ * تُستدعى اثنتي عشرة مرّة من buildYearMonthlySheets لكل سنة نشطة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} monthIndex رقم الشهر (0 = يناير … 11 = ديسمبر).
+ * @param {number} year السنة.
+ */
+function buildMonth(ss, monthIndex, year) {
+  const name = monthSheetName(monthIndex, year);
+  const s = getOrCreateSheet(ss, name);
+  const L = LAYOUT; // اختصار لمراجع التخطيط (منعاً للتكرار)
+
+  // صفّ العنوان (يحوي اسم الشهر والسنة)
+  mergeAndStyle(s, 'A1:G1', monthTitle(monthIndex, year), { bold: true, size: 14, align: 'center' });
+
+  // ---- لوحة المؤشّرات العلويّة (الصفوف 2-5) ----
+  // العمود A/C/E تسميات، والعمود B/D/F قيم محسوبة (مصدر حقيقة الشهر)
+  s.getRange('A2').setValue(TXT_LABELS.mainCurrency);
+  s.getRange('B2').setFormula('=IFERROR(rng_MainCurrency, "USD")');
+  s.getRange('C2').setValue(TXT_LABELS.month);
+  s.getRange('D2').setValue(MONTHS[monthIndex] + ' ' + year);
+  s.getRange('E2').setValue(TXT_LABELS.smartAlert);
+  // مؤشّر الشهر العام: يقارن المصروف الفعلي بالمتوقّع
+  s.getRange('F2').setFormula(
+    `=IF(OR(D3="", D4="", D3=0), "", IF(D4 > D3, "${TXT_ALERTS.overBudget}", ` +
+    `IF(D4 >= 0.9 * D3, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`);
+
+  s.getRange('A3').setValue(TXT_LABELS.totalExpectedIncome);
+  s.getRange('B3').setFormula(`=SUM(D${L.incomeFirstRow}:D${L.incomeLastRow})`);
+  s.getRange('C3').setValue(TXT_LABELS.totalExpectedExpense);
+  s.getRange('D3').setFormula(`=SUM(D${L.expenseFirstRow}:D${L.expenseLastRow})`);
+  s.getRange('E3').setValue(TXT_LABELS.savingsRate);
+  s.getRange('F3').setFormula('=IFERROR((B4-D4)/B4, 0)').setNumberFormat(FMT_PERCENT);
+
+  s.getRange('A4').setValue(TXT_LABELS.totalActualIncome);
+  s.getRange('B4').setFormula(`=SUM(E${L.incomeFirstRow}:E${L.incomeLastRow})`);
+  s.getRange('C4').setValue(TXT_LABELS.totalActualExpense);
+  s.getRange('D4').setFormula(`=SUM(E${L.expenseFirstRow}:E${L.expenseLastRow})`);
+  s.getRange('E4').setValue(TXT_LABELS.spendingRate);
+  s.getRange('F4').setFormula('=IFERROR(D4/B4, 0)').setNumberFormat(FMT_PERCENT);
+
+  s.getRange('A5').setValue(TXT_LABELS.netSurplus);
+  s.getRange('B5').setFormula('=B4-D4');
+  s.getRange('C5').setValue(TXT_LABELS.topDrainCategory);
+  // أعلى فئة استنزاف عبر XLOOKUP على مجاميع الفئات
+  s.getRange('D5').setFormula(
+    `=IFERROR(XLOOKUP(MAX(ARRAYFORMULA(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, ` +
+    `rng_ExpenseCategories, E${L.expenseFirstRow}:E${L.expenseLastRow}))), ` +
+    `ARRAYFORMULA(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, rng_ExpenseCategories, ` +
+    `E${L.expenseFirstRow}:E${L.expenseLastRow})), rng_ExpenseCategories), "")`);
+  s.getRange('E5').setValue(TXT_LABELS.topDrainAmount);
+  s.getRange('F5').setFormula(
+    `=IFERROR(MAX(ARRAYFORMULA(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, ` +
+    `rng_ExpenseCategories, E${L.expenseFirstRow}:E${L.expenseLastRow}))), 0)`);
+
+  // ---- كتلة الدخل ----
+  writeHeaderRow(s, `A${L.incomeHeaderRow}:G${L.incomeHeaderRow}`, TXT_HEADERS.income);
+  // عمود الفرق للدخل عبر ARRAYFORMULA واحدة (DRY)
+  s.getRange(`F${L.incomeFirstRow}`).setFormula(
+    `=ARRAYFORMULA(IF((D${L.incomeFirstRow}:D${L.incomeLastRow}="")+(E${L.incomeFirstRow}:E${L.incomeLastRow}="")>0, "", ` +
+    `E${L.incomeFirstRow}:E${L.incomeLastRow} - D${L.incomeFirstRow}:D${L.incomeLastRow}))`);
+  // صفّ إجمالي الدخل
+  s.getRange(`A${L.incomeTotalRow}`).setValue(TXT_LABELS.total).setFontWeight('bold');
+  s.getRange(`D${L.incomeTotalRow}`).setFormula(`=SUM(D${L.incomeFirstRow}:D${L.incomeLastRow})`);
+  s.getRange(`E${L.incomeTotalRow}`).setFormula(`=SUM(E${L.incomeFirstRow}:E${L.incomeLastRow})`);
+  s.getRange(`F${L.incomeTotalRow}`).setFormula(`=E${L.incomeTotalRow}-D${L.incomeTotalRow}`);
+  // تنسيق تواريخ عمود الدخل لاتينيّاً
+  applyDateFormat(s.getRange(`A${L.incomeFirstRow}:A${L.incomeLastRow}`));
+
+  // ---- كتلة المصاريف ----
+  writeHeaderRow(s, `A${L.expenseHeaderRow}:H${L.expenseHeaderRow}`, TXT_HEADERS.expense);
+  // عمود الفرق للمصاريف (المتوقّع - الفعلي) عبر ARRAYFORMULA واحدة
+  s.getRange(`F${L.expenseFirstRow}`).setFormula(
+    `=ARRAYFORMULA(IF((D${L.expenseFirstRow}:D${L.expenseLastRow}="")+(E${L.expenseFirstRow}:E${L.expenseLastRow}="")>0, "", ` +
+    `D${L.expenseFirstRow}:D${L.expenseLastRow} - E${L.expenseFirstRow}:E${L.expenseLastRow}))`);
+  // عمود محرّك التنبيهات لكل صفّ (IF لكل صفّ لإبقاء السلسلة نظيفة)
+  for (let r = L.expenseFirstRow; r <= L.expenseLastRow; r++) {
+    s.getRange('H' + r).setFormula(
+      `=IF(OR(D${r}="", E${r}=""), "", IF(E${r} > D${r}, "${TXT_ALERTS.overBudget}", ` +
+      `IF(E${r} >= 0.9 * D${r}, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`);
+  }
+  // صفّ إجمالي المصاريف
+  s.getRange(`A${L.expenseTotalRow}`).setValue(TXT_LABELS.total).setFontWeight('bold');
+  s.getRange(`D${L.expenseTotalRow}`).setFormula(`=SUM(D${L.expenseFirstRow}:D${L.expenseLastRow})`);
+  s.getRange(`E${L.expenseTotalRow}`).setFormula(`=SUM(E${L.expenseFirstRow}:E${L.expenseLastRow})`);
+  s.getRange(`F${L.expenseTotalRow}`).setFormula(`=D${L.expenseTotalRow}-E${L.expenseTotalRow}`);
+  applyDateFormat(s.getRange(`A${L.expenseFirstRow}:A${L.expenseLastRow}`));
+
+  // التنسيق الشرطي على عمود التنبيهات (ألوان الحالات)
+  applyAlertConditionalFormat(s, `H${L.expenseFirstRow}:H${L.expenseLastRow}`);
+
+  // تجميد لوحة المؤشّرات وضبط عرض الأعمدة
+  freezeTopRows(s, L.kpiFrozenRows);
+  s.autoResizeColumns(1, 8);
+}
+
+/**
+ * تطبيق التنسيق الشرطي الموحَّد لحالات التنبيه على نطاق (أحمر/أصفر/أخضر).
+ * دالّة مشتركة بين الأوراق الشهريّة لمنع تكرار قواعد التنسيق (DRY).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 نطاق عمود التنبيهات.
+ */
+function applyAlertConditionalFormat(s, a1) {
+  const rules = s.getConditionalFormatRules();
+  const range = s.getRange(a1);
+  const firstCol = a1.match(/[A-Z]+/)[0];
+  const firstRow = a1.match(/\d+/)[0];
+  const ref = `$${firstCol}${firstRow}`; // مرجع نسبي لأعلى النطاق
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${ref}="${TXT_ALERTS.overBudget}"`)
+      .setBackground('#C0392B').setFontColor(T.white).setRanges([range]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${ref}="${TXT_ALERTS.nearLimit}"`)
+      .setBackground('#F1C40F').setFontColor('#000000').setRanges([range]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${ref}="${TXT_ALERTS.excellent}"`)
+      .setBackground('#27AE60').setFontColor(T.white).setRanges([range]).build());
+  s.setConditionalFormatRules(rules);
+}
+
+/* ===========================================================================
+ *  (2) بناء ورقة الأهداف المالية والادخار
+ * ===========================================================================*/
+
+/**
+ * بناء ورقة الأهداف: لوحة ملخّص، جدول الأهداف الأربعة، والأعمدة المحسوبة
+ * (نسبة الإنجاز، الأشهر المتبقية، القسط الشهري، الحالة، التوصية الذكيّة).
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function buildGoals(ss) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.goals);
+  s.clear();
+
+  // العنوان
+  mergeAndStyle(s, 'A1:I1', TXT_TITLES.goals, { bold: true, size: 14, align: 'center' });
+
+  // لوحة ملخّص الأهداف (الصفوف 2-4): إجمالي مدّخر، قسط شهري إجمالي، تقدّم عام
+  s.getRange('A2').setValue('إجمالي المبلغ المدّخر');
+  s.getRange('D2').setFormula('=IFERROR(SUM(C7:C26)/SUM(B7:B26), 0)').setNumberFormat(FMT_PERCENT); // نسبة التقدّم العامّة
+  s.getRange('B3').setValue(0); // قسط شهري إجمالي مرجعي (يحدّثه المستخدم)
+  s.getRange('F2').setFormula('=IFERROR(SUM(G7:G26), 0)'); // إجمالي الأقساط الشهريّة المطلوبة
+
+  // ترويسة جدول الأهداف (الصف 6)
+  writeHeaderRow(s, 'A6:I6', TXT_HEADERS.goals);
+
+  // الأهداف الأربعة الأساسيّة (الأعمدة A,B,C,E)
+  s.getRange(7, 1, GOALS_SEED.length, 9).setValues(GOALS_SEED);
+  applyDateFormat(s.getRange(7, 5, GOALS_SEED.length, 1)); // تواريخ الاستحقاق لاتينيّة
+
+  // الأعمدة المحسوبة لكل صفّ من 7 حتى 26 (نكتب صفّاً صفّاً لإبقاء المراجع نسبيّة)
+  for (let r = 7; r <= 26; r++) {
+    // D: نسبة الإنجاز
+    s.getRange('D' + r).setFormula(`=IFERROR(C${r}/B${r}, 0)`).setNumberFormat(FMT_PERCENT);
+    // F: الأشهر المتبقية حتى الموعد المستهدف
+    s.getRange('F' + r).setFormula(`=IFERROR(MAX(0, DATEDIF(TODAY(), E${r}, "M")), 0)`);
+    // G: القسط الشهري المطلوب لبلوغ الهدف
+    s.getRange('G' + r).setFormula(`=IF(C${r}>=B${r}, 0, IFERROR((B${r}-C${r})/F${r}, 0))`);
+    // H: حالة الهدف (مكتمل/قيد الادخار/لم يبدأ)
+    s.getRange('H' + r).setFormula(
+      `=IFS(B${r}="", "", IFERROR(C${r}/B${r}, 0) >= 1, "${TXT_GOAL_STATUS.done}", ` +
+      `IFERROR(C${r}/B${r}, 0) >= 0.01, "${TXT_GOAL_STATUS.saving}", TRUE, "${TXT_GOAL_STATUS.notStarted}")`);
+    // I: التوصية الذكيّة (تدمج العملة عبر TEXT والتنسيق النشط)
+    s.getRange('I' + r).setFormula(buildGoalRecommendationFormula(r));
+  }
+
+  // التنسيق الشرطي على عمود الحالة H7:H26
+  applyGoalStatusConditionalFormat(s, 'H7:H26');
+
+  freezeTopRows(s, 6);
+  s.autoResizeColumns(1, 9);
+}
+
+/**
+ * بناء صيغة التوصية الذكيّة لصفّ هدف معيّن (تُفصَل لتقليل ضجيج buildGoals).
+ * @param {number} r رقم الصفّ.
+ * @return {string} صيغة IFS الجاهزة.
+ */
+function buildGoalRecommendationFormula(r) {
+  // نبني سلسلة IFS تتدرّج من الإنجاز الكامل إلى الإلحاح حسب الأشهر المتبقية
+  return (
+    `=IFS(B${r}="", "", ` +
+    `IFERROR(C${r}/B${r}, 0) >= 1, "${TXT_GOAL_RECO.achieved}", ` +
+    `F${r} = 0, "${TXT_GOAL_RECO.expired}", ` +
+    `F${r} > 24, "${TXT_GOAL_RECO.relaxed}" & TEXT(G${r}, rng_ActiveFormat) & " شهرياً للوصول للهدف خلال " & F${r} & " شهراً.", ` +
+    `F${r} > 6, "${TXT_GOAL_RECO.balanced}" & TEXT(G${r}, rng_ActiveFormat) & " شهرياً ولا تؤجّل الادخار.", ` +
+    `TRUE, "${TXT_GOAL_RECO.urgent}" & TEXT(G${r}, rng_ActiveFormat) & " شهرياً وقد يتطلب الأمر مراجعة الأولويات.")`
+  );
+}
+
+/**
+ * تطبيق التنسيق الشرطي على عمود حالة الأهداف (أخضر/أصفر/رمادي).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 نطاق عمود الحالة.
+ */
+function applyGoalStatusConditionalFormat(s, a1) {
+  const rules = s.getConditionalFormatRules();
+  const range = s.getRange(a1);
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=$H7="${TXT_GOAL_STATUS.done}"`)
+      .setBackground('#27AE60').setFontColor(T.white).setRanges([range]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=$H7="${TXT_GOAL_STATUS.saving}"`)
+      .setBackground('#F1C40F').setFontColor('#000000').setRanges([range]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=$H7="${TXT_GOAL_STATUS.notStarted}"`)
+      .setBackground('#BDC3C7').setFontColor('#000000').setRanges([range]).build());
+  s.setConditionalFormatRules(rules);
+}
+
+/* ===========================================================================
+ *  (3) مفكرة السلف والديون — جدول الدائن والمدين (Debit/Credit Ledger)
+ * ===========================================================================*/
+
+/**
+ * بناء مفكرة السلف والديون: لوحة ملخّص (دائن/مدين/صافي المركز/عدد المفتوح)،
+ * جدول المعاملات، والأعمدة المحسوبة (المتبقّي + الحالة الآليّة).
+ * يطبّق منطق المحاسبة المزدوجة: "لي" أصل (دائن) و"عليّ" التزام (مدين).
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function buildDebts(ss) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.debts);
+  s.clear();
+  const L = LAYOUT;
+
+  // خلفيّة الوضع المظلم والعنوان
+  s.getRange(1, 1, 60, 9).setBackground(T.bgPage).setFontColor(T.fgPrimary);
+  mergeAndStyle(s, 'A1:I1', TXT_TITLES.debts, { bg: T.bgPage, bold: true, size: 14, align: 'center' });
+
+  // ---- لوحة ملخّص المركز المالي (الصفوف 2-3) ----
+  // B2: إجمالي ما لي (دائن) = مجموع المتبقّي للمعاملات من النوع "لي"
+  s.getRange('A2').setValue(TXT_DEBTS.totalOwedToMe).setFontWeight('bold');
+  s.getRange('B2').setFormula(buildDebtSumFormula(DEBT_TYPES[0]));
+  // D2: إجمالي ما عليّ (مدين) = مجموع المتبقّي للمعاملات من النوع "عليّ"
+  s.getRange('C2').setValue(TXT_DEBTS.totalOwedByMe).setFontWeight('bold');
+  s.getRange('D2').setFormula(buildDebtSumFormula(DEBT_TYPES[1]));
+  // B3: صافي المركز المالي = ما لي - ما عليّ (موجب = دائن صافٍ)
+  s.getRange('A3').setValue(TXT_DEBTS.netPosition).setFontWeight('bold');
+  s.getRange('B3').setFormula('=B2-D2');
+  // D3: عدد الديون غير المسدّدة بالكامل (مفتوحة)
+  s.getRange('C3').setValue(TXT_DEBTS.countOpen).setFontWeight('bold');
+  s.getRange('D3').setFormula(
+    `=COUNTIFS(H${L.debtsFirstRow}:H${L.debtsLastRow}, "<>" & "${DEBT_STATUSES[2]}", ` +
+    `A${L.debtsFirstRow}:A${L.debtsLastRow}, "<>")`);
+
+  // ---- ترويسة جدول الدائن والمدين (الصف 6) ----
+  writeHeaderRow(s, `A${L.debtsHeaderRow}:I${L.debtsHeaderRow}`, TXT_HEADERS.debts);
+
+  // ---- الأعمدة المحسوبة لكل صفّ (المتبقّي + الحالة الآليّة) ----
+  for (let r = L.debtsFirstRow; r <= L.debtsLastRow; r++) {
+    // E: المبلغ المتبقّي = الأصلي - المسدّد (لا يقلّ عن صفر)
+    s.getRange('E' + r).setFormula(`=IF(C${r}="", "", MAX(0, IFERROR(C${r}-D${r}, C${r})))`);
+    // H: الحالة الآليّة (مسدد بالكامل / جزئياً / غير مسدد) حسب المسدّد مقابل الأصلي
+    s.getRange('H' + r).setFormula(
+      `=IFS(C${r}="", "", IFERROR(D${r}, 0) >= C${r}, "${DEBT_STATUSES[2]}", ` +
+      `IFERROR(D${r}, 0) > 0, "${DEBT_STATUSES[1]}", TRUE, "${DEBT_STATUSES[0]}")`);
+  }
+
+  // تنسيق التواريخ (تاريخ المعاملة F + تاريخ الاستحقاق G) لاتينيّاً
+  applyDateFormat(s.getRange(`F${L.debtsFirstRow}:G${L.debtsLastRow}`));
+  // تنسيق الأعمدة الماليّة (الأصلي/المسدّد/المتبقّي) أرقاماً لاتينيّة
+  applyCurrencyFormat(s.getRange(`C${L.debtsFirstRow}:E${L.debtsLastRow}`));
+
+  // قواعد التحقّق: النوع (دائن/مدين) والحالة (لإبقاء البيانات نظيفة)
+  const typeDv = SpreadsheetApp.newDataValidation()
+    .requireValueInList(DEBT_TYPES, true).setAllowInvalid(false).build();
+  s.getRange(`B${L.debtsFirstRow}:B${L.debtsLastRow}`).setDataValidation(typeDv);
+
+  // التنسيق الشرطي على عمود النوع (دائن أخضر / مدين أحمر) وعلى الحالة
+  applyDebtConditionalFormat(s);
+
+  freezeTopRows(s, L.debtsHeaderRow);
+  s.autoResizeColumns(1, 9);
+}
+
+/**
+ * بناء صيغة تجميع المتبقّي حسب نوع الدين (دائن أو مدين) عبر SUMIF محصَّنة.
+ * @param {string} debtType نوع الدين (أحد قيم DEBT_TYPES).
+ * @return {string} الصيغة الجاهزة.
+ */
+function buildDebtSumFormula(debtType) {
+  // نجمع عمود المتبقّي (E) لكل الصفوف التي يطابق نوعها (B) النوع المطلوب
+  const L = LAYOUT;
+  return `=IFERROR(SUMIF(B${L.debtsFirstRow}:B${L.debtsLastRow}, "${debtType}", ` +
+    `E${L.debtsFirstRow}:E${L.debtsLastRow}), 0)`;
+}
+
+/**
+ * تطبيق التنسيق الشرطي على مفكرة الديون: تلوين النوع والحالة.
+ * @param {Sheet} s ورقة المفكرة.
+ */
+function applyDebtConditionalFormat(s) {
+  const L = LAYOUT;
+  const rules = s.getConditionalFormatRules();
+  const typeRange = s.getRange(`B${L.debtsFirstRow}:B${L.debtsLastRow}`);
+  const statusRange = s.getRange(`H${L.debtsFirstRow}:H${L.debtsLastRow}`);
+  const tRef = `$B${L.debtsFirstRow}`;
+  const hRef = `$H${L.debtsFirstRow}`;
+  rules.push(
+    // النوع: دائن (لي) أخضر / مدين (عليّ) أحمر
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${tRef}="${DEBT_TYPES[0]}"`)
+      .setBackground(T.accentIncome).setFontColor(T.white).setRanges([typeRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${tRef}="${DEBT_TYPES[1]}"`)
+      .setBackground(T.accentExpense).setFontColor(T.white).setRanges([typeRange]).build(),
+    // الحالة: مسدد بالكامل أخضر / جزئياً أصفر / غير مسدد أحمر
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${hRef}="${DEBT_STATUSES[2]}"`)
+      .setBackground('#27AE60').setFontColor(T.white).setRanges([statusRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${hRef}="${DEBT_STATUSES[1]}"`)
+      .setBackground('#F1C40F').setFontColor('#000000').setRanges([statusRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${hRef}="${DEBT_STATUSES[0]}"`)
+      .setBackground('#C0392B').setFontColor(T.white).setRanges([statusRange]).build());
+  s.setConditionalFormatRules(rules);
+}
+
+/* ===========================================================================
+ *  (4) دوال بناء الصيغ المشتركة (مستهلَكة من المحرّك الخلفي)
+ * ===========================================================================*/
+
+/**
+ * بناء صيغة تجميع مبلغ فئة عبر كل أشهر سنة معيّنة (للمحرّك الخلفي).
+ * تدعم الدخل والمصاريف، والمرجع الحرفي أو مرجع خليّة، والنفي للشلال.
+ * @param {number} year السنة.
+ * @param {string} category اسم الفئة (يُستعمل عند غياب refCell).
+ * @param {boolean} expense هل الفئة مصروف (true) أم دخل (false).
+ * @param {boolean} negate هل تُعكَس الإشارة (لمخطّط الشلال).
+ * @param {string} [refCell] خليّة مرجع الفئة بدل الاسم الحرفي (اختياري).
+ * @return {string} الصيغة الجاهزة.
+ */
+function buildCategorySumFormula(year, category, expense, negate, refCell) {
+  // نحدّد مرجع الفئة (خليّة أو نصّ حرفي) ونطاقات الفئة/المبلغ حسب النوع
+  const catRef = refCell || `"${category}"`;
+  const L = LAYOUT;
+  const cats = expense ? `B${L.expenseFirstRow}:B${L.expenseLastRow}` : `B${L.incomeFirstRow}:B${L.incomeLastRow}`;
+  const amts = expense ? `E${L.expenseFirstRow}:E${L.expenseLastRow}` : `E${L.incomeFirstRow}:E${L.incomeLastRow}`;
+  // نجمع نفس الفئة عبر أوراق السنة الاثني عشر
+  const parts = monthSheetNames(year).map(name =>
+    `SUMIF(${q(name)}!${cats}, ${catRef}, ${q(name)}!${amts})`);
+  const body = parts.join(' + ');
+  return negate ? `=-1 * (${body})` : `=${body}`;
+}

@@ -1,0 +1,380 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  ملف إدارة الأوراق  ·  Sheets.gs_02
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - دوال التعامل مع الأوراق: التهيئة المسبقة، الإخفاء، التجميد، الترتيب.
+ *    - بناء ورقة الإعدادات (مصدر الحقيقة) والنطاقات المُسمّاة وقواعد التحقّق.
+ *    - طبقة الحماية الناعمة (Soft-Lock) عبر المصنّف.
+ *    - إدارة محرّك السنوات وأرشيف السنوات التلقائي (Archive / Activate).
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) التهيئة المسبقة للأوراق والتجميد والترتيب
+ * ===========================================================================*/
+
+/**
+ * إنشاء جذوع (Stubs) فارغة لكل الأوراق الثابتة وأشهر السنة النشطة قبل كتابة
+ * أيّ صيغة. هذا يمنع علّة "المرجع الشبح" (#REF!) لأنّ Apps Script يربط اسم
+ * الورقة داخل الصيغة لحظة كتابتها؛ فإن لم تكن الورقة موجودة تتجمّد كـ #REF!.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة المراد تهيئة أشهرها.
+ */
+function precreateAllSheetStubs(ss, year) {
+  // نُنشئ كل الأوراق التي ستُشير إليها الصيغ لاحقاً مسبقاً وبترتيب آمن
+  const all = [
+    SHEET_NAMES.welcome,
+    SHEET_NAMES.settings,
+    SHEET_NAMES.goals,
+    SHEET_NAMES.debts,
+    ...monthSheetNames(year),
+    SHEET_NAMES.dashboard,
+    SHEET_NAMES.engine,
+    SHEET_NAMES.snapshots,
+  ];
+  all.forEach(name => getOrCreateSheet(ss, name));
+}
+
+/**
+ * تجميد صفوف لوحة المؤشّرات العلويّة في ورقة ما (تثبيت الرأس).
+ * @param {Sheet} s الورقة.
+ * @param {number} rows عدد الصفوف المراد تجميدها.
+ */
+function freezeTopRows(s, rows) {
+  // نثبّت الصفوف العلويّة لتبقى لوحة المؤشّرات ظاهرة أثناء التمرير
+  s.setFrozenRows(rows);
+}
+
+/**
+ * إخفاء ورقة بأمان إن كانت موجودة (يُستعمل للمحرّك والنُّسخ والأرشيف).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} name اسم الورقة.
+ */
+function safeHideSheet(ss, name) {
+  const s = ss.getSheetByName(name);
+  if (s) s.hideSheet();
+}
+
+/**
+ * إعادة ترتيب التبويبات: الترحيب أوّلاً ثمّ الإعدادات فالأهداف فالديون،
+ * ثمّ أشهر السنة النشطة، ثمّ اللوحة الرئيسيّة، وأخيراً الأوراق المخفيّة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة.
+ */
+function reorderTabs(ss, year) {
+  // نضع الأوراق في الترتيب المنطقي لتجربة استخدام متّسقة
+  const order = [
+    SHEET_NAMES.welcome,
+    SHEET_NAMES.settings,
+    SHEET_NAMES.goals,
+    SHEET_NAMES.debts,
+    ...monthSheetNames(year),
+    SHEET_NAMES.dashboard,
+    SHEET_NAMES.engine,
+    SHEET_NAMES.snapshots,
+  ];
+  for (let i = 0; i < order.length; i++) {
+    const sheet = ss.getSheetByName(order[i]);
+    if (sheet) {
+      ss.setActiveSheet(sheet);
+      ss.moveActiveSheet(i + 1); // الموضع يبدأ من 1
+    }
+  }
+}
+
+/* ===========================================================================
+ *  (2) بناء ورقة الإعدادات (مصدر الحقيقة الوحيد)
+ * ===========================================================================*/
+
+/**
+ * بناء ورقة "الإعدادات وأسعار الصرف" وفق التخطيط القياسي الموثّق:
+ * محرّك العملات (A6:D20)، السنة النشطة (F3)، فئات الدخل/المصاريف، طرق الدفع،
+ * وقاعدة التحقّق على العملة الرئيسيّة. النطاقات المُسمّاة تبقى متوافقة (A7:D20).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة.
+ */
+function buildSettingsSheet(ss, year) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.settings);
+  s.clear(); // نبدأ من ورقة نظيفة لضمان عدم بقاء أيّ تخطيط قديم
+
+  // العنوان والتلميح
+  mergeAndStyle(s, 'A1:D1', TXT_TITLES.settings, { bold: true, size: 14, align: 'center' });
+  mergeAndStyle(s, 'A2:D2', TXT_TITLES.settingsHint, { fg: T.fgMuted, size: 10, align: 'center' });
+
+  // العملة الرئيسيّة والتنسيق وسعر الصرف
+  s.getRange('A3').setValue(TXT_LABELS.mainCurrency);
+  s.getRange('B3').setValue('USD');
+  s.getRange('A4').setValue(TXT_LABELS.activeFormat);
+  s.getRange('B4').setFormula('=XLOOKUP(B3, A7:A20, D7:D20)');
+  s.getRange('A5').setValue(TXT_LABELS.mainRate);
+  s.getRange('B5').setFormula('=XLOOKUP(B3, A7:A20, C7:C20)');
+
+  // السنة النشطة في F3 (خارج جدول العملات A:D حتى لا يتعارض النطاق المُسمّى)
+  s.getRange('E3').setValue(TXT_LABELS.activeYear).setFontWeight('bold');
+  s.getRange('F3').setValue(year);
+  const yearDv = SpreadsheetApp.newDataValidation()
+    .requireValueInList(allSupportedYears().map(String), true)
+    .setAllowInvalid(false).build();
+  s.getRange('F3').setDataValidation(yearDv);
+
+  // ترويسة جدول العملات (الصف 6) والبيانات (الصفوف 7..20)
+  writeHeaderRow(s, 'A6:D6', TXT_HEADERS.currency);
+  s.getRange(7, 1, CURRENCIES.length, 4).setValues(CURRENCIES);
+  // فرض صيغة الأرقام اللاتينيّة على عمود أسعار الصرف
+  s.getRange(7, 3, CURRENCIES.length, 1).setNumberFormat('#,##0.0000');
+
+  // فئات الدخل (F6:F14)
+  s.getRange('H6').setValue(TXT_LIST_HEADERS.incomeCategories)
+    .setFontWeight('bold').setBackground(T.headerBar).setFontColor(T.fgPrimary);
+  s.getRange(7, 8, INCOME_CATEGORIES.length, 1).setValues(INCOME_CATEGORIES.map(v => [v]));
+
+  // فئات المصاريف (I6:I18)
+  s.getRange('I6').setValue(TXT_LIST_HEADERS.expenseCategories)
+    .setFontWeight('bold').setBackground(T.headerBar).setFontColor(T.fgPrimary);
+  s.getRange(7, 9, EXPENSE_CATEGORIES.length, 1).setValues(EXPENSE_CATEGORIES.map(v => [v]));
+
+  // طرق الدفع (J6:J10)
+  s.getRange('J6').setValue(TXT_LIST_HEADERS.paymentMethods)
+    .setFontWeight('bold').setBackground(T.headerBar).setFontColor(T.fgPrimary);
+  s.getRange(7, 10, PAYMENT_METHODS.length, 1).setValues(PAYMENT_METHODS.map(v => [v]));
+
+  // قاعدة التحقّق على العملة الرئيسيّة (مرجع مباشر لأنّ النطاق المُسمّى لم يُعرَّف بعد)
+  const dvCur = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(s.getRange('A7:A20'), true)
+    .setAllowInvalid(false).build();
+  s.getRange('B3').setDataValidation(dvCur);
+
+  s.autoResizeColumns(1, 10);
+}
+
+/* ===========================================================================
+ *  (3) النطاقات المُسمّاة وقواعد التحقّق الشهريّة
+ * ===========================================================================*/
+
+/**
+ * تعريف كل النطاقات المُسمّاة (rng_*) التي تربط المصنّف معاً، بما فيها
+ * نطاقات الرسوم البيانيّة الديناميكيّة. تُعيد الاستدعاء آمنة (Idempotent).
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function defineNamedRanges(ss) {
+  const settings = ss.getSheetByName(SHEET_NAMES.settings);
+  const set = (name, a1) => ss.setNamedRange(name, settings.getRange(a1));
+
+  // نطاقات الإعدادات الأساسيّة (مصدر الحقيقة للعملات والفئات)
+  set('rng_MainCurrency',     'B3');
+  set('rng_ActiveFormat',     'B4');
+  set('rng_MainRate',         'B5');
+  set('rng_ActiveYear',       'F3');
+  set('rng_Currencies',       'A7:A20');
+  set('rng_CurrencyNames',    'B7:B20');
+  set('rng_CurrencyRates',    'C7:C20');
+  set('rng_FormatStrings',    'D7:D20');
+  set('rng_CurrencyTable',    'A7:D20');
+  set('rng_IncomeCategories', 'H7:H14');
+  set('rng_ExpenseCategories','I7:I18');
+  set('rng_PaymentMethods',   'J7:J10');
+
+  // نطاقات الرسوم البيانيّة الديناميكيّة على المحرّك الخلفي
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  const setEng = (name, a1) => ss.setNamedRange(name, engine.getRange(a1));
+  setEng('rng_dash_monthly_grid',     'A1:D13'); // Chart 1: المقارنة الشهريّة (Combo)
+  setEng('rng_dash_waterfall',        'F1:G7');  // Chart 2: تدفّق النقد (Waterfall)
+  setEng('rng_dash_doughnut_income',  'I1:J9');  // Chart 3: دونات الدخل
+  setEng('rng_dash_doughnut_expense', 'L1:M13'); // Chart 4: دونات المصاريف
+
+  // بعد تعريف النطاقات نُطبّق قواعد التحقّق المعتمدة عليها
+  applyMonthlyValidations(ss, getActiveYear());
+}
+
+/**
+ * تطبيق قواعد التحقّق من البيانات على أعمدة الفئات وطرق الدفع في أشهر سنة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة المستهدفة.
+ */
+function applyMonthlyValidations(ss, year) {
+  // نبني قواعد التحقّق مرّة واحدة ثمّ نعيد استخدامها لكل ورقة (DRY)
+  const incomeCatDv = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(ss.getRangeByName('rng_IncomeCategories'), true)
+    .setAllowInvalid(false).build();
+  const expenseCatDv = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(ss.getRangeByName('rng_ExpenseCategories'), true)
+    .setAllowInvalid(false).build();
+  const payDv = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(ss.getRangeByName('rng_PaymentMethods'), true)
+    .setAllowInvalid(false).build();
+
+  monthSheetNames(year).forEach(name => {
+    const s = ss.getSheetByName(name);
+    if (!s) return;
+    s.getRange(`B${LAYOUT.incomeFirstRow}:B${LAYOUT.incomeLastRow}`).setDataValidation(incomeCatDv);
+    s.getRange(`B${LAYOUT.expenseFirstRow}:B${LAYOUT.expenseLastRow}`).setDataValidation(expenseCatDv);
+    s.getRange(`G${LAYOUT.incomeFirstRow}:G${LAYOUT.incomeLastRow}`).setDataValidation(payDv);
+    s.getRange(`G${LAYOUT.expenseFirstRow}:G${LAYOUT.expenseLastRow}`).setDataValidation(payDv);
+  });
+}
+
+/* ===========================================================================
+ *  (4) طبقة الحماية الناعمة (Soft-Lock Layer)
+ * ===========================================================================*/
+
+/**
+ * تطبيق رسائل التحذير الناعمة على النطاقات الحسّاسة عبر المصنّف.
+ * كل حماية بنمط "تحذير فقط" فلا تمنع التعديل المتعمّد لكنّها تحول دون الأخطاء.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة (لحماية أوراقها الشهريّة).
+ */
+function applyProtection(ss, year) {
+  // المحرّك وورقة النُّسخ: حماية كاملة للورقة
+  protectWholeSheet(ss, SHEET_NAMES.engine, TXT_WARN.engine);
+  protectWholeSheet(ss, SHEET_NAMES.snapshots, TXT_WARN.snapshot);
+
+  // ورقة الترحيب: حماية كتل الهويّة البصريّة
+  const welcome = ss.getSheetByName(SHEET_NAMES.welcome);
+  if (welcome) {
+    ['B2:O4', 'B26:O29'].forEach(r =>
+      welcome.getRange(r).protect().setDescription(TXT_WARN.branding).setWarningOnly(true));
+  }
+
+  // اللوحة الرئيسيّة: حماية البطاقات والرسوم والسجلّ
+  const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (dash) {
+    ['B4:E8', 'F4:I8', 'J4:M8', 'N4:Q8', 'R4:U8', 'V4:Y8',
+     'B11:M26', 'N11:Y26', 'B29:G44', 'H29:M44',
+     'N29:S44', 'T29:Y44', 'H47:N56'].forEach(r =>
+      dash.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
+  }
+
+  // ورقة الإعدادات: حماية الكل عدا الخلايا القابلة للتحرير
+  const settings = ss.getSheetByName(SHEET_NAMES.settings);
+  if (settings) {
+    const p = settings.protect().setDescription(TXT_WARN.settings).setWarningOnly(true);
+    p.setUnprotectedRanges([
+      settings.getRange('B3'),       // العملة الرئيسيّة
+      settings.getRange('F3'),       // السنة النشطة
+      settings.getRange('C7:C20'),   // تحديث أسعار الصرف
+      settings.getRange('H7:H14'),   // توسعة فئات الدخل
+      settings.getRange('I7:I18'),   // توسعة فئات المصاريف
+      settings.getRange('J7:J10'),   // توسعة طرق الدفع
+    ]);
+  }
+
+  // ورقة الأهداف: حماية الأعمدة المحسوبة
+  const goals = ss.getSheetByName(SHEET_NAMES.goals);
+  if (goals) {
+    ['D7:D26', 'F7:F26', 'G7:G26', 'H7:H26', 'I7:I26'].forEach(r =>
+      goals.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
+  }
+
+  // مفكرة السلف والديون: حماية الأعمدة المحسوبة (المتبقي + الحالة)
+  const debts = ss.getSheetByName(SHEET_NAMES.debts);
+  if (debts) {
+    [`E${LAYOUT.debtsFirstRow}:E${LAYOUT.debtsLastRow}`,
+     `H${LAYOUT.debtsFirstRow}:H${LAYOUT.debtsLastRow}`].forEach(r =>
+      debts.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
+  }
+
+  // الأوراق الشهريّة للسنة النشطة: حماية لوحة المؤشّرات والأعمدة المحسوبة
+  monthSheetNames(year).forEach(name => {
+    const s = ss.getSheetByName(name);
+    if (!s) return;
+    ['A1:G6',
+     `F${LAYOUT.incomeFirstRow}:F${LAYOUT.incomeLastRow}`,
+     `H${LAYOUT.expenseFirstRow}:H${LAYOUT.expenseLastRow}`,
+     `A${LAYOUT.incomeTotalRow}:G${LAYOUT.incomeTotalRow}`,
+     `A${LAYOUT.expenseTotalRow}:H${LAYOUT.expenseTotalRow}`].forEach(r =>
+      s.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
+  });
+}
+
+/**
+ * حماية ورقة بالكامل برسالة تحذير (دالّة مساعدة لمنع التكرار).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} name اسم الورقة.
+ * @param {string} message رسالة التحذير.
+ */
+function protectWholeSheet(ss, name, message) {
+  const s = ss.getSheetByName(name);
+  if (s) s.protect().setDescription(message).setWarningOnly(true);
+}
+
+/* ===========================================================================
+ *  (5) محرّك السنوات الديناميكي وأرشيف السنوات التلقائي
+ * ===========================================================================*/
+
+/**
+ * بناء مجموعة الأوراق الشهريّة الاثني عشر لسنة معيّنة (إن لم تكن مبنيّة).
+ * يستدعي منطق المحاسبة من Core.gs_06 لتعبئة الصيغ.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة المراد بناؤها.
+ */
+function buildYearMonthlySheets(ss, year) {
+  // نبني كل شهر عبر دالّة المحاسبة المركزيّة (buildMonth) في Core
+  for (let i = 0; i < MONTHS.length; i++) {
+    buildMonth(ss, i, year);
+  }
+}
+
+/**
+ * أرشفة سنة: إخفاء أوراقها الشهريّة وتلوين تبويباتها بالرمادي.
+ * البيانات تبقى محفوظة بالكامل ويمكن استعادتها بتفعيل السنة لاحقاً.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة المراد أرشفتها.
+ */
+function archiveYear(ss, year) {
+  // نُخفي أوراق السنة ونميّز تبويباتها بصرياً كأرشيف
+  monthSheetNames(year).forEach(name => {
+    const s = ss.getSheetByName(name);
+    if (s) {
+      s.setTabColor(T.fgMuted); // رمادي = مؤرشف
+      s.hideSheet();
+    }
+  });
+}
+
+/**
+ * أرشفة كل السنوات ما عدا السنة النشطة المحدّدة (أرشفة تلقائيّة).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} activeYear السنة التي تبقى نشطة ومرئيّة.
+ */
+function archiveAllExcept(ss, activeYear) {
+  // نمرّ على كل السنوات المدعومة ونؤرشف غير النشطة منها إن كانت موجودة
+  allSupportedYears().forEach(y => {
+    if (y === activeYear) return;
+    const hasSheets = monthSheetNames(y).some(n => ss.getSheetByName(n));
+    if (hasSheets) archiveYear(ss, y);
+  });
+}
+
+/**
+ * تفعيل سنة كـ"السنة النشطة": بناء أوراقها إن غابت، إظهارها، أرشفة الباقي،
+ * إعادة ربط اللوحة الرئيسيّة والمحرّك على أشهرها، ثمّ حفظ السنة وإعادة الترتيب.
+ * هذه هي نقطة الدخول الرئيسيّة لمحرّك السنوات الديناميكي.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة المراد تفعيلها.
+ */
+function activateYear(ss, year) {
+  // (1) بناء أوراق السنة المطلوبة إن لم تكن موجودة، وإظهارها
+  buildYearMonthlySheets(ss, year);
+  monthSheetNames(year).forEach(name => {
+    const s = ss.getSheetByName(name);
+    if (s) { s.showSheet(); s.setTabColor(null); }
+  });
+
+  // (2) أرشفة بقيّة السنوات تلقائياً
+  archiveAllExcept(ss, year);
+
+  // (3) حفظ السنة النشطة في الخصائص وفي ورقة الإعدادات
+  setActiveYear(year);
+  const settings = ss.getSheetByName(SHEET_NAMES.settings);
+  if (settings) settings.getRange('F3').setValue(year);
+
+  // (4) إعادة بناء المحرّك واللوحة على أشهر السنة النشطة (Charts Locking يبقى ثابتاً)
+  buildDashboardEngine(ss, year);
+  buildDashboard(ss, year);
+
+  // (5) إعادة تطبيق التحقّق والحماية والترتيب على السنة الجديدة
+  applyMonthlyValidations(ss, year);
+  reorderTabs(ss, year);
+}

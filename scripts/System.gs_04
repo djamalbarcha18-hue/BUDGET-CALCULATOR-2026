@@ -1,0 +1,394 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  ملف النظام والمشغّلات  ·  System.gs_04
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - المشغّلات الرئيسيّة (onOpen لبناء القائمة، onEdit للتفاعل مع التعديلات).
+ *    - نقطة الدخول الرئيسيّة لتركيب/إعادة بناء المصنّف بالكامل.
+ *    - نقطة إصلاح اللوحة الرئيسيّة دون إعادة بناء.
+ *    - نظام الطوارئ وحماية البيانات (Recovery Mode / Snapshots): إنشاء،
+ *      أرشفة، استرجاع، ونسخ تلقائيّة مُقيَّدة زمنياً.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) المشغّلات: onOpen و onEdit
+ * ===========================================================================*/
+
+/**
+ * مشغّل فتح المصنّف: يبني قائمة مخصّصة لكل وظائف النظام، ويأخذ نسخة طوارئ
+ * تلقائيّة مُقيَّدة بفاصل زمني أدنى لحماية البيانات دون إثقال الأداء.
+ */
+function onOpen() {
+  // نبني القائمة المخصّصة لتسهيل وصول المستخدم لكل العمليّات
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu(TXT_MENU.root)
+    .addItem(TXT_MENU.install, 'installBudgetCalculator2026')
+    .addSeparator()
+    .addItem(TXT_MENU.switchYear, 'menuSwitchYear')
+    .addItem(TXT_MENU.archiveYear, 'menuArchiveYear')
+    .addSeparator()
+    .addItem(TXT_MENU.injectDemo, 'menuInjectDemo2025')
+    .addItem(TXT_MENU.cleanYears, 'menuCleanOtherYears')
+    .addSeparator()
+    .addItem(TXT_MENU.snapshotCreate, 'menuCreateSnapshot')
+    .addItem(TXT_MENU.snapshotRestore, 'menuRestoreSnapshot')
+    .addSeparator()
+    .addItem(TXT_MENU.repairDash, 'repairDashboard2026')
+    .addToUi();
+
+  // نسخة طوارئ تلقائيّة (لا تُنشأ إلا بعد مرور الفاصل الزمني الأدنى)
+  maybeAutoSnapshot();
+}
+
+/**
+ * مشغّل التعديل: يلتقط تغيير السنة النشطة من ورقة الإعدادات (F3) ويُفعّل
+ * محرّك السنوات الديناميكي تلقائياً، كما يفرض الأرقام اللاتينيّة على المُدخل.
+ * @param {Object} e كائن حدث التعديل من Apps Script.
+ */
+function onEdit(e) {
+  // نتحقّق من وجود سياق تعديل صالح قبل أيّ معالجة
+  if (!e || !e.range) return;
+  const sheet = e.range.getSheet();
+  const ss = e.source;
+
+  // (أ) فرض الأرقام اللاتينيّة على أيّ نصّ مُدخل (حماية المعادلات)
+  enforceLatinDigitsOnEdit(e);
+
+  // (ب) التقاط تغيير السنة النشطة من خليّة الإعدادات F3
+  if (sheet.getName() === SHEET_NAMES.settings &&
+      e.range.getA1Notation() === 'F3') {
+    const year = parseInt(toLatinDigits(e.range.getValue()), 10);
+    if (isValidYear(year) && year !== getActiveYear()) {
+      // نفعّل السنة الجديدة (بناء/إظهار/أرشفة/إعادة ربط) عبر محرّك السنوات
+      activateYear(ss, year);
+      SpreadsheetApp.getActive().toast(
+        TXT_MSG.yearSwitchedBody.replace('{year}', year), TXT_MSG.yearSwitchedTitle, 8);
+    }
+  }
+}
+
+/**
+ * فرض الأرقام اللاتينيّة على القيمة المُدخلة إن كانت نصّاً يحوي أرقاماً شرقيّة.
+ * @param {Object} e كائن حدث التعديل.
+ */
+function enforceLatinDigitsOnEdit(e) {
+  // نطبّق التحويل فقط على القيم النصّيّة المفردة لتفادي كسر الإدخالات الرقميّة
+  const val = e.range.getValue();
+  if (typeof val === 'string' && /[\u0660-\u0669\u06F0-\u06F9]/.test(val)) {
+    e.range.setValue(toLatinDigits(val));
+  }
+}
+
+/* ===========================================================================
+ *  (2) نقطة الدخول الرئيسيّة: تركيب / إعادة بناء المصنّف
+ * ===========================================================================*/
+
+/**
+ * تركيب أو إعادة بناء المصنّف بالكامل بترتيب آمن للمراجع:
+ * تهيئة الجذوع → الإعدادات → الأهداف → الديون → أشهر السنة → اللوحة →
+ * المحرّك → الترحيب → النطاقات المُسمّاة → الحماية → الأرشفة → الترتيب.
+ */
+function installBudgetCalculator2026() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const year = DEFAULT_YEAR; // السنة الافتراضيّة عند أوّل تركيب (2025)
+
+  // فحص مبدئي: تأكيد المتابعة إن كان المصنّف غير فارغ
+  const sheets = ss.getSheets();
+  const nonEmpty = sheets.some(s => s.getLastRow() > 0 || s.getLastColumn() > 1);
+  if (sheets.length > 1 || nonEmpty) {
+    const r = ui.alert(TXT_MSG.installWarnTitle, TXT_MSG.installWarnBody, ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+
+  // فرض الأرقام اللاتينيّة على مستوى المصنّف (حماية كل الحسابات والتواريخ)
+  enforceLatinLocale(ss);
+
+  // (1) تهيئة جذوع كل الأوراق مسبقاً لتفادي المراجع الشبح (#REF!)
+  precreateAllSheetStubs(ss, year);
+
+  // (2) البناء بالترتيب القانوني (الإعدادات أوّلاً لأنّ الكلّ يشير إليها)
+  buildSettingsSheet(ss, year);
+  buildGoals(ss);
+  buildDebts(ss);
+  buildYearMonthlySheets(ss, year);
+  buildDashboard(ss, year);        // قبل المحرّك: خلايا البطاقات تصبح موجودة
+  buildDashboardEngine(ss, year);  // المحرّك يشير لأوراق السنة والأهداف والديون
+  buildWelcome(ss, year);
+
+  // (3) ربط النطاقات المُسمّاة وتطبيق الحماية والأرشفة وإعادة الترتيب
+  defineNamedRanges(ss);
+  applyProtection(ss, year);
+  archiveAllExcept(ss, year);      // أرشفة أيّ سنوات أخرى قد تكون موجودة
+  reorderTabs(ss, year);
+
+  // (4) تثبيت السنة النشطة وإخفاء الأوراق الخلفيّة وإنشاء أوّل نسخة طوارئ
+  setActiveYear(year);
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.installVersion, APP_VERSION);
+  safeHideSheet(ss, SHEET_NAMES.engine);
+  safeHideSheet(ss, SHEET_NAMES.snapshots);
+  createSnapshot(ss, 'نسخة ما بعد التركيب');
+
+  // (5) إنزال المستخدم على ورقة الترحيب وإظهار رسالة النجاح
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
+  ui.alert(TXT_MSG.installDoneTitle, TXT_MSG.installDoneBody, ui.ButtonSet.OK);
+}
+
+/**
+ * إصلاح اللوحة الرئيسيّة والمحرّك دون إعادة بناء كامل المصنّف.
+ * يُعيد كتابة صيغ المحرّك والبطاقات بإصدار محصَّن، ويعيد ربط نطاقات الرسوم.
+ * بيانات الإدخال لا تُمَسّ.
+ */
+function repairDashboard2026() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const year = getActiveYear();
+
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (!engine || !dash) {
+    ui.alert(TXT_MSG.notFoundTitle,
+      'تأكّد من وجود ورقتَي المحرّك واللوحة الرئيسيّة قبل تشغيل الإصلاح.', ui.ButtonSet.OK);
+    return;
+  }
+
+  // نعيد بناء المحرّك واللوحة على السنة النشطة (يستعيد كل الصيغ المحصَّنة)
+  buildDashboardEngine(ss, year);
+  buildDashboard(ss, year);
+  defineNamedRanges(ss);
+  safeHideSheet(ss, SHEET_NAMES.engine);
+
+  SpreadsheetApp.flush();
+  ui.alert(TXT_MSG.repairDoneTitle, TXT_MSG.repairDoneBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (3) أغلفة القائمة (Menu Wrappers) — تربط عناصر القائمة بمنطق الوحدات
+ * ===========================================================================*/
+
+/** غلاف قائمة: تغيير السنة النشطة عبر مربّع حوار. */
+function menuSwitchYear() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(TXT_MSG.yearPromptTitle, TXT_MSG.yearPromptBody, ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  const year = parseInt(toLatinDigits(resp.getResponseText().trim()), 10);
+  if (!isValidYear(year)) { ui.alert(TXT_MSG.yearPromptTitle, TXT_MSG.yearInvalid, ui.ButtonSet.OK); return; }
+
+  // نأخذ نسخة طوارئ قبل أيّ عمليّة كبيرة ثمّ نفعّل السنة
+  createSnapshot(ss, 'قبل تغيير السنة إلى ' + year);
+  activateYear(ss, year);
+  ui.alert(TXT_MSG.yearSwitchedTitle, TXT_MSG.yearSwitchedBody.replace('{year}', year), ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: أرشفة سنة محدّدة. */
+function menuArchiveYear() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(TXT_MENU.archiveYear, TXT_MSG.yearPromptBody, ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  const year = parseInt(toLatinDigits(resp.getResponseText().trim()), 10);
+  if (!isValidYear(year)) { ui.alert(TXT_MENU.archiveYear, TXT_MSG.yearInvalid, ui.ButtonSet.OK); return; }
+
+  archiveYear(ss, year);
+  ui.alert(TXT_MSG.archiveDoneTitle, TXT_MSG.archiveDoneBody.replace('{year}', year), ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: حقن بيانات 2025 التجريبيّة. */
+function menuInjectDemo2025() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  createSnapshot(ss, 'قبل حقن البيانات التجريبيّة');
+  injectDemoData2025(ss);
+  ui.alert(TXT_MSG.demoDoneTitle, TXT_MSG.demoDoneBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: تنظيف بيانات السنوات الأخرى عدا 2025. */
+function menuCleanOtherYears() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  createSnapshot(ss, 'قبل تنظيف السنوات الأخرى');
+  cleanOtherYears(ss, DEFAULT_YEAR);
+  ui.alert(TXT_MSG.cleanDoneTitle, TXT_MSG.cleanDoneBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: إنشاء نسخة طوارئ يدويّة الآن. */
+function menuCreateSnapshot() {
+  const ss = SpreadsheetApp.getActive();
+  createSnapshot(ss, 'نسخة يدويّة');
+  SpreadsheetApp.getUi().alert(TXT_MSG.snapCreatedTitle, TXT_MSG.snapCreatedBody, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/** غلاف قائمة: استرجاع نسخة طوارئ مختارة. */
+function menuRestoreSnapshot() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const index = loadSnapshotIndex();
+  if (!index.length) { ui.alert(TXT_MSG.snapNoneTitle, TXT_MSG.snapNoneBody, ui.ButtonSet.OK); return; }
+
+  // نعرض قائمة مرقّمة بالأرقام اللاتينيّة لاختيار النسخة المراد استرجاعها
+  const list = index.map((snap, i) =>
+    toLatinDigits((i + 1) + ') ' + snap.label + ' — ' + snap.ts)).join('\n');
+  const resp = ui.prompt(TXT_MSG.snapRestorePrompt,
+    TXT_MSG.snapRestoreBody.replace('{list}', list), ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  const choice = parseInt(toLatinDigits(resp.getResponseText().trim()), 10);
+  if (!Number.isInteger(choice) || choice < 1 || choice > index.length) {
+    ui.alert(TXT_MSG.snapRestorePrompt, TXT_MSG.yearInvalid, ui.ButtonSet.OK); return;
+  }
+  restoreSnapshot(ss, index[choice - 1].key);
+  ui.alert(TXT_MSG.snapRestoredTitle, TXT_MSG.snapRestoredBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (4) نظام الطوارئ وحماية البيانات (Recovery Snapshots)
+ * ----------------------------------------------------------------------------
+ *  المبدأ: نلتقط بيانات الإدخال (الأوراق الشهريّة + الأهداف + الديون) كـ JSON
+ *  ونخزّنها في خصائص المستند (Document Properties) مع فهرس مرتّب. الاسترجاع
+ *  يعيد كتابة القيم في أماكنها الأصليّة. الصيغ والتنسيقات لا تُحفَظ لأنّها
+ *  تُعاد بناؤها عبر buildXxx، فنوفّر مساحة ونضمن سلامة الاسترجاع.
+ * ===========================================================================*/
+
+/**
+ * إنشاء نسخة طوارئ كاملة لبيانات الإدخال وتخزينها مع تدوير النسخ القديمة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} label وصف مختصر للنسخة.
+ * @return {string} مفتاح النسخة المخزَّنة.
+ */
+function createSnapshot(ss, label) {
+  // نجمع بيانات الإدخال القابلة للاسترجاع في حمولة JSON واحدة
+  const payload = captureWorkbookData(ss);
+  const props = PropertiesService.getDocumentProperties();
+  const key = 'SBP_SNAP_' + Date.now();
+  props.setProperty(key, JSON.stringify(payload));
+
+  // نُحدّث الفهرس ونُدوّر النسخ بحيث لا تتجاوز الحدّ الأقصى المعرَّف
+  const index = loadSnapshotIndex();
+  index.push({ key: key, label: label || 'نسخة', ts: latinTimestamp() });
+  while (index.length > SNAPSHOT_CONFIG.maxSnapshots) {
+    const removed = index.shift();
+    props.deleteProperty(removed.key); // حذف أقدم نسخة لتوفير المساحة
+  }
+  saveSnapshotIndex(index);
+  return key;
+}
+
+/**
+ * إنشاء نسخة تلقائيّة فقط إذا مرّ الفاصل الزمني الأدنى منذ آخر نسخة تلقائيّة.
+ */
+function maybeAutoSnapshot() {
+  const props = PropertiesService.getDocumentProperties();
+  const last = parseInt(props.getProperty(PROP_KEYS.lastAutoSnap) || '0', 10);
+  const now = Date.now();
+  const minGapMs = SNAPSHOT_CONFIG.autoIntervalMinutes * 60 * 1000;
+  // لا ننشئ نسخة إلا بعد انقضاء الفاصل، ولا نوقف فتح المصنّف عند أيّ خطأ
+  if (now - last < minGapMs) return;
+  try {
+    createSnapshot(SpreadsheetApp.getActive(), 'نسخة تلقائيّة عند الفتح');
+    props.setProperty(PROP_KEYS.lastAutoSnap, String(now));
+  } catch (err) {
+    // نتجاهل أخطاء النسخ التلقائي بصمت حتى لا تعطّل تجربة الفتح
+  }
+}
+
+/**
+ * استرجاع نسخة طوارئ: إعادة كتابة بيانات الإدخال المحفوظة في أماكنها.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} key مفتاح النسخة في الخصائص.
+ */
+function restoreSnapshot(ss, key) {
+  const raw = PropertiesService.getDocumentProperties().getProperty(key);
+  if (!raw) return;
+  const payload = JSON.parse(raw);
+  // نعيد كتابة كل ورقة محفوظة في نطاقها الأصلي (القيم فقط، الصيغ محفوظة بالبناء)
+  Object.keys(payload.sheets).forEach(sheetName => {
+    const block = payload.sheets[sheetName];
+    const s = ss.getSheetByName(sheetName);
+    if (s && block.values && block.values.length) {
+      s.getRange(block.a1).setValues(block.values);
+    }
+  });
+  SpreadsheetApp.flush();
+}
+
+/**
+ * التقاط بيانات الإدخال القابلة للاسترجاع من كل أوراق المصنّف ذات الصلة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @return {Object} حمولة تحوي نطاقات وقيم كل ورقة.
+ */
+function captureWorkbookData(ss) {
+  const data = { version: APP_VERSION, sheets: {} };
+
+  // الأوراق الشهريّة لكل السنوات المبنيّة (كتلتا الدخل والمصاريف، أعمدة الإدخال A:E,G)
+  allSupportedYears().forEach(year => {
+    monthSheetNames(year).forEach(name => {
+      const s = ss.getSheetByName(name);
+      if (!s) return;
+      data.sheets[name] = captureMonthInputs(s);
+    });
+  });
+
+  // ورقة الأهداف (أعمدة الإدخال A:C و E)
+  const goals = ss.getSheetByName(SHEET_NAMES.goals);
+  if (goals) data.sheets[SHEET_NAMES.goals] = captureRange(goals, 'A7:E26');
+
+  // مفكرة السلف والديون (أعمدة الإدخال A:D و F:I)
+  const debts = ss.getSheetByName(SHEET_NAMES.debts);
+  if (debts) data.sheets[SHEET_NAMES.debts] =
+    captureRange(debts, `A${LAYOUT.debtsFirstRow}:I${LAYOUT.debtsLastRow}`);
+
+  return data;
+}
+
+/**
+ * التقاط نطاقي الإدخال في ورقة شهريّة (الدخل والمصاريف) ضمن كتلة واحدة.
+ * نلتقط النطاق الكامل A10:G62 لأنّه يضمّ كلتا الكتلتين بأعمدة الإدخال.
+ * @param {Sheet} s الورقة الشهريّة.
+ * @return {Object} كتلة النطاق والقيم.
+ */
+function captureMonthInputs(s) {
+  const a1 = `A${LAYOUT.incomeFirstRow}:G${LAYOUT.expenseLastRow}`;
+  return captureRange(s, a1);
+}
+
+/**
+ * التقاط قيم نطاق محدّد كـ {a1, values} (دالّة مساعدة لمنع التكرار).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 مرجع النطاق.
+ * @return {Object} الكتلة الملتقطة.
+ */
+function captureRange(s, a1) {
+  return { a1: a1, values: s.getRange(a1).getValues() };
+}
+
+/**
+ * قراءة فهرس النسخ المرتّب من الخصائص (الأقدم أوّلاً).
+ * @return {Array<Object>} فهرس النسخ.
+ */
+function loadSnapshotIndex() {
+  const raw = PropertiesService.getDocumentProperties().getProperty(PROP_KEYS.snapshotIndex);
+  return raw ? JSON.parse(raw) : [];
+}
+
+/**
+ * حفظ فهرس النسخ في الخصائص.
+ * @param {Array<Object>} index الفهرس المراد حفظه.
+ */
+function saveSnapshotIndex(index) {
+  PropertiesService.getDocumentProperties()
+    .setProperty(PROP_KEYS.snapshotIndex, JSON.stringify(index));
+}
+
+/**
+ * توليد طابع زمني بصيغة لاتينيّة قابلة للقراءة (yyyy-MM-dd HH:mm).
+ * @return {string} الطابع الزمني.
+ */
+function latinTimestamp() {
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  return toLatinDigits(Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'));
+}
