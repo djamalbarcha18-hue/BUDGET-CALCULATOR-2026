@@ -89,6 +89,7 @@ const TXT_WARN = {
 /** عناصر قائمة الإضافة (Custom Menu) التي تظهر عند فتح المصنّف. */
 const TXT_MENU = {
   root:           '⚙️ نظام مالي ذكي',
+  openDialog:     '🎛️ فتح لوحة التحكّم السريعة',
   install:        '🚀 تركيب / إعادة بناء المصنّف',
   switchYear:     '📅 تغيير السنة النشطة…',
   archiveYear:    '🗄️ أرشفة سنة…',
@@ -96,6 +97,8 @@ const TXT_MENU = {
   cleanYears:     '🧹 تنظيف بيانات السنوات الأخرى',
   snapshotCreate: '💾 إنشاء نسخة طوارئ الآن',
   snapshotRestore:'♻️ استرجاع نسخة طوارئ…',
+  installTriggers:'⏰ تفعيل النسخ الاحتياطي التلقائي الدوري',
+  removeTriggers: '⏹️ إيقاف النسخ الاحتياطي الدوري',
   repairDash:     '🛠️ إصلاح اللوحة الرئيسيّة',
 };
 
@@ -129,6 +132,36 @@ const TXT_MSG = {
   repairDoneTitle:    'تم إصلاح اللوحة',
   repairDoneBody:     'أُعيدت كتابة صيغ المحرّك وبطاقات المؤشّرات بإصدار محصَّن، وأُعيد ربط النطاقات المُسمَّاة للرسوم.',
   notFoundTitle:      'أوراق مفقودة',
+  triggerOnTitle:     'تم تفعيل النسخ التلقائي الدوري',
+  triggerOnBody:      'سيُنشئ النظام نسخة طوارئ تلقائيّة كل ' + SNAPSHOT_CONFIG.triggerEveryHours + ' ساعات دون أيّ تدخّل منك.',
+  triggerOffTitle:    'تم إيقاف النسخ التلقائي الدوري',
+  triggerOffBody:     'أُزيلت المشغّلات الدوريّة. تبقى النسخ اليدويّة والنسخ عند الفتح متاحة كالمعتاد.',
+};
+
+/** نصوص لوحة التحكّم المنبثقة (TopDialog.html) — واجهة عربيّة بوضع داكن. */
+const TXT_DIALOG = {
+  title:        'لوحة التحكّم السريعة',
+  subtitle:     'نظام مالي ذكي متكامل · SmartBudget Pro 2026',
+  sectionYears: 'محرّك السنوات',
+  sectionData:  'البيانات التجريبيّة والصيانة',
+  sectionSnap:  'الطوارئ والنسخ الاحتياطي',
+  yearLabel:    'السنة النشطة',
+  btnSwitchYear:'تفعيل السنة',
+  btnArchive:   'أرشفة هذه السنة',
+  btnInjectDemo:'حقن بيانات 2025 التجريبيّة',
+  btnClean:     'تنظيف السنوات الأخرى',
+  btnRepair:    'إصلاح اللوحة الرئيسيّة',
+  btnSnapNow:   'إنشاء نسخة طوارئ الآن',
+  btnRestore:   'استرجاع نسخة طوارئ',
+  btnTrigOn:    'تفعيل النسخ الدوري التلقائي',
+  btnTrigOff:   'إيقاف النسخ الدوري',
+  statusReady:  'جاهز.',
+  statusWorking:'جارٍ التنفيذ…',
+  statusDone:   'تمّت العمليّة بنجاح.',
+  statusError:  'حدث خطأ، حاول مجدّداً.',
+  triggerActive:'الحالة: النسخ الدوري مُفعّل ✅',
+  triggerInactive:'الحالة: النسخ الدوري متوقّف ⏸️',
+  close:        'إغلاق',
 };
 
 /** قوالب توصيات الأهداف الذكيّة (تُدمج فيها العملة عبر TEXT(...) في Core). */

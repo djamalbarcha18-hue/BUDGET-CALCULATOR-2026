@@ -1,150 +1,164 @@
-# Apps Script Installer for BUDGET-CALCULATOR-2026
+# Apps Script for SmartBudget Pro 2026
 
-A one-click Google Apps Script that builds the entire 5-phase fintech workbook
-in your own Google Sheet, in your own Google account, in about 60 seconds.
+A modular Google Apps Script project that builds the entire Arabic fintech
+budgeting workbook in your own Google Sheet — multi-currency engine, 12 monthly
+sheets, savings goals, a **debts ledger**, a dark-mode dashboard, a
+**dynamic multi-year engine (2025–2035)** with automatic archiving,
+**demo-data injection for 2025**, and a **Recovery Snapshots** safety system
+with **installable time-based triggers**.
 
-## Why this exists
+> **هندسة عربيّة بالكامل، أرقام لاتينيّة دائماً:** الواجهة عربيّة (RTL) لكن كل
+> الأرقام والتواريخ تُعرَض وتُحسَب بالأرقام اللاتينيّة (1, 2, 3) لحماية المعادلات.
 
-The repository ships **architectural blueprints + CSV seeds**, not a hosted
-Google Sheets file. Google Sheets workbooks live on Google's servers under a
-specific user account. There is no way to publish a "copy this template" link
-from a static Git repository alone.
+---
 
-Apps Script is the official Google-supported way to bootstrap a workbook from
-code. You paste this script into your own Sheet, run it once, and it creates
-all 17 tabs, formulas, named ranges, validation rules, conditional formatting,
-and protection rules in your own copy.
+## 1. Architecture — the 8 numbered modules (+ 1 HTML view)
 
-## What the installer builds (Phases 1-5)
+The previous monolithic `install.gs` was split into **eight numbered `.gs`
+files** plus one HTML dialog. The numeric suffix encodes **load/dependency
+order** in the Apps Script global namespace: lower numbers are defined first, so
+later files can safely reference their constants and helpers.
 
-| Phase | Sheets created | What you get |
-|---|---|---|
-| 1 | `الإعدادات وأسعار الصرف` | 14-currency engine, category lists, 11 named ranges (`rng_*`) |
-| 2 | `يناير` ... `ديسمبر` (12 sheets) | Income/expense blocks, alert engine (🔴/🟡/🟢), KPI panel formulas |
-| 3 | `الأهداف المالية والادخار` | 4 baseline goals, status engine (🟢/🟡/⚪), smart recommendations |
-| 4 | `اللوحة الرئيسية والتقرير السنوي` + hidden `_DashboardEngine` | 6 KPI cards with trend strings, 3 SPARKLINE progress bars, latest-5 transactions QUERY ledger, composite health score |
-| 5 | `📖 دليل الاستخدام والترحيب` (tab #1) | Hero header, 3 quick-start cards with HYPERLINKs, restricted developer signature |
+| # | File | Responsibility (المسؤوليّة) |
+|---|------|------------------------------|
+| 00 | **`Config.gs_00`** | المتغيّرات العامة، أسماء الأوراق، ألوان الوضع المظلم (`T`)، تخطيط الصفوف (`LAYOUT`)، إعدادات السنوات والطوارئ والمشغّلات |
+| 00 | **`Texts.gs_00`** | كل النصوص العربيّة: العناوين، التسميات، رسائل التنبيهات، عناصر القائمة، ونصوص لوحة التحكّم (`TXT_*`) |
+| 01 | **`Helpers.gs_01`** | الأدوات المساعدة: **فرض الأرقام اللاتينيّة** (`toLatinDigits`, `enforceLatinLocale`)، تنسيق التواريخ/النِسب، إنشاء الأوراق، دوال السنوات |
+| 02 | **`Sheets.gs_02`** | إنشاء/إخفاء/تجميد/ترتيب الأوراق، ورقة الإعدادات، النطاقات المُسمّاة، الحماية، **محرّك السنوات وأرشيف السنوات** |
+| 03 | **`Dashboard.gs_03`** | الواجهة المتجاوبة، المحرّك الخلفي `_DashboardEngine`، **تثبيت مواقع الرسوم (Charts Locking)**، ورقة الترحيب |
+| 04 | **`System.gs_04`** | المشغّلات `onOpen`/`onEdit`، التركيب والإصلاح، **نظام الطوارئ (Snapshots)**، **المشغّلات المُركَّبة الدوريّة**، واجهة `google.script.run` للوحة التحكّم |
+| 05 | **`Demo_QA.gs_05`** | **حقن بيانات 2025 التجريبيّة** وتنظيف باقي السنوات |
+| 06 | **`Core.gs_06`** | المنطق المحاسبي: الورقة الشهريّة، الأهداف، **مفكرة الدائن والمدين**، دوال بناء الصيغ المشتركة |
+| — | **`TopDialog.html`** | لوحة التحكّم السريعة المنبثقة (Dark Mode + RTL + فرض الأرقام اللاتينيّة في الواجهة) |
 
-Plus: tab order set, RTL on every sheet, dark theme on dashboard + welcome,
-protection layer with Arabic warnings, `_DashboardEngine` hidden.
+### Dependency flow
 
-## Step-by-step usage
+```
+Config.gs_00 ─┐
+Texts.gs_00  ─┤→ Helpers.gs_01 → Sheets.gs_02 → Dashboard.gs_03 ─┐
+              │                    ↑                              │
+              │              Core.gs_06 (buildMonth/buildGoals/buildDebts)
+              │                    ↑                              │
+              └──────────→ System.gs_04 (orchestrates install + triggers + dialog)
+                                   ↑
+                           Demo_QA.gs_05 (uses buildYearMonthlySheets)
+```
 
-### 1. Open a fresh Google Sheet
+---
 
-Visit https://sheets.new and rename it to `نظام مالي ذكي متكامل 2026`.
+## 2. Feature highlights
 
-Set `File → Settings → Locale` to `Saudi Arabia` (or any Arabic locale) and
-click **Save settings**. This is important so dates and decimals parse the way
-the formulas expect.
+### 🗓️ Dynamic Years Engine (2025–2035)
+- Monthly sheets are named per-year (e.g. `يناير 2025`).
+- `activateYear(ss, year)` builds/shows the requested year's 12 sheets,
+  **auto-archives** all other years (hidden + grey tab), and re-points the
+  dashboard engine to the active year.
+- The active year is editable from `الإعدادات!F3`; `onEdit` detects the change
+  and switches automatically. It is also persisted in Document Properties.
 
-### 2. Open the Apps Script editor
+### 🧾 Debts Ledger (مفكرة السلف والديون)
+- Double-entry style: `🟢 لي (دائن)` (asset) vs `🔴 عليّ (مدين)` (liability).
+- Auto-computed **remaining amount** and **status** (مسدد / جزئي / غير مسدد),
+  plus a summary panel (total owed to me / by me / net position / open count).
+- Feeds the dashboard **Liabilities** KPI card via `_DashboardEngine!H6`.
 
-`Extensions → Apps Script`. A new tab opens with `Code.gs` containing a
-placeholder `function myFunction() {}`.
+### 🧪 Demo data (2025)
+- `injectDemoData2025(ss)` fills all 12 months with realistic income/expense
+  rows (Latin digits + dates), then activates 2025.
+- `cleanOtherYears(ss, keepYear)` clears input columns of every other year
+  while preserving formulas.
 
-### 3. Paste the installer
+### 🛟 Recovery Snapshots + installable triggers
+- `createSnapshot()` captures all input data (monthly sheets + goals + debts)
+  as JSON in Document Properties, with **auto-rotation** (max 10).
+- `maybeAutoSnapshot()` runs on open (rate-limited).
+- **Installable time-based triggers** (`installSnapshotTriggers`) take an
+  automatic snapshot every `SNAPSHOT_CONFIG.triggerEveryHours` hours
+  **without the user opening the file**. Toggle from the menu or the dialog.
 
-1. Open [`install.gs`](./install.gs) on GitHub.
-2. Click the **Raw** button at the top of the file viewer. You'll see the
-   plain `.gs` source.
-3. `Ctrl+A`, `Ctrl+C`.
-4. Back in your Apps Script editor, **delete everything** in `Code.gs` and
-   `Ctrl+V` to paste.
-5. `Ctrl+S` to save. Give the project any name, e.g.
-   `BUDGET-CALCULATOR-2026 Installer`.
+### 🎛️ Quick-control dialog (`TopDialog.html`)
+- Opens from the menu (`🎛️ فتح لوحة التحكّم السريعة`) as a modal over the
+  Sheets toolbar.
+- Dark-mode Arabic UI with one-click actions for every operation, calling the
+  server via `google.script.run` → `dialogRunAction(action, params)`.
+- Enforces Latin digits in the UI both on display and on input before sending
+  to the server.
 
-### 4. Run the installer
+---
 
-1. At the top of the Apps Script editor, the function dropdown probably says
-   `myFunction`. Change it to **`installBudgetCalculator2026`**.
-2. Click the **Run** button (▶).
-3. Google will pop up an authorization dialog. Click **Review permissions**,
-   pick your Google account, and approve.
-   - The script asks for one permission only: edit the active spreadsheet.
-   - It does NOT request access to your Drive, your other sheets, your email,
-     or any external service.
-4. The script runs for ~30-60 seconds. You can watch progress in the
-   "Execution log" panel at the bottom.
-5. When done, a Google Sheets-side alert says:
-   `تم تركيب القالب بنجاح`.
+## 3. Installation
 
-### 5. Switch back to your sheet
+1. Open a fresh sheet at https://sheets.new. Set `File → Settings → Locale` to
+   an Arabic locale, then **Save settings**.
+2. `Extensions → Apps Script`.
+3. Create the files **with the exact names above** (Apps Script shows `.gs`
+   files without the numeric suffix in the UI; keep the names unique, e.g.
+   `Config`, `Texts`, `Helpers`, `Sheets`, `Dashboard`, `System`, `Demo_QA`,
+   `Core`) and add an **HTML file** named `TopDialog`. Paste each file's
+   contents from this repo.
+4. Save. In the function dropdown choose **`installBudgetCalculator2026`** and
+   click **Run**. Approve the authorization prompt (it needs to edit the active
+   spreadsheet and manage its own triggers).
+5. ~30–60s later you'll see `تم تركيب القالب بنجاح`. The workbook is built, the
+   first snapshot is taken, and the periodic backup trigger is installed.
 
-Close the Apps Script tab. Your spreadsheet now has 17 tabs (including the
-hidden `_DashboardEngine`). The active tab is
-`📖 دليل الاستخدام والترحيب`.
+> The script asks for confirmation before overwriting a non-empty workbook.
+> Re-running is safe (idempotent): sheets are reused and triggers are
+> de-duplicated.
 
-### 6. (Optional) Insert the five charts manually
+---
 
-The installer populates all chart-data anchors but does not insert the charts
-themselves, because chart styling (palette per series, subtotal flag on the
-Waterfall, gauge band ranges) is faster to tune in the GUI than in code.
-Follow [`docs/07_dashboard_architecture.md`](../docs/07_dashboard_architecture.md)
-sections 4 and 5:
+## 4. The custom menu (`⚙️ نظام مالي ذكي`)
 
-| Chart | Anchor | Source data | Type |
+| Item | Function |
+|------|----------|
+| 🎛️ فتح لوحة التحكّم السريعة | `showTopDialog` |
+| 🚀 تركيب / إعادة بناء المصنّف | `installBudgetCalculator2026` |
+| 📅 تغيير السنة النشطة… | `menuSwitchYear` |
+| 🗄️ أرشفة سنة… | `menuArchiveYear` |
+| 🧪 حقن بيانات 2025 التجريبيّة | `menuInjectDemo2025` |
+| 🧹 تنظيف بيانات السنوات الأخرى | `menuCleanOtherYears` |
+| 💾 إنشاء نسخة طوارئ الآن | `menuCreateSnapshot` |
+| ♻️ استرجاع نسخة طوارئ… | `menuRestoreSnapshot` |
+| ⏰ تفعيل النسخ الاحتياطي التلقائي الدوري | `menuInstallSnapshotTriggers` |
+| ⏹️ إيقاف النسخ الاحتياطي الدوري | `menuRemoveSnapshotTriggers` |
+| 🛠️ إصلاح اللوحة الرئيسيّة | `repairDashboard2026` |
+
+---
+
+## 5. (Optional) Insert the charts manually
+
+The installer locks chart **anchors** and exposes stable **named ranges**, but
+does not insert the charts themselves (styling is faster in the GUI). Bind each
+chart to its named range so it survives engine rebuilds and year switches:
+
+| Chart | Anchor | Named range | Type |
 |---|---|---|---|
-| Combo (monthly comparison) | `B11:M26` | `_DashboardEngine!A1:D13` | Combo (column + line) |
-| Waterfall | `N11:Y26` | `_DashboardEngine!F1:G7` | Waterfall (mark `صافي الربح` as Subtotal) |
-| Doughnut: income | `B29:G44` | `_DashboardEngine!I1:J9` | Pie → Donut hole 60% |
-| Doughnut: expenses | `H29:M44` | `_DashboardEngine!L1:M13` | Pie → Donut hole 60% |
-| Health Gauge | `N29:S44` (replace placeholder) | `_DashboardEngine!O2` | Gauge with bands per docs/07 §5.1 |
+| Combo (monthly comparison) | `B11:M26` | `rng_dash_monthly_grid` | Combo (column + line) |
+| Waterfall (cash flow) | `N11:Y26` | `rng_dash_waterfall` | Waterfall (mark `صافي الربح` as Subtotal) |
+| Doughnut: income | `B29:G44` | `rng_dash_doughnut_income` | Pie → Donut hole 60% |
+| Doughnut: expenses | `H29:M44` | `rng_dash_doughnut_expense` | Pie → Donut hole 60% |
 
-To unhide `_DashboardEngine` so you can select its data: `View → Show hidden
-sheets → _DashboardEngine`. Re-hide when done.
+---
 
-## Re-running
+## 6. Maintenance notes
 
-Safe. The script asks for confirmation if the workbook already has content,
-and uses `getOrCreateSheet` so existing sheets are reused (it overwrites their
-formulas with the same formulas).
-
-To do a completely clean install: create a brand new empty Google Sheet,
-paste the script, run.
-
-## Troubleshooting
-
-**"Authorization required" loop** - Make sure your Google account has
-permission to run Apps Script. Workspace admins sometimes restrict this.
-
-**Currency symbols look like boxes (□)** - Your browser is missing an Arabic
-font. Install Cairo / IBM Plex Sans Arabic / Tajawal, or rely on the system
-default.
-
-**Charts didn't appear** - They're not auto-inserted; that's by design. See
-section 6 above.
-
-**`#REF!` in dashboard cells** - If you ran the script before any monthly
-sheet had data, the cross-sheet references will resolve once you enter
-income/expense rows. The errors will clear automatically.
-
-**Smart recommendation in the goals sheet shows `#NAME?` for `rng_ActiveFormat`**
-- Named ranges sometimes need the spreadsheet to "settle" after creation. Reload
-the tab once. If it persists, run `defineNamedRanges()` from the Apps Script
-editor (function dropdown → `defineNamedRanges` → Run).
+- **Single source of truth for text** is `Texts.gs_00` — change wording there,
+  never inline in logic files.
+- **Single source of truth for layout** is `LAYOUT` in `Config.gs_00` — change
+  a row/column once and every module follows.
+- **Latin-digit rule**: any string written to a cell goes through
+  `toLatinDigits`; the workbook locale is forced to `en_US`; `onEdit` rewrites
+  Eastern-Arabic digits typed by the user. Never bypass these.
+- **Adding a year beyond 2035**: bump `YEAR_MAX` in `Config.gs_00` — everything
+  else (validation, archiving, snapshots) adapts automatically.
+- **Verify a clean install**: search `Boulahdid` across the workbook → exactly
+  one match (welcome sheet). Change `الإعدادات!B3` currency → monthly monetary
+  cells retint. The debts `الحالة` column auto-fills as you enter paid amounts.
 
 ## What the installer does NOT do
 
-- It does not insert the four charts and the gauge (manual, ~5 minutes total).
-- It does not pre-fill any actual income/expense data - those rows stay empty
-  for you to enter.
-- It does not refresh exchange rates (those are placeholders in
-  `data/currencies.csv` - you must update them via `GOOGLEFINANCE` or by hand).
-- It does not change your Locale or RTL workbook setting (you must set those
-  manually in step 1; the script enables RTL per-sheet but not workbook-wide).
-
-## Verifying a clean install
-
-After running, do these three checks:
-
-1. `Ctrl+F` for `Boulahdid` across the whole workbook → must return exactly
-   **one** match (in the welcome sheet only).
-2. Open `الإعدادات وأسعار الصرف`, change `B3` from `USD` to `SAR`. Switch to
-   any monthly tab → all monetary cells should retint with `ر.س`.
-3. Open `الأهداف المالية والادخار`. The `الحالة` column should show
-   `🟡 قيد الادخار` for all four seeded goals (none are at 0% or 100%). The
-   `التوصية الذكية` column should embed the active currency symbol in the
-   Arabic recommendation text.
-
-If all three pass, the install is correct.
+- It does not insert the charts (manual, ~5 minutes — see §5).
+- It does not pre-fill real data (use the 2025 demo injector for sample data).
+- It does not refresh exchange rates (placeholders in `data/currencies.csv` —
+  update via `GOOGLEFINANCE` or by hand).

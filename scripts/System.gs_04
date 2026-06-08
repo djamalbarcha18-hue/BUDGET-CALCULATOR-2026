@@ -24,6 +24,8 @@ function onOpen() {
   // نبني القائمة المخصّصة لتسهيل وصول المستخدم لكل العمليّات
   const ui = SpreadsheetApp.getUi();
   ui.createMenu(TXT_MENU.root)
+    .addItem(TXT_MENU.openDialog, 'showTopDialog')
+    .addSeparator()
     .addItem(TXT_MENU.install, 'installBudgetCalculator2026')
     .addSeparator()
     .addItem(TXT_MENU.switchYear, 'menuSwitchYear')
@@ -35,11 +37,26 @@ function onOpen() {
     .addItem(TXT_MENU.snapshotCreate, 'menuCreateSnapshot')
     .addItem(TXT_MENU.snapshotRestore, 'menuRestoreSnapshot')
     .addSeparator()
+    .addItem(TXT_MENU.installTriggers, 'menuInstallSnapshotTriggers')
+    .addItem(TXT_MENU.removeTriggers, 'menuRemoveSnapshotTriggers')
+    .addSeparator()
     .addItem(TXT_MENU.repairDash, 'repairDashboard2026')
     .addToUi();
 
   // نسخة طوارئ تلقائيّة (لا تُنشأ إلا بعد مرور الفاصل الزمني الأدنى)
   maybeAutoSnapshot();
+}
+
+/**
+ * عرض لوحة التحكّم السريعة المنبثقة (TopDialog.html) في وضع داكن وواجهة عربيّة.
+ * تُستدعى من القائمة وتظهر فوق شريط أدوات Google Sheets كنافذة حواريّة.
+ */
+function showTopDialog() {
+  // نُحمّل قالب HTML ونمرّر له الحالة الأوّليّة (السنة وحالة المشغّل)
+  const html = HtmlService.createHtmlOutputFromFile('TopDialog')
+    .setWidth(520).setHeight(560)
+    .setTitle(TXT_DIALOG.title);
+  SpreadsheetApp.getUi().showModalDialog(html, TXT_DIALOG.title);
 }
 
 /**
@@ -130,6 +147,7 @@ function installBudgetCalculator2026() {
   safeHideSheet(ss, SHEET_NAMES.engine);
   safeHideSheet(ss, SHEET_NAMES.snapshots);
   createSnapshot(ss, 'نسخة ما بعد التركيب');
+  installSnapshotTriggers(); // تفعيل النسخ الاحتياطي الدوري التلقائي مباشرةً
 
   // (5) إنزال المستخدم على ورقة الترحيب وإظهار رسالة النجاح
   ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
@@ -243,6 +261,152 @@ function menuRestoreSnapshot() {
   }
   restoreSnapshot(ss, index[choice - 1].key);
   ui.alert(TXT_MSG.snapRestoredTitle, TXT_MSG.snapRestoredBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: تفعيل المشغّلات الدوريّة لنسخ الطوارئ التلقائيّة. */
+function menuInstallSnapshotTriggers() {
+  installSnapshotTriggers();
+  SpreadsheetApp.getUi().alert(TXT_MSG.triggerOnTitle, TXT_MSG.triggerOnBody, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/** غلاف قائمة: إيقاف المشغّلات الدوريّة لنسخ الطوارئ. */
+function menuRemoveSnapshotTriggers() {
+  removeSnapshotTriggers();
+  SpreadsheetApp.getUi().alert(TXT_MSG.triggerOffTitle, TXT_MSG.triggerOffBody, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (3-ب) المشغّلات المُركَّبة (Installable Triggers) لنسخ الطوارئ الدوريّة
+ * ----------------------------------------------------------------------------
+ *  بخلاف onOpen/onEdit البسيطة، المشغّل المؤقّت (Time-driven) يعمل في الخلفيّة
+ *  دون فتح المصنّف، فيضمن أخذ نسخ احتياطيّة دوريّة دون أيّ تدخّل من المستخدم.
+ *  نضمن عدم التكرار بحذف أيّ مشغّل سابق لنفس المعالِج قبل التركيب (Idempotent).
+ * ===========================================================================*/
+
+/**
+ * تركيب مشغّل مؤقّت دوري يأخذ نسخة طوارئ كل عدد محدّد من الساعات.
+ * يُزيل أيّ نسخة سابقة من المشغّل أوّلاً لمنع ازدواج المشغّلات.
+ */
+function installSnapshotTriggers() {
+  // نُنظّف أيّ مشغّل قديم لنفس المعالِج قبل إنشاء واحد جديد (تفادي التكرار)
+  removeSnapshotTriggers();
+  ScriptApp.newTrigger(TRIGGER_HANDLERS.scheduledSnapshot)
+    .timeBased()
+    .everyHours(SNAPSHOT_CONFIG.triggerEveryHours)
+    .create();
+  // نسجّل أنّ المشغّل أصبح مُفعّلاً لعرض الحالة في لوحة التحكّم
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.triggerInstalled, 'true');
+}
+
+/**
+ * إزالة كل المشغّلات المؤقّتة المرتبطة بمعالِج نسخ الطوارئ الدوري.
+ */
+function removeSnapshotTriggers() {
+  // نمرّ على كل مشغّلات المشروع ونحذف ما يخصّ معالِجنا فقط
+  ScriptApp.getProjectTriggers().forEach(tr => {
+    if (tr.getHandlerFunction() === TRIGGER_HANDLERS.scheduledSnapshot) {
+      ScriptApp.deleteTrigger(tr);
+    }
+  });
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.triggerInstalled, 'false');
+}
+
+/**
+ * معالِج المشغّل المؤقّت: ينشئ نسخة طوارئ مُجدوَلة في الخلفيّة.
+ * @param {Object} e كائن حدث المشغّل (غير مستخدَم لكنّه يُمرَّر تلقائياً).
+ */
+function scheduledSnapshotTrigger(e) {
+  // نأخذ نسخة دوريّة موسومة بوضوح، مع تجاهل أيّ خطأ حتى لا يفشل المشغّل صامتاً
+  try {
+    createSnapshot(SpreadsheetApp.getActive(), 'نسخة دوريّة مُجدوَلة');
+  } catch (err) {
+    console.error('فشل المشغّل الدوري لنسخ الطوارئ: ' + err);
+  }
+}
+
+/**
+ * التحقّق من وجود مشغّل دوري مُفعّل لنسخ الطوارئ (مصدر الحقيقة: مشغّلات المشروع).
+ * @return {boolean} صحيح إن وُجد مشغّل مؤقّت لمعالِجنا.
+ */
+function areSnapshotTriggersActive() {
+  return ScriptApp.getProjectTriggers().some(
+    tr => tr.getHandlerFunction() === TRIGGER_HANDLERS.scheduledSnapshot);
+}
+
+/* ===========================================================================
+ *  (3-ج) واجهة برمجيّة للوحة التحكّم HTML (تُستدعى عبر google.script.run)
+ * ===========================================================================*/
+
+/**
+ * إرجاع الحالة الأوّليّة للوحة التحكّم (السنة النشطة وحالة المشغّل وقائمة السنوات).
+ * @return {Object} حالة جاهزة لاستهلاكها في TopDialog.html.
+ */
+function dialogGetState() {
+  return {
+    activeYear:     getActiveYear(),
+    years:          allSupportedYears(),
+    triggersActive: areSnapshotTriggersActive(),
+    version:        APP_VERSION,
+  };
+}
+
+/**
+ * منفِّذ مركزي لأوامر لوحة التحكّم القادمة من HTML (نمط Dispatcher آمن).
+ * يقبل اسم الأمر ووسائطه ويوجّهه للدالّة المناسبة، ويُعيد رسالة نتيجة نصّيّة.
+ * @param {string} action اسم الأمر (switchYear|archive|injectDemo|clean|repair|snapshot|installTriggers|removeTriggers).
+ * @param {Object} params وسائط الأمر (مثل {year: 2026}).
+ * @return {Object} نتيجة تحوي رسالة وحالة محدَّثة.
+ */
+function dialogRunAction(action, params) {
+  const ss = SpreadsheetApp.getActive();
+  params = params || {};
+  // نفرض الأرقام اللاتينيّة على أيّ سنة واردة من الواجهة قبل المعالجة
+  const year = params.year ? parseInt(toLatinDigits(String(params.year)), 10) : getActiveYear();
+
+  switch (action) {
+    case 'switchYear':
+      if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
+      createSnapshot(ss, 'قبل تغيير السنة إلى ' + year);
+      activateYear(ss, year);
+      return { ok: true, message: TXT_MSG.yearSwitchedBody.replace('{year}', year), state: dialogGetState() };
+
+    case 'archive':
+      if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
+      archiveYear(ss, year);
+      return { ok: true, message: TXT_MSG.archiveDoneBody.replace('{year}', year), state: dialogGetState() };
+
+    case 'injectDemo':
+      createSnapshot(ss, 'قبل حقن البيانات التجريبيّة');
+      injectDemoData2025(ss);
+      return { ok: true, message: TXT_MSG.demoDoneBody, state: dialogGetState() };
+
+    case 'clean':
+      createSnapshot(ss, 'قبل تنظيف السنوات الأخرى');
+      cleanOtherYears(ss, DEFAULT_YEAR);
+      return { ok: true, message: TXT_MSG.cleanDoneBody, state: dialogGetState() };
+
+    case 'repair':
+      buildDashboardEngine(ss, getActiveYear());
+      buildDashboard(ss, getActiveYear());
+      defineNamedRanges(ss);
+      safeHideSheet(ss, SHEET_NAMES.engine);
+      return { ok: true, message: TXT_MSG.repairDoneBody, state: dialogGetState() };
+
+    case 'snapshot':
+      createSnapshot(ss, 'نسخة يدويّة من لوحة التحكّم');
+      return { ok: true, message: TXT_MSG.snapCreatedBody, state: dialogGetState() };
+
+    case 'installTriggers':
+      installSnapshotTriggers();
+      return { ok: true, message: TXT_MSG.triggerOnBody, state: dialogGetState() };
+
+    case 'removeTriggers':
+      removeSnapshotTriggers();
+      return { ok: true, message: TXT_MSG.triggerOffBody, state: dialogGetState() };
+
+    default:
+      return { ok: false, message: 'أمر غير معروف.' };
+  }
 }
 
 /* ===========================================================================
