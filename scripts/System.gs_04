@@ -346,14 +346,28 @@ function dialogGetState() {
     activeYear:     getActiveYear(),
     years:          allSupportedYears(),
     triggersActive: areSnapshotTriggersActive(),
+    snapshots:      listSnapshotsForDialog(),
     version:        APP_VERSION,
   };
 }
 
 /**
+ * بناء قائمة النسخ الاحتياطيّة المتاحة لعرضها في القائمة المنسدلة بلوحة التحكّم.
+ * تُعرَض الأحدث أوّلاً، مع تسمية ووصف وطابع زمني بأرقام لاتينيّة.
+ * @return {Array<Object>} عناصر [{key, label}] جاهزة للقائمة المنسدلة.
+ */
+function listSnapshotsForDialog() {
+  // نقلب الفهرس ليظهر الأحدث في الأعلى، ونبني تسمية واضحة لكل نسخة
+  return loadSnapshotIndex().slice().reverse().map(snap => ({
+    key:   snap.key,
+    label: toLatinDigits(snap.label + ' — ' + snap.ts),
+  }));
+}
+
+/**
  * منفِّذ مركزي لأوامر لوحة التحكّم القادمة من HTML (نمط Dispatcher آمن).
  * يقبل اسم الأمر ووسائطه ويوجّهه للدالّة المناسبة، ويُعيد رسالة نتيجة نصّيّة.
- * @param {string} action اسم الأمر (switchYear|archive|injectDemo|clean|repair|snapshot|installTriggers|removeTriggers).
+ * @param {string} action اسم الأمر (switchYear|archive|injectDemo|clean|repair|snapshot|restore|installTriggers|removeTriggers).
  * @param {Object} params وسائط الأمر (مثل {year: 2026}).
  * @return {Object} نتيجة تحوي رسالة وحالة محدَّثة.
  */
@@ -395,6 +409,17 @@ function dialogRunAction(action, params) {
     case 'snapshot':
       createSnapshot(ss, 'نسخة يدويّة من لوحة التحكّم');
       return { ok: true, message: TXT_MSG.snapCreatedBody, state: dialogGetState() };
+
+    case 'restore': {
+      // نسترجع نسخة محدّدة بمفتاحها القادم من القائمة المنسدلة في اللوحة
+      const key = params.key ? String(params.key) : '';
+      const exists = loadSnapshotIndex().some(snap => snap.key === key);
+      if (!key || !exists) return { ok: false, message: TXT_MSG.snapNoneBody };
+      // نأخذ نسخة وقائيّة قبل الاسترجاع حتى لا تُفقَد الحالة الراهنة
+      createSnapshot(ss, 'قبل استرجاع نسخة سابقة');
+      restoreSnapshot(ss, key);
+      return { ok: true, message: TXT_MSG.snapRestoredBody, state: dialogGetState() };
+    }
 
     case 'installTriggers':
       installSnapshotTriggers();

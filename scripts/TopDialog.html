@@ -134,9 +134,17 @@
       <div class="row" style="margin-bottom:10px;">
         <button class="good" onclick="run('snapshot')">إنشاء نسخة طوارئ الآن</button>
       </div>
-      <div class="row">
+      <div class="row" style="margin-bottom:10px;">
         <button class="good" onclick="run('installTriggers')">تفعيل النسخ الدوري التلقائي</button>
         <button class="danger" onclick="run('removeTriggers')">إيقاف النسخ الدوري</button>
+      </div>
+      <!-- استرجاع تفاعلي: قائمة منسدلة بالنسخ المتاحة بدل مربّع الحوار النصّي -->
+      <div class="row" style="margin-bottom:8px;">
+        <label for="snapSelect">اختر نسخة للاسترجاع</label>
+      </div>
+      <div class="row">
+        <select id="snapSelect" style="flex:1 1 100%;"></select>
+        <button class="danger" id="restoreBtn" onclick="restoreSelected()">استرجاع هذه النسخة</button>
       </div>
     </section>
 
@@ -192,6 +200,48 @@
         badge.textContent = 'الحالة: النسخ الدوري متوقّف ⏸️';
         badge.className = 'trigger-badge off';
       }
+
+      // قائمة النسخ الاحتياطيّة المتاحة للاسترجاع (الأحدث أوّلاً)
+      var snapSel = $('snapSelect');
+      var restoreBtn = $('restoreBtn');
+      snapSel.innerHTML = '';
+      var snaps = state.snapshots || [];
+      if (snaps.length === 0) {
+        // لا توجد نسخ: نعرض عنصراً معطّلاً ونعطّل زرّ الاسترجاع
+        var none = document.createElement('option');
+        none.textContent = 'لا توجد نسخ محفوظة بعد'; none.value = '';
+        snapSel.appendChild(none);
+        snapSel.disabled = true; restoreBtn.disabled = true;
+      } else {
+        snapSel.disabled = false; restoreBtn.disabled = false;
+        snaps.forEach(function (snap) {
+          var opt = document.createElement('option');
+          opt.value = snap.key; opt.textContent = toLatinDigits(snap.label);
+          snapSel.appendChild(opt);
+        });
+      }
+    }
+
+    /** استرجاع النسخة المختارة من القائمة المنسدلة بعد تأكيد المستخدم. */
+    function restoreSelected() {
+      var sel = $('snapSelect');
+      if (!sel.value) { setStatus('لا توجد نسخة مختارة.', false); return; }
+      // نطلب تأكيداً صريحاً لأنّ الاسترجاع يستبدل بيانات الإدخال الحاليّة
+      if (!window.confirm('سيُستبدل الإدخال الحالي ببيانات النسخة المختارة. هل تريد المتابعة؟')) return;
+      setBusy(true); setStatus('جارٍ الاسترجاع…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) {
+            setStatus(res.message || 'تمّ الاسترجاع.', false);
+            if (res.state) applyState(res.state);
+          } else { setStatus((res && res.message) ? res.message : 'تعذّر الاسترجاع.', false); }
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus('حدث خطأ: ' + (err && err.message ? err.message : err), false);
+        })
+        .dialogRunAction('restore', { key: sel.value });
     }
 
     /**

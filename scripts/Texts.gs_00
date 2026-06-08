@@ -153,6 +153,8 @@ const TXT_DIALOG = {
   btnRepair:    'إصلاح اللوحة الرئيسيّة',
   btnSnapNow:   'إنشاء نسخة طوارئ الآن',
   btnRestore:   'استرجاع نسخة طوارئ',
+  restoreLabel: 'اختر نسخة للاسترجاع',
+  noSnapshots:  'لا توجد نسخ محفوظة بعد',
   btnTrigOn:    'تفعيل النسخ الدوري التلقائي',
   btnTrigOff:   'إيقاف النسخ الدوري',
   statusReady:  'جاهز.',
