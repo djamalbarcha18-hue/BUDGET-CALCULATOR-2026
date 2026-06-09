@@ -1,0 +1,88 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  سجلّ المشروع والمسارات  ·  Manifest.gs_07
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - تجميع البيانات الوصفيّة للمشروع (الإصدار، المؤلّف، الوحدات) في مكان واحد.
+ *    - توفير "مسارات" مركزيّة لأسماء الأوراق (Routing) بدل تكرار SHEET_NAMES.
+ *    - أعلام تفعيل الميزات (Feature Flags) لتسهيل تشغيل/إيقاف وحدة دون حذف كودها.
+ *  لا يحوي منطق تشغيل ثقيلاً؛ هو طبقة تعريفيّة (Declarative) تخدم بقيّة الوحدات.
+ * ============================================================================
+ */
+
+/**
+ * البيان الوصفي المركزي للمشروع. مصدر الحقيقة للإصدار والمؤلّف وخريطة الوحدات.
+ */
+const PROJECT_MANIFEST = {
+  name:    'SmartBudget Pro 2026',
+  nameAr:  'نظام مالي ذكي متكامل',
+  version: APP_VERSION,
+  author:  'Boulahdid Djamal Eddine',
+  contact: 'boulahdiddjamaleddine',
+  yearsRange: [YEAR_MIN, YEAR_MAX],
+
+  // خريطة الوحدات الأربع عشرة ومسؤوليّاتها (للتوثيق والصيانة الذاتيّة)
+  modules: [
+    { file: 'Config.gs_00',    role: 'الثوابت والألوان وأسماء الأوراق' },
+    { file: 'Texts.gs_00',     role: 'النصوص والرسائل العربيّة' },
+    { file: 'Helpers.gs_01',   role: 'الأدوات وفرض الأرقام اللاتينيّة' },
+    { file: 'Sheets.gs_02',    role: 'الأوراق والأرشيف والحماية' },
+    { file: 'Dashboard.gs_03', role: 'الواجهة والمحرّك والرسوم' },
+    { file: 'System.gs_04',    role: 'المشغّلات والقائمة ولوحة التحكّم' },
+    { file: 'Demo_QA.gs_05',   role: 'محرّك السنوات والبيانات التجريبيّة' },
+    { file: 'Core.gs_06',      role: 'المحاسبة والدائن والمدين' },
+    { file: 'Manifest.gs_07',  role: 'سجلّ المشروع والمسارات' },
+    { file: 'Export.gs_08',    role: 'التصدير إلى PDF والطباعة' },
+    { file: 'Onboarding.gs_09',role: 'تهيئة المستخدم الجديد' },
+    { file: 'Notifications.gs_10', role: 'التنبيهات الذكيّة' },
+    { file: 'Forecast.gs_11',  role: 'التوقّعات المالية' },
+    { file: 'UserGuide.gs_12', role: 'دليل الاستخدام المدمج' },
+    { file: 'Recovery.gs_13',  role: 'نظام الطوارئ والنسخ' },
+  ],
+
+  // أعلام تفعيل الميزات (تُقرأ عبر isFeatureEnabled قبل تشغيل أيّ وحدة اختياريّة)
+  features: {
+    export:        true,
+    onboarding:    true,
+    notifications: true,
+    forecast:      true,
+    userGuide:     true,
+    recovery:      true,
+  },
+};
+
+/**
+ * إرجاع البيان الوصفي للمشروع (يُستهلَك من الدليل ولوحة التحكّم والتوثيق).
+ * @return {Object} نسخة من بيان المشروع.
+ */
+function getProjectManifest() {
+  return PROJECT_MANIFEST;
+}
+
+/**
+ * مسار مركزي لاسم ورقة حسب مفتاحها المنطقي (طبقة Routing فوق SHEET_NAMES).
+ * @param {string} key المفتاح (welcome|settings|goals|debts|dashboard|forecast|engine|snapshots).
+ * @return {string} اسم الورقة الفعلي.
+ */
+function route(key) {
+  // نوحّد الوصول لأسماء الأوراق عبر نقطة واحدة لتسهيل أيّ تغيير مستقبلي
+  return SHEET_NAMES[key] || '';
+}
+
+/**
+ * التحقّق من تفعيل ميزة قبل تشغيلها (Feature Flag).
+ * @param {string} key مفتاح الميزة في PROJECT_MANIFEST.features.
+ * @return {boolean} صحيح إن كانت الميزة مفعّلة.
+ */
+function isFeatureEnabled(key) {
+  return !!(PROJECT_MANIFEST.features && PROJECT_MANIFEST.features[key]);
+}
+
+/**
+ * توقيع الإصدار النصّي بأرقام لاتينيّة (يُستعمل في التذييلات والدليل).
+ * @return {string} مثل: "SmartBudget Pro 2026 · v2.1.0".
+ */
+function versionSignature() {
+  return toLatinDigits(PROJECT_MANIFEST.name + ' · v' + PROJECT_MANIFEST.version);
+}

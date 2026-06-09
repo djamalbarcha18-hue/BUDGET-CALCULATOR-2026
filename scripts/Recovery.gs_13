@@ -1,0 +1,247 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  نظام الطوارئ وحماية البيانات  ·  Recovery.gs_13
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - نظام الطوارئ (Recovery Mode / Snapshots): إنشاء، تدوير، استرجاع.
+ *    - النسخ التلقائيّة عند الفتح والمشغّلات المُركَّبة الدوريّة في الخلفيّة.
+ *    - أغلفة القائمة الخاصّة بالطوارئ + واجهة قائمة النسخ للوحة التحكّم.
+ *
+ *  المبدأ: نلتقط بيانات الإدخال (الأوراق الشهريّة + الأهداف + الديون) كـ JSON
+ *  ونخزّنها في خصائص المستند مع فهرس مرتّب. الاسترجاع يعيد كتابة القيم في
+ *  أماكنها؛ أمّا الصيغ والتنسيقات فتُعاد بناؤها عبر buildXxx لتوفير المساحة.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) أغلفة القائمة الخاصّة بالطوارئ
+ * ===========================================================================*/
+
+/** غلاف قائمة: إنشاء نسخة طوارئ يدويّة الآن. */
+function menuCreateSnapshot() {
+  const ui = SpreadsheetApp.getUi();
+  createSnapshot(SpreadsheetApp.getActive(), 'نسخة يدويّة');
+  ui.alert(TXT_MSG.snapCreatedTitle, TXT_MSG.snapCreatedBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: استرجاع نسخة طوارئ مختارة عبر مربّع حوار نصّي (بديل اللوحة). */
+function menuRestoreSnapshot() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const index = loadSnapshotIndex();
+  if (!index.length) { ui.alert(TXT_MSG.snapNoneTitle, TXT_MSG.snapNoneBody, ui.ButtonSet.OK); return; }
+
+  // نعرض قائمة مرقّمة بالأرقام اللاتينيّة لاختيار النسخة
+  const list = index.map((snap, i) =>
+    toLatinDigits((i + 1) + ') ' + snap.label + ' — ' + snap.ts)).join('\n');
+  const resp = ui.prompt(TXT_MSG.snapRestorePrompt,
+    TXT_MSG.snapRestoreBody.replace('{list}', list), ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  const choice = parseInt(toLatinDigits(resp.getResponseText().trim()), 10);
+  if (!Number.isInteger(choice) || choice < 1 || choice > index.length) {
+    ui.alert(TXT_MSG.snapRestorePrompt, TXT_MSG.yearInvalid, ui.ButtonSet.OK); return;
+  }
+  restoreSnapshot(ss, index[choice - 1].key);
+  ui.alert(TXT_MSG.snapRestoredTitle, TXT_MSG.snapRestoredBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: تفعيل المشغّل الدوري لنسخ الطوارئ. */
+function menuInstallSnapshotTriggers() {
+  const ui = SpreadsheetApp.getUi();
+  installSnapshotTriggers();
+  ui.alert(TXT_MSG.triggerOnTitle, TXT_MSG.triggerOnBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: إيقاف المشغّل الدوري لنسخ الطوارئ. */
+function menuRemoveSnapshotTriggers() {
+  const ui = SpreadsheetApp.getUi();
+  removeSnapshotTriggers();
+  ui.alert(TXT_MSG.triggerOffTitle, TXT_MSG.triggerOffBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (2) المشغّلات المُركَّبة الدوريّة (Installable Triggers)
+ * ===========================================================================*/
+
+/**
+ * تركيب مشغّل مؤقّت دوري يأخذ نسخة طوارئ كل عدد محدّد من الساعات.
+ * يُزيل أيّ نسخة سابقة من المشغّل أوّلاً لمنع الازدواج (Idempotent).
+ */
+function installSnapshotTriggers() {
+  removeSnapshotTriggers();
+  ScriptApp.newTrigger(TRIGGER_HANDLERS.scheduledSnapshot)
+    .timeBased()
+    .everyHours(SNAPSHOT_CONFIG.triggerEveryHours)
+    .create();
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.triggerInstalled, 'true');
+}
+
+/** إزالة كل المشغّلات المؤقّتة المرتبطة بمعالِج نسخ الطوارئ الدوري. */
+function removeSnapshotTriggers() {
+  ScriptApp.getProjectTriggers().forEach(tr => {
+    if (tr.getHandlerFunction() === TRIGGER_HANDLERS.scheduledSnapshot) {
+      ScriptApp.deleteTrigger(tr);
+    }
+  });
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.triggerInstalled, 'false');
+}
+
+/**
+ * معالِج المشغّل المؤقّت: ينشئ نسخة طوارئ مُجدوَلة في الخلفيّة.
+ * @param {Object} e كائن حدث المشغّل (غير مستخدَم).
+ */
+function scheduledSnapshotTrigger(e) {
+  try {
+    createSnapshot(SpreadsheetApp.getActive(), 'نسخة دوريّة مُجدوَلة');
+  } catch (err) {
+    console.error('فشل المشغّل الدوري لنسخ الطوارئ: ' + err);
+  }
+}
+
+/**
+ * التحقّق من وجود مشغّل دوري مُفعّل لنسخ الطوارئ.
+ * @return {boolean} صحيح إن وُجد مشغّل مؤقّت لمعالِجنا.
+ */
+function areSnapshotTriggersActive() {
+  return ScriptApp.getProjectTriggers().some(
+    tr => tr.getHandlerFunction() === TRIGGER_HANDLERS.scheduledSnapshot);
+}
+
+/* ===========================================================================
+ *  (3) منطق النسخ: إنشاء، تلقائي، استرجاع، التقاط، فهرسة
+ * ===========================================================================*/
+
+/**
+ * إنشاء نسخة طوارئ كاملة لبيانات الإدخال وتخزينها مع تدوير النسخ القديمة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} label وصف مختصر للنسخة.
+ * @return {string} مفتاح النسخة المخزَّنة.
+ */
+function createSnapshot(ss, label) {
+  const payload = captureWorkbookData(ss);
+  const props = PropertiesService.getDocumentProperties();
+  const key = 'SBP_SNAP_' + Date.now();
+  props.setProperty(key, JSON.stringify(payload));
+
+  // نُحدّث الفهرس ونُدوّر النسخ بحيث لا تتجاوز الحدّ الأقصى
+  const index = loadSnapshotIndex();
+  index.push({ key: key, label: label || 'نسخة', ts: latinTimestamp() });
+  while (index.length > SNAPSHOT_CONFIG.maxSnapshots) {
+    const removed = index.shift();
+    props.deleteProperty(removed.key);
+  }
+  saveSnapshotIndex(index);
+  return key;
+}
+
+/** إنشاء نسخة تلقائيّة فقط إذا مرّ الفاصل الزمني الأدنى منذ آخر نسخة تلقائيّة. */
+function maybeAutoSnapshot() {
+  const props = PropertiesService.getDocumentProperties();
+  const last = parseInt(props.getProperty(PROP_KEYS.lastAutoSnap) || '0', 10);
+  const now = Date.now();
+  const minGapMs = SNAPSHOT_CONFIG.autoIntervalMinutes * 60 * 1000;
+  if (now - last < minGapMs) return;
+  try {
+    createSnapshot(SpreadsheetApp.getActive(), 'نسخة تلقائيّة عند الفتح');
+    props.setProperty(PROP_KEYS.lastAutoSnap, String(now));
+  } catch (err) {
+    // نتجاهل أخطاء النسخ التلقائي بصمت حتى لا تعطّل تجربة الفتح
+  }
+}
+
+/**
+ * استرجاع نسخة طوارئ: إعادة كتابة بيانات الإدخال المحفوظة في أماكنها.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} key مفتاح النسخة.
+ */
+function restoreSnapshot(ss, key) {
+  const raw = PropertiesService.getDocumentProperties().getProperty(key);
+  if (!raw) return;
+  const payload = JSON.parse(raw);
+  Object.keys(payload.sheets).forEach(sheetName => {
+    const block = payload.sheets[sheetName];
+    const s = ss.getSheetByName(sheetName);
+    if (s && block.values && block.values.length) {
+      s.getRange(block.a1).setValues(block.values);
+    }
+  });
+  SpreadsheetApp.flush();
+}
+
+/**
+ * التقاط بيانات الإدخال القابلة للاسترجاع من كل أوراق المصنّف ذات الصلة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @return {Object} حمولة تحوي نطاقات وقيم كل ورقة.
+ */
+function captureWorkbookData(ss) {
+  const data = { version: APP_VERSION, sheets: {} };
+
+  // الأوراق الشهريّة لكل السنوات المبنيّة
+  allSupportedYears().forEach(year => {
+    monthSheetNames(year).forEach(name => {
+      const s = ss.getSheetByName(name);
+      if (!s) return;
+      data.sheets[name] = captureMonthInputs(s);
+    });
+  });
+
+  // ورقة الأهداف ومفكرة الديون
+  const goals = ss.getSheetByName(SHEET_NAMES.goals);
+  if (goals) data.sheets[SHEET_NAMES.goals] = captureRange(goals, 'A7:E26');
+  const debts = ss.getSheetByName(SHEET_NAMES.debts);
+  if (debts) data.sheets[SHEET_NAMES.debts] =
+    captureRange(debts, `A${LAYOUT.debtsFirstRow}:I${LAYOUT.debtsLastRow}`);
+
+  return data;
+}
+
+/**
+ * التقاط نطاق الإدخال الكامل في ورقة شهريّة (A10:G62 يضمّ كتلتي الدخل والمصاريف).
+ * @param {Sheet} s الورقة الشهريّة.
+ * @return {Object} كتلة النطاق والقيم.
+ */
+function captureMonthInputs(s) {
+  const a1 = `A${LAYOUT.incomeFirstRow}:G${LAYOUT.expenseLastRow}`;
+  return captureRange(s, a1);
+}
+
+/**
+ * التقاط قيم نطاق محدّد كـ {a1, values} (دالّة مساعدة لمنع التكرار).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 مرجع النطاق.
+ * @return {Object} الكتلة الملتقطة.
+ */
+function captureRange(s, a1) {
+  return { a1: a1, values: s.getRange(a1).getValues() };
+}
+
+/** قراءة فهرس النسخ المرتّب من الخصائص (الأقدم أوّلاً). */
+function loadSnapshotIndex() {
+  const raw = PropertiesService.getDocumentProperties().getProperty(PROP_KEYS.snapshotIndex);
+  return raw ? JSON.parse(raw) : [];
+}
+
+/** حفظ فهرس النسخ في الخصائص. */
+function saveSnapshotIndex(index) {
+  PropertiesService.getDocumentProperties()
+    .setProperty(PROP_KEYS.snapshotIndex, JSON.stringify(index));
+}
+
+/**
+ * بناء قائمة النسخ المتاحة للقائمة المنسدلة بلوحة التحكّم (الأحدث أوّلاً).
+ * @return {Array<Object>} عناصر [{key, label}].
+ */
+function listSnapshotsForDialog() {
+  return loadSnapshotIndex().slice().reverse().map(snap => ({
+    key:   snap.key,
+    label: toLatinDigits(snap.label + ' — ' + snap.ts),
+  }));
+}
+
+/** توليد طابع زمني بصيغة لاتينيّة قابلة للقراءة (yyyy-MM-dd HH:mm). */
+function latinTimestamp() {
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  return toLatinDigits(Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'));
+}

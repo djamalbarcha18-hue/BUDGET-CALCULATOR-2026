@@ -49,6 +49,7 @@ const SHEET_NAMES = {
   goals:     'الأهداف المالية والادخار',        // نظام الأهداف والادخار
   debts:     'مفكرة السلف والديون',            // مفكرة السلف والديون (دائن/مدين)
   dashboard: 'اللوحة الرئيسية والتقرير السنوي', // لوحة المعلومات الفاخرة
+  forecast:  'التوقعات المالية المستقبلية',     // ورقة التوقّعات والميزانية المستقبليّة
   engine:    '_DashboardEngine',               // المحرّك الخلفي (مخفيّ)
   snapshots: '_RecoverySnapshots',             // أرشيف نسخ الطوارئ (مخفيّ)
 };
@@ -159,7 +160,9 @@ const PROP_KEYS = {
   snapshotIndex:   'SBP_SNAPSHOT_INDEX',   // فهرس نسخ الطوارئ (JSON)
   lastAutoSnap:    'SBP_LAST_AUTO_SNAP',   // طابع زمني لآخر نسخة تلقائيّة
   installVersion:  'SBP_INSTALL_VERSION',  // إصدار التركيب
-  triggerInstalled:'SBP_TRIGGER_INSTALLED',// علامة تركيب المشغّلات الدوريّة
+  triggerInstalled:'SBP_TRIGGER_INSTALLED',// علامة تركيب مشغّل النسخ الدوري
+  notifyInstalled: 'SBP_NOTIFY_INSTALLED', // علامة تركيب مشغّل التنبيهات اليومي
+  onboardingDone:  'SBP_ONBOARDING_DONE',  // علامة إتمام تهيئة المستخدم الجديد
 };
 
 /** إعدادات نظام نسخ الطوارئ والمشغّلات الدوريّة. */
@@ -172,7 +175,26 @@ const SNAPSHOT_CONFIG = {
 /** أسماء دوال معالِجات المشغّلات المُركَّبة (Installable Trigger Handlers). */
 const TRIGGER_HANDLERS = {
   scheduledSnapshot: 'scheduledSnapshotTrigger', // معالِج النسخ الدوري المؤقّت
+  dailyNotify:       'dailyNotificationTrigger', // معالِج التنبيهات اليوميّة
+};
+
+/** إعدادات محرّك التنبيهات الذكيّة (Notifications). */
+const NOTIFY_CONFIG = {
+  dueSoonDays:     14,    // عتبة "ديون تستحقّ قريباً" (أيّام)
+  lowSavingsRate:  0.10,  // عتبة "معدّل ادخار منخفض" (10%)
+  nearLimitRatio:  0.90,  // عتبة "اقتراب من حدّ الميزانية" (90%)
+  triggerHour:     8,     // ساعة إرسال ملخّص التنبيهات اليومي (صباحاً)
+};
+
+/** إعدادات محرّك التوقّعات المالية (Forecast). */
+const FORECAST_CONFIG = {
+  horizonMonths: 12,     // أفق التوقّع (عدد الأشهر القادمة)
+};
+
+/** إعدادات محرّك التصدير إلى PDF (Export). */
+const EXPORT_CONFIG = {
+  folderName: 'SmartBudget Pro 2026 - تقارير PDF', // مجلّد حفظ التقارير في Drive
 };
 
 /** إصدار النظام الحالي. */
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';

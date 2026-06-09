@@ -12,10 +12,10 @@ with **installable time-based triggers**.
 
 ---
 
-## 1. Architecture — the 8 numbered modules (+ 1 HTML view)
+## 1. Architecture — the 14 numbered modules (+ 3 HTML views)
 
-The previous monolithic `install.gs` was split into **eight numbered `.gs`
-files** plus one HTML dialog. The numeric suffix encodes **load/dependency
+The original monolithic `install.gs` was split into **fourteen numbered `.gs`
+files** plus three HTML views. The numeric suffix encodes **load/dependency
 order** in the Apps Script global namespace: lower numbers are defined first, so
 later files can safely reference their constants and helpers.
 
@@ -26,10 +26,19 @@ later files can safely reference their constants and helpers.
 | 01 | **`Helpers.gs_01`** | الأدوات المساعدة: **فرض الأرقام اللاتينيّة** (`toLatinDigits`, `enforceLatinLocale`)، تنسيق التواريخ/النِسب، إنشاء الأوراق، دوال السنوات |
 | 02 | **`Sheets.gs_02`** | إنشاء/إخفاء/تجميد/ترتيب الأوراق، ورقة الإعدادات، النطاقات المُسمّاة، الحماية، **محرّك السنوات وأرشيف السنوات** |
 | 03 | **`Dashboard.gs_03`** | الواجهة المتجاوبة، المحرّك الخلفي `_DashboardEngine`، **تثبيت مواقع الرسوم (Charts Locking)**، ورقة الترحيب |
-| 04 | **`System.gs_04`** | المشغّلات `onOpen`/`onEdit`، التركيب والإصلاح، **نظام الطوارئ (Snapshots)**، **المشغّلات المُركَّبة الدوريّة**، واجهة `google.script.run` للوحة التحكّم |
+| 04 | **`System.gs_04`** | المشغّلات `onOpen`/`onEdit`، القائمة العلويّة، التركيب/الإصلاح، لوحة التحكّم وواجهتها البرمجيّة |
 | 05 | **`Demo_QA.gs_05`** | **حقن بيانات 2025 التجريبيّة** وتنظيف باقي السنوات |
 | 06 | **`Core.gs_06`** | المنطق المحاسبي: الورقة الشهريّة، الأهداف، **مفكرة الدائن والمدين**، دوال بناء الصيغ المشتركة |
-| — | **`TopDialog.html`** | لوحة التحكّم السريعة المنبثقة (Dark Mode + RTL + فرض الأرقام اللاتينيّة في الواجهة) |
+| 07 | **`Manifest.gs_07`** | سجلّ المشروع (الإصدار/الوحدات)، مسارات الأوراق (Routing)، أعلام تفعيل الميزات |
+| 08 | **`Export.gs_08`** | **محرّك التصدير إلى PDF** والطباعة وحفظ التقارير في Drive |
+| 09 | **`Onboarding.gs_09`** | **نظام تهيئة المستخدم الجديد** والشريط الجانبي التوجيهي |
+| 10 | **`Notifications.gs_10`** | **التنبيهات الذكيّة** (تجاوز/ادخار/أهداف/ديون) + ملخّص يومي بالبريد |
+| 11 | **`Forecast.gs_11`** | **التوقّعات المالية المستقبلية** وإسقاط الأشهر القادمة |
+| 12 | **`UserGuide.gs_12`** | **دليل الاستخدام المدمج** عبر شريط جانبي |
+| 13 | **`Recovery.gs_13`** | **نظام الطوارئ (Snapshots)**: إنشاء/تدوير/استرجاع + المشغّلات الدوريّة |
+| — | **`TopDialog.html`** | لوحة التحكّم السريعة المنبثقة (Dark Mode + RTL + أرقام لاتينيّة) |
+| — | **`OnboardingSidebar.html`** | شريط تهيئة المستخدم الجديد (Dark Mode + RTL) |
+| — | **`UserGuideSidebar.html`** | شريط دليل الاستخدام (Dark Mode + RTL + بحث) |
 
 ### Dependency flow
 

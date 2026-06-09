@@ -1,0 +1,227 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  نظام التنبيهات الذكيّة  ·  Notifications.gs_10
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - رصد المخاطر المالية للسنة النشطة: تجاوز الميزانية، انخفاض الادخار،
+ *      الأهداف المتعثّرة، والديون المستحقّة قريباً.
+ *    - عرض التنبيهات في توست/تنبيه وفي لوحة التحكّم، وإرسال ملخّص يومي بالبريد.
+ *    - فحص فوري خفيف عند تعديل المصاريف (يُستدعى من onEdit دون إبطائه).
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) محرّك بناء التنبيهات
+ * ===========================================================================*/
+
+/**
+ * بناء قائمة التنبيهات المالية للسنة النشطة بفحص المصادر الأربعة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة المراد فحصها.
+ * @return {Array<Object>} عناصر [{level, icon, text}] بأرقام لاتينيّة.
+ */
+function buildNotifications(ss, year) {
+  const out = [];
+  scanBudgetAlerts(ss, year, out);   // تجاوز/اقتراب من حدّ الميزانية شهرياً
+  scanSavingsRate(ss, year, out);    // انخفاض معدّل الادخار السنوي
+  scanGoalsAtRisk(ss, out);          // أهداف يقترب موعدها دون اكتمال
+  scanDebtsDueSoon(ss, out);         // ديون تستحقّ خلال المدّة المحدّدة
+  return out;
+}
+
+/**
+ * فحص الأوراق الشهريّة: يضيف تنبيهاً لكل شهر تجاوز فيه المصروف الفعلي المتوقّع
+ * أو اقترب من حدّه (90%). يقرأ مؤشّرات الشهر الجاهزة (D3 متوقّع، D4 فعلي).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة.
+ * @param {Array} out مصفوفة التنبيهات (تُعدَّل في المكان).
+ */
+function scanBudgetAlerts(ss, year, out) {
+  monthSheetNames(year).forEach((name, i) => {
+    const s = ss.getSheetByName(name);
+    if (!s) return;
+    // D3 = المصروف المتوقّع، D4 = المصروف الفعلي (من لوحة مؤشّرات الشهر)
+    const expected = Number(s.getRange('D3').getValue()) || 0;
+    const actual   = Number(s.getRange('D4').getValue()) || 0;
+    if (expected <= 0) return;
+    if (actual > expected) {
+      out.push({ level: 'high', icon: '🔴', text: TXT_NOTIFY.overBudget.replace('{month}', MONTHS[i]) });
+    } else if (actual >= NOTIFY_CONFIG.nearLimitRatio * expected) {
+      out.push({ level: 'mid', icon: '🟡', text: TXT_NOTIFY.nearLimit.replace('{month}', MONTHS[i]) });
+    }
+  });
+}
+
+/**
+ * فحص معدّل الادخار السنوي من المحرّك الخلفي (H7) وإضافة تنبيه إن كان منخفضاً.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة (غير مستخدَمة مباشرةً لأنّ المحرّك يعكس النشطة).
+ * @param {Array} out مصفوفة التنبيهات.
+ */
+function scanSavingsRate(ss, year, out) {
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!engine) return;
+  const rate = Number(engine.getRange('H7').getValue()) || 0; // نسبة الادخار الحاليّة
+  if (rate > 0 && rate < NOTIFY_CONFIG.lowSavingsRate) {
+    const pct = toLatinDigits((rate * 100).toFixed(1)) + '%';
+    out.push({ level: 'mid', icon: '🟡', text: TXT_NOTIFY.lowSaving.replace('{rate}', pct) });
+  }
+}
+
+/**
+ * فحص ورقة الأهداف: يضيف تنبيهاً لكل هدف "قيد الادخار" يقترب موعده (≤ 3 أشهر).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {Array} out مصفوفة التنبيهات.
+ */
+function scanGoalsAtRisk(ss, out) {
+  const goals = ss.getSheetByName(SHEET_NAMES.goals);
+  if (!goals) return;
+  // الأعمدة: A الاسم، F الأشهر المتبقية، H الحالة (محسوبة)
+  const data = goals.getRange('A7:H26').getValues();
+  data.forEach(row => {
+    const nameG = row[0], monthsLeft = Number(row[5]) || 0, status = row[7];
+    if (!nameG) return;
+    // هدف غير مكتمل وموعده قريب (بين 1 و3 أشهر) ⇒ تنبيه
+    if (status === TXT_GOAL_STATUS.saving && monthsLeft > 0 && monthsLeft <= 3) {
+      out.push({ level: 'mid', icon: '⏳', text: TXT_NOTIFY.goalRisk.replace('{goal}', nameG) });
+    }
+  });
+}
+
+/**
+ * فحص مفكرة الديون: يضيف تنبيهاً لكل دين غير مسدَّد يستحقّ خلال المدّة المحدّدة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {Array} out مصفوفة التنبيهات.
+ */
+function scanDebtsDueSoon(ss, out) {
+  const debts = ss.getSheetByName(SHEET_NAMES.debts);
+  if (!debts) return;
+  const tz = ss.getSpreadsheetTimeZone();
+  const today = new Date();
+  const data = debts.getRange(
+    `A${LAYOUT.debtsFirstRow}:H${LAYOUT.debtsLastRow}`).getValues();
+  data.forEach(row => {
+    const party = row[0];                 // A الطرف
+    const remaining = Number(row[4]) || 0;// E المتبقّي
+    const dueRaw = row[6];                 // G تاريخ الاستحقاق
+    const status = row[7];                 // H الحالة
+    if (!party || status === DEBT_STATUSES[2] || remaining <= 0) return; // مسدَّد بالكامل يُتجاهَل
+    const due = dueRaw instanceof Date ? dueRaw : (dueRaw ? new Date(dueRaw) : null);
+    if (!due || isNaN(due.getTime())) return;
+    const days = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (days >= 0 && days <= NOTIFY_CONFIG.dueSoonDays) {
+      out.push({
+        level: 'high', icon: '💳',
+        text: TXT_NOTIFY.debtDue
+          .replace('{party}', party)
+          .replace('{days}', toLatinDigits(days))
+          .replace('{amount}', toLatinDigits(remaining)),
+      });
+    }
+  });
+}
+
+/* ===========================================================================
+ *  (2) العرض والاستهلاك
+ * ===========================================================================*/
+
+/**
+ * إرجاع التنبيهات الحاليّة للوحة التحكّم/الشريط (نصوص جاهزة بأرقام لاتينيّة).
+ * @return {Array<Object>} قائمة التنبيهات أو عنصر "لا تنبيهات".
+ */
+function getNotifications() {
+  const ss = SpreadsheetApp.getActive();
+  const list = buildNotifications(ss, getActiveYear());
+  if (!list.length) return [{ level: 'ok', icon: '✅', text: TXT_NOTIFY.none }];
+  return list;
+}
+
+/** غلاف قائمة: عرض ملخّص التنبيهات الآن في تنبيه منبثق. */
+function menuShowNotifications() {
+  const ui = SpreadsheetApp.getUi();
+  const list = buildNotifications(SpreadsheetApp.getActive(), getActiveYear());
+  const body = list.length
+    ? list.map(n => n.icon + ' ' + n.text).join('\n')
+    : TXT_NOTIFY.none;
+  ui.alert(TXT_NOTIFY.summaryTitle, toLatinDigits(body), ui.ButtonSet.OK);
+}
+
+/**
+ * فحص فوري خفيف عند تعديل خليّة مصروف فعلي في ورقة شهريّة (من onEdit).
+ * يعرض توست سريعاً إن تجاوز صفّ المصروف حدّه، دون مسح كامل المصنّف (أداء).
+ * @param {Object} e كائن حدث التعديل.
+ */
+function notifyOnEdit(e) {
+  if (!isFeatureEnabled('notifications') || !e || !e.range) return;
+  const s = e.range.getSheet();
+  const name = s.getName();
+  // نتأكّد أنّ الورقة ورقة شهر للسنة النشطة قبل أيّ عمل
+  if (monthSheetNames(getActiveYear()).indexOf(name) === -1) return;
+  const row = e.range.getRow(), col = e.range.getColumn();
+  // العمود E (المصروف الفعلي) ضمن نطاق صفوف المصاريف فقط
+  if (col !== 5 || row < LAYOUT.expenseFirstRow || row > LAYOUT.expenseLastRow) return;
+
+  const expected = Number(s.getRange('D' + row).getValue()) || 0;
+  const actual   = Number(s.getRange('E' + row).getValue()) || 0;
+  if (expected > 0 && actual > expected) {
+    SpreadsheetApp.getActive().toast(
+      TXT_NOTIFY.overBudget.replace('{month}', name), TXT_NOTIFY.title, 5);
+  }
+}
+
+/* ===========================================================================
+ *  (3) المشغّل اليومي وإرسال الملخّص بالبريد
+ * ===========================================================================*/
+
+/** غلاف قائمة: تفعيل مشغّل ملخّص التنبيهات اليومي. */
+function menuInstallNotifyTrigger() {
+  const ui = SpreadsheetApp.getUi();
+  installNotifyTrigger();
+  ui.alert(TXT_NOTIFY.onTitle, TXT_NOTIFY.onBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: إيقاف مشغّل ملخّص التنبيهات اليومي. */
+function menuRemoveNotifyTrigger() {
+  const ui = SpreadsheetApp.getUi();
+  removeNotifyTrigger();
+  ui.alert(TXT_NOTIFY.offTitle, TXT_NOTIFY.offBody, ui.ButtonSet.OK);
+}
+
+/** تركيب مشغّل يومي يرسل ملخّص التنبيهات صباحاً (مع منع الازدواج). */
+function installNotifyTrigger() {
+  removeNotifyTrigger();
+  ScriptApp.newTrigger(TRIGGER_HANDLERS.dailyNotify)
+    .timeBased()
+    .everyDays(1)
+    .atHour(NOTIFY_CONFIG.triggerHour)
+    .create();
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.notifyInstalled, 'true');
+}
+
+/** إزالة مشغّل ملخّص التنبيهات اليومي. */
+function removeNotifyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(tr => {
+    if (tr.getHandlerFunction() === TRIGGER_HANDLERS.dailyNotify) ScriptApp.deleteTrigger(tr);
+  });
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.notifyInstalled, 'false');
+}
+
+/**
+ * معالِج المشغّل اليومي: يبني التنبيهات ويرسل ملخّصاً بالبريد إن وُجدت.
+ * @param {Object} e كائن حدث المشغّل (غير مستخدَم).
+ */
+function dailyNotificationTrigger(e) {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const list = buildNotifications(ss, getActiveYear());
+    if (!list.length) return; // لا نُرسل بريداً عند عدم وجود تنبيهات
+    const body = list.map(n => '• ' + n.icon + ' ' + n.text).join('\n');
+    MailApp.sendEmail(
+      Session.getEffectiveUser().getEmail(),
+      TXT_NOTIFY.emailSubject,
+      toLatinDigits(body + '\n\n' + versionSignature()));
+  } catch (err) {
+    console.error('فشل مشغّل التنبيهات اليومي: ' + err);
+  }
+}

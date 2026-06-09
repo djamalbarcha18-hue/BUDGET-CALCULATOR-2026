@@ -31,6 +31,7 @@ function precreateAllSheetStubs(ss, year) {
     SHEET_NAMES.debts,
     ...monthSheetNames(year),
     SHEET_NAMES.dashboard,
+    SHEET_NAMES.forecast,
     SHEET_NAMES.engine,
     SHEET_NAMES.snapshots,
   ];
@@ -72,6 +73,7 @@ function reorderTabs(ss, year) {
     SHEET_NAMES.debts,
     ...monthSheetNames(year),
     SHEET_NAMES.dashboard,
+    SHEET_NAMES.forecast,
     SHEET_NAMES.engine,
     SHEET_NAMES.snapshots,
   ];

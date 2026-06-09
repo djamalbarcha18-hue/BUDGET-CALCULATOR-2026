@@ -11,6 +11,15 @@
     "04_System.gs",
     "05_Demo_QA.gs",
     "06_Core.gs",
-    "TopDialog.html"
+    "07_Manifest.gs",
+    "08_Export.gs",
+    "09_Onboarding.gs",
+    "10_Notifications.gs",
+    "11_Forecast.gs",
+    "12_UserGuide.gs",
+    "13_Recovery.gs",
+    "TopDialog.html",
+    "OnboardingSidebar.html",
+    "UserGuideSidebar.html"
   ]
 }

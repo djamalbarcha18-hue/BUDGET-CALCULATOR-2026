@@ -1,0 +1,137 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  محرّك التصدير إلى PDF والطباعة  ·  Export.gs_08
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - تصدير اللوحة الرئيسيّة أو الشهر الحالي كملفّ PDF أنيق.
+ *    - حفظ الملفّ في مجلّد مخصّص على Google Drive وإرجاع رابطه.
+ *    - أغلفة قائمة لتشغيل التصدير وعرض رابط الملفّ للمستخدم.
+ *
+ *  الآليّة: نبني رابط تصدير Google Sheets الرسمي (export?format=pdf) مع
+ *  إعدادات تخطيط أفقي وهوامش، ونجلبه عبر UrlFetchApp برمز OAuth الحالي،
+ *  ثمّ نحفظ الـ blob في Drive. كل أسماء الملفّات بأرقام لاتينيّة.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) أغلفة القائمة
+ * ===========================================================================*/
+
+/** غلاف قائمة: تصدير اللوحة الرئيسيّة إلى PDF وعرض الرابط. */
+function menuExportDashboardPdf() {
+  const ui = SpreadsheetApp.getUi();
+  const url = exportDashboardPdf();
+  if (url) ui.alert(TXT_EXPORT.doneTitle, TXT_EXPORT.doneBody.replace('{url}', url), ui.ButtonSet.OK);
+  else     ui.alert(TXT_EXPORT.failTitle, TXT_EXPORT.failBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: تصدير الشهر الحالي (الورقة النشطة) إلى PDF. */
+function menuExportActiveMonthPdf() {
+  const ui = SpreadsheetApp.getUi();
+  const url = exportActiveMonthPdf();
+  if (url) ui.alert(TXT_EXPORT.doneTitle, TXT_EXPORT.doneBody.replace('{url}', url), ui.ButtonSet.OK);
+  else     ui.alert(TXT_EXPORT.failTitle, TXT_EXPORT.failBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (2) دوال التصدير عالية المستوى
+ * ===========================================================================*/
+
+/**
+ * تصدير ورقة اللوحة الرئيسيّة إلى PDF بصيغة أفقيّة (Landscape).
+ * @return {string|null} رابط الملفّ في Drive، أو null عند الفشل.
+ */
+function exportDashboardPdf() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (!sheet) return null;
+  const name = TXT_EXPORT.pdfDashName.replace('{year}', getActiveYear());
+  return exportSheetToPdf(sheet, name, /*landscape=*/true);
+}
+
+/**
+ * تصدير الورقة النشطة (يُفترَض أنّها ورقة شهر) إلى PDF.
+ * @return {string|null} رابط الملفّ في Drive، أو null عند الفشل.
+ */
+function exportActiveMonthPdf() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getActiveSheet();
+  if (!sheet) return null;
+  // نشتقّ اسم الملفّ من اسم الورقة النشطة (مثال: "يناير 2025")
+  const name = toLatinDigits('تقرير - ' + sheet.getName());
+  return exportSheetToPdf(sheet, name, /*landscape=*/false);
+}
+
+/* ===========================================================================
+ *  (3) محرّك التصدير منخفض المستوى
+ * ===========================================================================*/
+
+/**
+ * تصدير ورقة محدّدة إلى ملفّ PDF محفوظ في مجلّد التقارير، وإرجاع رابطه.
+ * @param {Sheet} sheet الورقة المراد تصديرها.
+ * @param {string} fileName اسم الملفّ (بدون امتداد).
+ * @param {boolean} landscape هل التخطيط أفقي (true) أم عمودي (false).
+ * @return {string|null} رابط الملفّ، أو null عند الفشل.
+ */
+function exportSheetToPdf(sheet, fileName, landscape) {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    // نبني رابط التصدير الرسمي مع إعدادات تخطيط احترافيّة
+    const url = buildPdfExportUrl(ss.getId(), sheet.getSheetId(), landscape);
+    // نجلب الـ PDF برمز OAuth الخاص بالمستخدم الحالي
+    const token = ScriptApp.getOAuthToken();
+    const resp = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true,
+    });
+    if (resp.getResponseCode() !== 200) return null;
+
+    // نحفظ الملفّ في مجلّد التقارير المخصّص ونُرجع رابطه
+    const stamp = toLatinDigits(Utilities.formatDate(
+      new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm'));
+    const blob = resp.getBlob().setName(toLatinDigits(fileName) + ' (' + stamp + ').pdf');
+    const folder = getOrCreateExportFolder();
+    const file = folder.createFile(blob);
+    return file.getUrl();
+  } catch (err) {
+    console.error('فشل تصدير PDF: ' + err);
+    return null;
+  }
+}
+
+/**
+ * بناء رابط تصدير PDF لـ Google Sheets مع إعدادات تخطيط أنيقة (هوامش/توسيط).
+ * @param {string} ssId معرّف المصنّف.
+ * @param {number} gid معرّف الورقة (Sheet ID).
+ * @param {boolean} landscape التخطيط الأفقي.
+ * @return {string} رابط التصدير الكامل.
+ */
+function buildPdfExportUrl(ssId, gid, landscape) {
+  // نجمّع معاملات التصدير في كائن ثمّ نحوّله لسلسلة استعلام (DRY وقابل للقراءة)
+  const params = {
+    format: 'pdf',
+    gid: String(gid),
+    portrait: landscape ? 'false' : 'true',
+    size: 'A4',
+    fitw: 'true',           // ملاءمة العرض للصفحة
+    gridlines: 'false',     // إخفاء خطوط الشبكة لمظهر تقرير نظيف
+    printtitle: 'false',
+    sheetnames: 'false',
+    top_margin: '0.50', bottom_margin: '0.50',
+    left_margin: '0.50', right_margin: '0.50',
+    horizontal_alignment: 'CENTER',
+  };
+  const query = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  return 'https://docs.google.com/spreadsheets/d/' + ssId + '/export?' + query;
+}
+
+/**
+ * إرجاع مجلّد التقارير في Drive أو إنشاؤه إن لم يكن موجوداً.
+ * @return {Folder} مجلّد حفظ ملفّات PDF.
+ */
+function getOrCreateExportFolder() {
+  // نبحث باسم المجلّد المعرّف في الإعدادات، وننشئه عند غيابه
+  const it = DriveApp.getFoldersByName(EXPORT_CONFIG.folderName);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(EXPORT_CONFIG.folderName);
+}

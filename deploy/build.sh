@@ -33,6 +33,13 @@ declare -A MAP=(
   ["System.gs_04"]="04_System.gs"
   ["Demo_QA.gs_05"]="05_Demo_QA.gs"
   ["Core.gs_06"]="06_Core.gs"
+  ["Manifest.gs_07"]="07_Manifest.gs"
+  ["Export.gs_08"]="08_Export.gs"
+  ["Onboarding.gs_09"]="09_Onboarding.gs"
+  ["Notifications.gs_10"]="10_Notifications.gs"
+  ["Forecast.gs_11"]="11_Forecast.gs"
+  ["UserGuide.gs_12"]="12_UserGuide.gs"
+  ["Recovery.gs_13"]="13_Recovery.gs"
 )
 
 echo "🔁 تحويل ملفّات .gs_NN إلى أسماء صالحة لـ clasp…"
@@ -41,8 +48,10 @@ for src in "${!MAP[@]}"; do
   echo "   $src → ${MAP[$src]}"
 done
 
-echo "🎛️ نسخ واجهة HTML…"
-cp "$SRC/TopDialog.html" "$DIST/TopDialog.html"
+echo "🎛️ نسخ ملفّات واجهة HTML…"
+cp "$SRC/TopDialog.html"          "$DIST/TopDialog.html"
+cp "$SRC/OnboardingSidebar.html"  "$DIST/OnboardingSidebar.html"
+cp "$SRC/UserGuideSidebar.html"   "$DIST/UserGuideSidebar.html"
 
 echo "✅ تم البناء في: $DIST"
 echo "   شغّل الآن:  clasp push   (من جذر المستودع)"
