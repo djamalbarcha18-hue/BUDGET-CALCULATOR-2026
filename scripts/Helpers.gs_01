@@ -75,6 +75,47 @@ function applyPercentFormat(range) {
   range.setNumberFormat(FMT_PERCENT);
 }
 
+/**
+ * تنسيق رقم كنصّ بأرقام لاتينيّة صارمة (1, 2, 3) مع فاصل آلاف وكسور محدّدة.
+ * يُستعمل عند بناء أيّ نصّ يحوي قيمة ماليّة لحقن أرقام لاتينيّة مهما كانت لغة
+ * النظام، حمايةً للمعادلات وتوحيداً للعرض في الواجهة العربيّة.
+ * @param {number|string} value القيمة الرقميّة.
+ * @param {number} [decimals=2] عدد المنازل العشريّة.
+ * @return {string} الرقم منسَّقاً بأرقام لاتينيّة.
+ */
+function formatLatinNumber(value, decimals) {
+  // نحوّل القيمة لرقم آمن ثمّ ننسّقها بفاصل آلاف إنجليزي (أرقام لاتينيّة دائماً)
+  const n = Number(toLatinDigits(value));
+  const safe = isNaN(n) ? 0 : n;
+  const d = (decimals === undefined) ? 2 : decimals;
+  return toLatinDigits(safe.toLocaleString('en-US', {
+    minimumFractionDigits: d, maximumFractionDigits: d,
+  }));
+}
+
+/**
+ * تنسيق تاريخ كنصّ لاتيني موحَّد (yyyy-mm-dd) بصرف النظر عن لغة النظام.
+ * @param {Date} date كائن التاريخ.
+ * @param {string} [tz] المنطقة الزمنيّة (افتراضياً منطقة المصنّف).
+ * @return {string} التاريخ بصيغة ISO وأرقام لاتينيّة.
+ */
+function formatLatinDate(date, tz) {
+  // نعتمد صيغة ISO ثابتة ونفرض الأرقام اللاتينيّة على الناتج
+  const zone = tz || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  return toLatinDigits(Utilities.formatDate(date, zone, FMT_DATE));
+}
+
+/**
+ * فرض تنسيق رقمي لاتيني صارم على نطاق (يمنع ظهور الأرقام العربيّة-الهنديّة).
+ * نضبط التنسيق الرقمي صراحةً (#,##0.00) الذي يَعرض دائماً أرقاماً لاتينيّة،
+ * كطبقة حماية إضافيّة فوق ضبط لغة المصنّف en_US.
+ * @param {Range} range النطاق المستهدف.
+ * @param {string} [pattern='#,##0.00'] نمط العرض الرقمي.
+ */
+function enforceLatinNumberFormat(range, pattern) {
+  range.setNumberFormat(pattern || '#,##0.00');
+}
+
 /* ===========================================================================
  *  (2) إنشاء الأوراق وتنسيق الخلايا (Sheet & Cell Utilities)
  * ===========================================================================*/

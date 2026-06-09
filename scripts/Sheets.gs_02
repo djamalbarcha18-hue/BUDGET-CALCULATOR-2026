@@ -210,6 +210,10 @@ function applyMonthlyValidations(ss, year) {
   monthSheetNames(year).forEach(name => {
     const s = ss.getSheetByName(name);
     if (!s) return;
+    // منع أيّ قائمة منسدلة للسنة أو العملة داخل لوحة مؤشّرات الشهر:
+    // نمسح أيّ تحقّق بيانات من منطقة الرأس (A1:H6) لأنّ التحكّم مركزيّ في اللوحة.
+    s.getRange('A1:H6').clearDataValidations();
+    // قوائم الفئات وطرق الدفع تبقى داخل صفوف الإدخال فقط (الدخل/المصاريف)
     s.getRange(`B${LAYOUT.incomeFirstRow}:B${LAYOUT.incomeLastRow}`).setDataValidation(incomeCatDv);
     s.getRange(`B${LAYOUT.expenseFirstRow}:B${LAYOUT.expenseLastRow}`).setDataValidation(expenseCatDv);
     s.getRange(`G${LAYOUT.incomeFirstRow}:G${LAYOUT.incomeLastRow}`).setDataValidation(payDv);

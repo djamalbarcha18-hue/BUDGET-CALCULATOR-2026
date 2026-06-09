@@ -152,6 +152,9 @@ function buildDashboard(ss, year) {
   mergeAndStyle(s, 'B2:Y2', TXT_TITLES.dashboard + ' — ' + year,
     { bg: T.bgPage, fg: T.fgPrimary, size: 18, bold: true, align: 'center' });
 
+  // ---- لوحة التحكّم المركزيّة: محدّدا السنة والعملة (متغيّرات عامّة) ----
+  buildDashboardControls(s, ss, year);
+
   // ---- الوحدة 1: بطاقات المؤشّرات الستّ ----
   // نُعرِّف البطاقات كبيانات ونبنيها بحلقة واحدة (DRY) بدل تكرار الكود ستّ مرّات.
   const cards = [
@@ -219,6 +222,45 @@ function buildDashboard(ss, year) {
   lockChartAnchor(s, 'N11:Y26', 'Chart 2: Waterfall - تدفّق النقد (rng_dash_waterfall)');
   lockChartAnchor(s, 'B29:G44', 'Chart 3: دونات الدخل (rng_dash_doughnut_income)');
   lockChartAnchor(s, 'H29:M44', 'Chart 4: دونات المصاريف (rng_dash_doughnut_expense)');
+}
+
+/**
+ * بناء لوحة التحكّم المركزيّة أعلى اللوحة الرئيسيّة: محدّد السنة (قائمة منسدلة
+ * 2025-2035) ومحدّد العملة (قائمة عملات القالب). اختيارات هذه الخلايا تُمرَّر
+ * كمتغيّرات عامّة عبر onEdit فتؤثّر على كل الأوراق دفعةً واحدة.
+ * @param {Sheet} s ورقة اللوحة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة الحاليّة.
+ */
+function buildDashboardControls(s, ss, year) {
+  const settings = ss.getSheetByName(SHEET_NAMES.settings);
+
+  // تسميتان بنمط الوضع المظلم بجانب خليّتَي الاختيار
+  mergeAndStyle(s, 'B3:C3', TXT_DASH.ctrlYearLabel,
+    { bg: T.bgPage, fg: T.fgMuted, size: 11, align: 'right' });
+  mergeAndStyle(s, 'G3:H3', TXT_DASH.ctrlCurrencyLabel,
+    { bg: T.bgPage, fg: T.fgMuted, size: 11, align: 'right' });
+
+  // محدّد السنة النشطة (قائمة منسدلة بالأرقام اللاتينيّة 2025-2035)
+  const yearCell = s.getRange(DASH_CTRL.yearCell);
+  yearCell.setValue(String(year))
+    .setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontWeight('bold')
+    .setHorizontalAlignment('center');
+  yearCell.setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(allSupportedYears().map(String), true)
+    .setAllowInvalid(false).build());
+
+  // محدّد عملة القالب (قائمة منسدلة من جدول العملات في ورقة الإعدادات)
+  const curCell = s.getRange(DASH_CTRL.currencyCell);
+  const curNow = settings ? settings.getRange('B3').getValue() : 'USD';
+  curCell.setValue(curNow || 'USD')
+    .setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontWeight('bold')
+    .setHorizontalAlignment('center');
+  if (settings) {
+    curCell.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInRange(settings.getRange('A7:A20'), true)
+      .setAllowInvalid(false).build());
+  }
 }
 
 /**

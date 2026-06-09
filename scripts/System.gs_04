@@ -98,8 +98,47 @@ function onEdit(e) {
     return; // لا داعي لفحص التنبيهات على ورقة الإعدادات
   }
 
+  // (ب-2) لوحة التحكّم المركزيّة: محدّدا السنة والعملة في اللوحة الرئيسيّة
+  if (sheet.getName() === SHEET_NAMES.dashboard) {
+    handleDashboardControlEdit(ss, e);
+    return; // لا فحص تنبيهات على اللوحة
+  }
+
   // (ج) فحص تنبيه فوري خفيف عند تعديل ورقة شهريّة (محرّك التنبيهات)
   notifyOnEdit(e);
+}
+
+/**
+ * معالجة تعديل خلايا التحكّم المركزي في اللوحة (السنة/العملة) وتمرير الاختيار
+ * كمتغيّر عام يؤثّر على كل الأوراق. تغيير السنة يُفعّل محرّك السنوات، وتغيير
+ * العملة يُحدّث rng_MainCurrency (خليّة الإعدادات B3) فتتبدّل كل التنسيقات.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {Object} e كائن حدث التعديل.
+ */
+function handleDashboardControlEdit(ss, e) {
+  const a1 = e.range.getA1Notation();
+
+  // محدّد السنة: نفعّل السنة الجديدة عبر محرّك السنوات (يعيد بناء كل شيء)
+  if (a1 === DASH_CTRL.yearCell) {
+    const year = parseInt(toLatinDigits(e.range.getValue()), 10);
+    if (isValidYear(year) && year !== getActiveYear()) {
+      activateYear(ss, year);
+      SpreadsheetApp.getActive().toast(
+        TXT_DASH.yearChangedBody.replace('{year}', year), TXT_DASH.yearChangedTitle, 8);
+    }
+    return;
+  }
+
+  // محدّد العملة: نكتب الاختيار في خليّة الإعدادات B3 (rng_MainCurrency)
+  // فتتحدّث كل القيم والتنسيقات المعتمدة عليها في المصنّف بأكمله.
+  if (a1 === DASH_CTRL.currencyCell) {
+    const cur = String(e.range.getValue()).trim();
+    if (!cur) return;
+    const settings = ss.getSheetByName(SHEET_NAMES.settings);
+    if (settings) settings.getRange('B3').setValue(cur);
+    SpreadsheetApp.getActive().toast(
+      TXT_DASH.currencyChangedBody.replace('{cur}', cur), TXT_DASH.currencyChangedTitle, 8);
+  }
 }
 
 /**
