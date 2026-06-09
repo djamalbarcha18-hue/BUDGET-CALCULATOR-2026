@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+   SmartBudget Pro 2026 · لوحة التحكّم السريعة المنبثقة · TopDialog.html
+  ----------------------------------------------------------------------------
+   نافذة حواريّة عربيّة (RTL) بتصميم Fintech Dark Mode فاخر، تُعرَض فوق شريط
+   أدوات Google Sheets عبر showTopDialog(). تتواصل مع الخادم حصراً عبر
+   google.script.run، وتفرض الأرقام اللاتينيّة (1, 2, 3) على كل العرض والمُدخلات.
+   نظام التصميم موحَّد عبر كل واجهات HTML (الخلفيّة #121212 · البطاقات #1E1E1E).
+  ============================================================================
+-->
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- خطّ Tajawal (مع Cairo بديلاً) من Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ---- نظام التصميم الموحَّد (Fintech Dark Mode) ---- */
+    :root {
+      --bg-page:   #121212;  /* خلفيّة عامّة داكنة جداً */
+      --bg-card:   #1E1E1E;  /* خلفيّة البطاقات */
+      --bg-elev:   #2A2A2A;  /* عناصر مرتفعة (أزرار/حقول) */
+      --fg:        #FFFFFF;  /* نصّ أساسي أبيض */
+      --muted:     #B0B0B0;  /* نصّ ثانوي رمادي فاتح */
+      --income:    #00B050;  /* أخضر الدخل */
+      --expense:   #FF0000;  /* أحمر المصاريف */
+      --saving:    #00B0F0;  /* أزرق الادخار/الإجراءات المحايدة */
+      --amber:     #F59E0B;  /* تحذير */
+      --grid:      #2E2E2E;  /* حدود خافتة */
+      --radius-card: 14px;
+      --radius-ctrl: 10px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg-page); color: var(--fg);
+      font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
+      direction: rtl;
+    }
+    .wrap { padding: 16px 18px 12px; }
+    header { text-align: center; margin-bottom: 14px; }
+    header h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+    header p { font-size: 12px; color: var(--muted); margin: 0; }
+
+    /* ---- شارة حالة المشغّل الدوري ---- */
+    .trigger-badge {
+      display: inline-block; margin-top: 8px; padding: 5px 14px;
+      border-radius: 999px; font-size: 12px; font-weight: 600;
+      background: var(--bg-elev); border: 1px solid var(--grid);
+    }
+    .trigger-badge.on  { color: var(--income); border-color: var(--income); }
+    .trigger-badge.off { color: var(--muted); }
+
+    /* ---- البطاقات والأقسام ---- */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--grid);
+      border-radius: var(--radius-card); padding: 14px; margin-bottom: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    }
+    .card h2 {
+      font-size: 13px; color: var(--muted); margin: 0 0 10px;
+      font-weight: 700; letter-spacing: .2px;
+    }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    label { font-size: 13px; color: var(--fg); }
+
+    select, input {
+      background: var(--bg-elev); color: var(--fg);
+      border: 1px solid var(--grid); border-radius: var(--radius-ctrl);
+      padding: 9px 11px; font-size: 14px; font-family: inherit;
+      direction: ltr; text-align: center; /* الأرقام لاتينيّة دائماً */
+    }
+    select:focus, input:focus { outline: none; border-color: var(--saving); }
+
+    /* ---- الأزرار (حواف ناعمة وانتقالات أنيقة) ---- */
+    button {
+      flex: 1 1 auto; min-width: 130px;
+      background: var(--bg-elev); color: var(--fg);
+      border: 1px solid var(--grid); border-radius: var(--radius-ctrl);
+      padding: 10px 12px; font-size: 13px; font-weight: 500; font-family: inherit;
+      cursor: pointer; transition: transform .05s ease, background .15s ease, box-shadow .15s ease;
+    }
+    button:hover  { background: #343434; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.primary { background: var(--saving);  border-color: var(--saving);  color: #04222b; font-weight: 700; }
+    button.good    { border-color: var(--income);  color: var(--income); }
+    button.warn    { border-color: var(--amber);   color: var(--amber); }
+    button.danger  { border-color: var(--expense); color: var(--expense); }
+
+    /* ---- شريط الحالة السفلي ---- */
+    .statusbar {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted);
+      border-top: 1px solid var(--grid); padding-top: 10px; margin-top: 4px;
+    }
+    .spinner {
+      width: 14px; height: 14px; border: 2px solid var(--grid);
+      border-top-color: var(--saving); border-radius: 50%;
+      animation: spin .7s linear infinite; display: none;
+    }
+    .spinner.show { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* مركز التنبيهات: أسطر ملوّنة حسب الخطورة */
+    .notif { font-size: 12px; padding: 8px 11px; border-radius: var(--radius-ctrl); margin-bottom: 6px;
+      border: 1px solid var(--grid); background: var(--bg-elev); color: var(--fg); }
+    .notif.high { border-color: var(--expense); }
+    .notif.mid  { border-color: var(--amber); }
+    .notif.ok   { border-color: var(--income); color: var(--income); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🎛️ لوحة التحكّم السريعة</h1>
+      <p>نظام مالي ذكي متكامل · SmartBudget Pro 2026</p>
+      <div id="triggerBadge" class="trigger-badge off">…</div>
+    </header>
+
+    <!-- قسم محرّك السنوات -->
+    <section class="card">
+      <h2>محرّك السنوات</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <label for="yearSelect">السنة النشطة</label>
+        <select id="yearSelect"></select>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="run('switchYear', true)">تفعيل السنة</button>
+        <button class="warn" onclick="run('archive', true)">أرشفة هذه السنة</button>
+      </div>
+    </section>
+
+    <!-- قسم البيانات والصيانة -->
+    <section class="card">
+      <h2>البيانات التجريبيّة والصيانة</h2>
+      <div class="row">
+        <button class="good" onclick="run('injectDemo')">حقن بيانات 2025 التجريبيّة</button>
+        <button onclick="run('clean')">تنظيف السنوات الأخرى</button>
+        <button onclick="run('repair')">إصلاح اللوحة الرئيسيّة</button>
+      </div>
+    </section>
+
+    <!-- قسم الطوارئ والنسخ الاحتياطي -->
+    <section class="card">
+      <h2>الطوارئ والنسخ الاحتياطي</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <button class="good" onclick="run('snapshot')">إنشاء نسخة طوارئ الآن</button>
+      </div>
+      <div class="row" style="margin-bottom:10px;">
+        <button class="good" onclick="run('installTriggers')">تفعيل النسخ الدوري التلقائي</button>
+        <button class="danger" onclick="run('removeTriggers')">إيقاف النسخ الدوري</button>
+      </div>
+      <!-- استرجاع تفاعلي: قائمة منسدلة بالنسخ المتاحة بدل مربّع الحوار النصّي -->
+      <div class="row" style="margin-bottom:8px;">
+        <label for="snapSelect">اختر نسخة للاسترجاع</label>
+      </div>
+      <div class="row">
+        <select id="snapSelect" style="flex:1 1 100%;"></select>
+        <button class="danger" id="restoreBtn" onclick="restoreSelected()">استرجاع هذه النسخة</button>
+      </div>
+    </section>
+
+    <!-- قسم الأدوات المتقدّمة: التصدير والتوقّعات والدليل -->
+    <section class="card">
+      <h2>أدوات متقدّمة</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <button onclick="run('exportDash')">📄 تصدير اللوحة PDF</button>
+        <button onclick="run('exportMonth')">🖨️ تصدير الشهر PDF</button>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="run('forecast')">📈 تحديث التوقّعات</button>
+        <button onclick="run('openGuide')">📚 دليل الاستخدام</button>
+      </div>
+    </section>
+
+    <!-- مركز التنبيهات الذكيّة -->
+    <section class="card">
+      <h2>🔔 التنبيهات الذكيّة</h2>
+      <div id="notifList"></div>
+    </section>
+
+    <div class="statusbar">
+      <span id="spinner" class="spinner"></span>
+      <span id="status">جاهز.</span>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * فرض الأرقام اللاتينيّة (1, 2, 3): تحويل أيّ أرقام عربيّة-هنديّة أو فارسيّة.
+     * @param {string|number} v القيمة.
+     * @return {string} النصّ بأرقام لاتينيّة.
+     */
+    function toLatinDigits(v) {
+      return String(v)
+        .replace(/[\u0660-\u0669]/g, function (d) { return d.charCodeAt(0) - 0x0660; })
+        .replace(/[\u06F0-\u06F9]/g, function (d) { return d.charCodeAt(0) - 0x06F0; });
+    }
+
+    var $ = function (id) { return document.getElementById(id); };
+
+    /** ضبط شريط الحالة والمؤشّر الدوّار. */
+    function setStatus(text, working) {
+      $('status').textContent = toLatinDigits(text);
+      $('spinner').classList.toggle('show', !!working);
+    }
+
+    /** تفعيل/تعطيل كل الأزرار أثناء التنفيذ لمنع النقر المزدوج. */
+    function setBusy(busy) {
+      var btns = document.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) btns[i].disabled = busy;
+    }
+
+    /** تحديث شارة حالة المشغّل الدوري ومحدّد السنة من حالة الخادم. */
+    function applyState(state) {
+      // محدّد السنة: نملؤه بالأرقام اللاتينيّة ونحدّد السنة النشطة
+      var sel = $('yearSelect');
+      sel.innerHTML = '';
+      (state.years || []).forEach(function (y) {
+        var opt = document.createElement('option');
+        opt.value = y; opt.textContent = toLatinDigits(y);
+        if (y === state.activeYear) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      // شارة المشغّل الدوري
+      var badge = $('triggerBadge');
+      if (state.triggersActive) {
+        badge.textContent = 'الحالة: النسخ الدوري مُفعّل ✅';
+        badge.className = 'trigger-badge on';
+      } else {
+        badge.textContent = 'الحالة: النسخ الدوري متوقّف ⏸️';
+        badge.className = 'trigger-badge off';
+      }
+
+      // قائمة النسخ الاحتياطيّة المتاحة للاسترجاع (الأحدث أوّلاً)
+      var snapSel = $('snapSelect');
+      var restoreBtn = $('restoreBtn');
+      snapSel.innerHTML = '';
+      var snaps = state.snapshots || [];
+      if (snaps.length === 0) {
+        // لا توجد نسخ: نعرض عنصراً معطّلاً ونعطّل زرّ الاسترجاع
+        var none = document.createElement('option');
+        none.textContent = 'لا توجد نسخ محفوظة بعد'; none.value = '';
+        snapSel.appendChild(none);
+        snapSel.disabled = true; restoreBtn.disabled = true;
+      } else {
+        snapSel.disabled = false; restoreBtn.disabled = false;
+        snaps.forEach(function (snap) {
+          var opt = document.createElement('option');
+          opt.value = snap.key; opt.textContent = toLatinDigits(snap.label);
+          snapSel.appendChild(opt);
+        });
+      }
+
+      // مركز التنبيهات: نرسم كل تنبيه كسطر ملوّن حسب خطورته
+      var nl = $('notifList');
+      if (nl) {
+        nl.innerHTML = '';
+        (state.notifications || []).forEach(function (n) {
+          var div = document.createElement('div');
+          div.className = 'notif ' + (n.level || 'ok');
+          div.textContent = n.icon + ' ' + toLatinDigits(n.text);
+          nl.appendChild(div);
+        });
+      }
+    }
+
+    /** استرجاع النسخة المختارة من القائمة المنسدلة بعد تأكيد المستخدم. */
+    function restoreSelected() {
+      var sel = $('snapSelect');
+      if (!sel.value) { setStatus('لا توجد نسخة مختارة.', false); return; }
+      // نطلب تأكيداً صريحاً لأنّ الاسترجاع يستبدل بيانات الإدخال الحاليّة
+      if (!window.confirm('سيُستبدل الإدخال الحالي ببيانات النسخة المختارة. هل تريد المتابعة؟')) return;
+      setBusy(true); setStatus('جارٍ الاسترجاع…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) {
+            setStatus(res.message || 'تمّ الاسترجاع.', false);
+            if (res.state) applyState(res.state);
+          } else { setStatus((res && res.message) ? res.message : 'تعذّر الاسترجاع.', false); }
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus('حدث خطأ: ' + (err && err.message ? err.message : err), false);
+        })
+        .dialogRunAction('restore', { key: sel.value });
+    }
+
+    /**
+     * تنفيذ أمر على الخادم عبر google.script.run.
+     * @param {string} action اسم الأمر.
+     * @param {boolean} needsYear هل يحتاج الأمر للسنة المختارة.
+     */
+    function run(action, needsYear) {
+      setBusy(true); setStatus('جارٍ التنفيذ…', true);
+      // نقرأ السنة المختارة ونفرض عليها الأرقام اللاتينيّة قبل الإرسال
+      var params = needsYear ? { year: parseInt(toLatinDigits($('yearSelect').value), 10) } : {};
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) {
+            setStatus(res.message || 'تمّت العمليّة بنجاح.', false);
+            if (res.state) applyState(res.state);
+          } else {
+            setStatus((res && res.message) ? res.message : 'حدث خطأ، حاول مجدّداً.', false);
+          }
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus('حدث خطأ: ' + (err && err.message ? err.message : err), false);
+        })
+        .dialogRunAction(action, params);
+    }
+
+    /** تحميل الحالة الأوّليّة عند فتح اللوحة. */
+    (function init() {
+      setStatus('جارٍ التحميل…', true); setBusy(true);
+      google.script.run
+        .withSuccessHandler(function (state) {
+          applyState(state); setBusy(false); setStatus('جاهز.', false);
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false); setStatus('تعذّر تحميل الحالة.', false);
+        })
+        .dialogGetState();
+    })();
+  </script>
+</body>
+</html>

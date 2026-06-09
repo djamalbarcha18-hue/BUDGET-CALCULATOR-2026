@@ -1,0 +1,296 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  ملف الدوال المساعدة  ·  Helpers.gs_01
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - دوال الأدوات العامّة (Utilities) المشتركة بين كل الوحدات.
+ *    - فرض صيغة الأرقام اللاتينيّة (1, 2, 3) برمجياً لحماية المعادلات.
+ *    - تنسيق التواريخ والأرقام، وإنشاء/تنسيق الأوراق والخلايا.
+ *    - دوال محرّك السنوات المساعدة (أسماء الأوراق، السنة النشطة).
+ *
+ *  قاعدة حاسمة: الواجهة عربيّة بالكامل، لكنّ كل الأرقام والتواريخ تُعرَض
+ *  بالأرقام اللاتينيّة لمنع كسر المعادلات الحسابيّة في Google Sheets.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) فرض الأرقام اللاتينيّة وتنسيق الأرقام والتواريخ
+ * ===========================================================================*/
+
+/** صيغة عرض التاريخ الموحَّدة (لاتينيّة، ISO) في كل المصنّف. */
+const FMT_DATE   = 'yyyy-mm-dd';
+/** صيغة عرض النسبة المئويّة الموحَّدة. */
+const FMT_PERCENT = '0.0%';
+
+/**
+ * تحويل أيّ أرقام عربيّة-هنديّة (٠١٢…) أو فارسيّة إلى أرقام لاتينيّة (012…).
+ * تُستعمل قبل كتابة أيّ نصّ يحوي أرقاماً، لضمان ثبات صيغة الأرقام اللاتينيّة.
+ * @param {*} value القيمة (نصّ أو رقم).
+ * @return {string} النصّ بعد تحويل أرقامه إلى لاتينيّة.
+ */
+function toLatinDigits(value) {
+  // نحوّل القيمة إلى نصّ ثمّ نستبدل النطاقين العربي والفارسي بالأرقام اللاتينيّة
+  const s = String(value);
+  return s
+    .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660))  // ٠-٩ العربيّة
+    .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0)); // ۰-۹ الفارسيّة
+}
+
+/**
+ * فرض المنطقة الزمنيّة/اللغويّة التي تعرض الأرقام اللاتينيّة على مستوى المصنّف.
+ * ضبط اللغة على en_US يضمن عرض الأرقام بالشكل اللاتيني والفاصل العشري نقطة،
+ * بينما يبقى عرض RTL مُفعَّلاً لكل ورقة على حدة (لا يتأثّر اتجاه الواجهة العربيّة).
+ * @param {Spreadsheet} ss المصنّف النشط.
+ */
+function enforceLatinLocale(ss) {
+  // نضبط لغة المصنّف لضمان أرقام لاتينيّة ثابتة في كل الحسابات والتواريخ
+  ss.setSpreadsheetLocale('en_US');
+}
+
+/**
+ * تطبيق التنسيق المالي النشط (من rng_ActiveFormat) على نطاق ما.
+ * الصيغ الرقميّة (#,##0.00) تعرض دائماً أرقاماً لاتينيّة.
+ * @param {Range} range النطاق المستهدف.
+ */
+function applyCurrencyFormat(range) {
+  // نربط النطاق بسلسلة التنسيق المالي النشطة عبر دالّة TEXT غير الممكنة هنا،
+  // لذا نكتفي بتنسيق رقمي افتراضي يضمن الأرقام اللاتينيّة (العملة تُدار بالصيغ).
+  range.setNumberFormat('#,##0.00');
+}
+
+/**
+ * تطبيق صيغة التاريخ اللاتينيّة الموحَّدة على نطاق.
+ * @param {Range} range النطاق المستهدف.
+ */
+function applyDateFormat(range) {
+  range.setNumberFormat(FMT_DATE);
+}
+
+/**
+ * تطبيق صيغة النسبة المئويّة الموحَّدة على نطاق.
+ * @param {Range} range النطاق المستهدف.
+ */
+function applyPercentFormat(range) {
+  range.setNumberFormat(FMT_PERCENT);
+}
+
+/**
+ * تنسيق رقم كنصّ بأرقام لاتينيّة صارمة (1, 2, 3) مع فاصل آلاف وكسور محدّدة.
+ * يُستعمل عند بناء أيّ نصّ يحوي قيمة ماليّة لحقن أرقام لاتينيّة مهما كانت لغة
+ * النظام، حمايةً للمعادلات وتوحيداً للعرض في الواجهة العربيّة.
+ * @param {number|string} value القيمة الرقميّة.
+ * @param {number} [decimals=2] عدد المنازل العشريّة.
+ * @return {string} الرقم منسَّقاً بأرقام لاتينيّة.
+ */
+function formatLatinNumber(value, decimals) {
+  // نحوّل القيمة لرقم آمن ثمّ ننسّقها بفاصل آلاف إنجليزي (أرقام لاتينيّة دائماً)
+  const n = Number(toLatinDigits(value));
+  const safe = isNaN(n) ? 0 : n;
+  const d = (decimals === undefined) ? 2 : decimals;
+  return toLatinDigits(safe.toLocaleString('en-US', {
+    minimumFractionDigits: d, maximumFractionDigits: d,
+  }));
+}
+
+/**
+ * تنسيق تاريخ كنصّ لاتيني موحَّد (yyyy-mm-dd) بصرف النظر عن لغة النظام.
+ * @param {Date} date كائن التاريخ.
+ * @param {string} [tz] المنطقة الزمنيّة (افتراضياً منطقة المصنّف).
+ * @return {string} التاريخ بصيغة ISO وأرقام لاتينيّة.
+ */
+function formatLatinDate(date, tz) {
+  // نعتمد صيغة ISO ثابتة ونفرض الأرقام اللاتينيّة على الناتج
+  const zone = tz || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  return toLatinDigits(Utilities.formatDate(date, zone, FMT_DATE));
+}
+
+/**
+ * فرض تنسيق رقمي لاتيني صارم على نطاق (يمنع ظهور الأرقام العربيّة-الهنديّة).
+ * نضبط التنسيق الرقمي صراحةً (#,##0.00) الذي يَعرض دائماً أرقاماً لاتينيّة،
+ * كطبقة حماية إضافيّة فوق ضبط لغة المصنّف en_US.
+ * @param {Range} range النطاق المستهدف.
+ * @param {string} [pattern='#,##0.00'] نمط العرض الرقمي.
+ */
+function enforceLatinNumberFormat(range, pattern) {
+  range.setNumberFormat(pattern || '#,##0.00');
+}
+
+/* ===========================================================================
+ *  (2) إنشاء الأوراق وتنسيق الخلايا (Sheet & Cell Utilities)
+ * ===========================================================================*/
+
+/**
+ * إرجاع ورقة موجودة أو إنشاؤها إن لم تكن موجودة، مع تفعيل RTL.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} name اسم الورقة.
+ * @return {Sheet} الورقة الجاهزة.
+ */
+function getOrCreateSheet(ss, name) {
+  // نبحث عن الورقة، وإن غابت ننشئها، ثمّ نضمن اتجاه العرض من اليمين لليسار
+  let s = ss.getSheetByName(name);
+  if (!s) s = ss.insertSheet(name);
+  s.setRightToLeft(true);
+  return s;
+}
+
+/**
+ * تلوين كامل ورقة بخلفيّة ولون نصّ (لتطبيق الوضع المظلم).
+ * @param {Sheet} s الورقة.
+ * @param {string} fg لون النصّ.
+ * @param {string} bg لون الخلفيّة.
+ */
+function paintSheet(s, fg, bg) {
+  // نطبّق الثيم على كامل الشبكة المرئيّة للورقة دفعة واحدة (أداء أفضل)
+  s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns())
+    .setBackground(bg).setFontColor(fg);
+}
+
+/**
+ * تلوين نطاق ببطاقة الوضع المظلم (خلفيّة البطاقة + نصّ أساسي).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 مرجع النطاق بصيغة A1.
+ */
+function paintCard(s, a1) {
+  s.getRange(a1).setBackground(T.bgCard).setFontColor(T.fgPrimary);
+}
+
+/**
+ * دمج نطاق وتطبيق نمط موحَّد عليه (عنوان/تسمية/قيمة).
+ * يقلّل التكرار الهائل في بناء البطاقات والعناوين (مبدأ DRY).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 مرجع النطاق.
+ * @param {*} value القيمة (اختياريّة).
+ * @param {Object} opts خيارات النمط (bg, fg, size, bold, align, vAlign, wrap, fontFamily).
+ * @return {Range} النطاق بعد التنسيق.
+ */
+function mergeAndStyle(s, a1, value, opts) {
+  const r = s.getRange(a1);
+  r.merge();
+  // نفرض الأرقام اللاتينيّة على أيّ قيمة نصّيّة قبل كتابتها
+  if (value !== undefined && value !== null) {
+    r.setValue(typeof value === 'string' ? toLatinDigits(value) : value);
+  }
+  if (opts) {
+    if (opts.bg)         r.setBackground(opts.bg);
+    if (opts.fg)         r.setFontColor(opts.fg);
+    if (opts.size)       r.setFontSize(opts.size);
+    if (opts.bold)       r.setFontWeight('bold');
+    if (opts.align)      r.setHorizontalAlignment(opts.align);
+    if (opts.vAlign)     r.setVerticalAlignment(opts.vAlign);
+    if (opts.wrap)       r.setWrap(true);
+    if (opts.fontFamily) r.setFontFamily(opts.fontFamily);
+  }
+  return r;
+}
+
+/**
+ * كتابة ترويسة جدول بنمط موحَّد (خلفيّة داكنة + نصّ فاتح + توسيط).
+ * @param {Sheet} s الورقة.
+ * @param {string} a1 نطاق الترويسة.
+ * @param {Array<string>} values مصفوفة العناوين (صفّ واحد).
+ */
+function writeHeaderRow(s, a1, values) {
+  // نكتب صفّ الترويسة بنمط موحَّد لكل جداول المصنّف (منعاً للتكرار)
+  s.getRange(a1).setValues([values])
+    .setFontWeight('bold').setBackground(T.headerBar).setFontColor(T.fgPrimary)
+    .setHorizontalAlignment('center');
+}
+
+/* ===========================================================================
+ *  (3) محرّك السنوات: أسماء الأوراق والسنة النشطة
+ * ===========================================================================*/
+
+/**
+ * توليد اسم الورقة الشهريّة لشهر وسنة معيّنين (مثال: "يناير 2025").
+ * @param {number} monthIndex رقم الشهر (0 = يناير … 11 = ديسمبر).
+ * @param {number} year السنة.
+ * @return {string} اسم الورقة الشهريّة.
+ */
+function monthSheetName(monthIndex, year) {
+  // نوحّد صيغة التسمية لتسهيل الأرشفة والبحث عبر محرّك السنوات
+  return MONTHS[monthIndex] + ' ' + year;
+}
+
+/**
+ * إرجاع قائمة أسماء الأوراق الشهريّة الاثني عشر لسنة معيّنة.
+ * @param {number} year السنة.
+ * @return {Array<string>} قائمة الأسماء بالترتيب.
+ */
+function monthSheetNames(year) {
+  return MONTHS.map((_, i) => monthSheetName(i, year));
+}
+
+/**
+ * بناء عنوان الورقة الشهريّة من القالب النصّي في Texts.
+ * @param {number} monthIndex رقم الشهر.
+ * @param {number} year السنة.
+ * @return {string} العنوان الكامل.
+ */
+function monthTitle(monthIndex, year) {
+  return TXT_TITLES.monthlyTemplate
+    .replace('{month}', MONTHS[monthIndex])
+    .replace('{year}', year);
+}
+
+/**
+ * قراءة السنة النشطة المخزّنة في خصائص المستند، مع قيمة افتراضيّة آمنة.
+ * @return {number} السنة النشطة.
+ */
+function getActiveYear() {
+  // نقرأ السنة من خصائص المستند؛ وإن غابت نُرجع السنة الافتراضيّة
+  const raw = PropertiesService.getDocumentProperties().getProperty(PROP_KEYS.activeYear);
+  const year = parseInt(toLatinDigits(raw), 10);
+  return isValidYear(year) ? year : DEFAULT_YEAR;
+}
+
+/**
+ * حفظ السنة النشطة في خصائص المستند.
+ * @param {number} year السنة المراد تثبيتها.
+ */
+function setActiveYear(year) {
+  PropertiesService.getDocumentProperties()
+    .setProperty(PROP_KEYS.activeYear, String(year));
+}
+
+/**
+ * التحقّق من صلاحيّة السنة ضمن النطاق المدعوم (2025-2035).
+ * @param {number} year السنة.
+ * @return {boolean} صحيح إن كانت ضمن النطاق.
+ */
+function isValidYear(year) {
+  return Number.isInteger(year) && year >= YEAR_MIN && year <= YEAR_MAX;
+}
+
+/**
+ * بناء قائمة كل السنوات المدعومة (2025 … 2035) كمصفوفة أرقام.
+ * @return {Array<number>} السنوات المدعومة.
+ */
+function allSupportedYears() {
+  const out = [];
+  for (let y = YEAR_MIN; y <= YEAR_MAX; y++) out.push(y);
+  return out;
+}
+
+/* ===========================================================================
+ *  (4) أدوات النطاقات والمراجع داخل المعادلات
+ * ===========================================================================*/
+
+/**
+ * تغليف اسم ورقة بعلامات اقتباس مفردة لاستخدامه داخل صيغة (مثال: 'يناير 2025').
+ * @param {string} name اسم الورقة.
+ * @return {string} الاسم المُغلَّف بصيغة آمنة للمعادلات.
+ */
+function q(name) {
+  return "'" + name + "'";
+}
+
+/**
+ * توليد قائمة مراجع نطاق عبر كل أشهر سنة معيّنة (لبناء صيغ التجميع السنويّة).
+ * @param {number} year السنة.
+ * @param {string} a1Range النطاق داخل كل ورقة (مثال: 'E10:E28').
+ * @return {Array<string>} مصفوفة مراجع كاملة جاهزة للدمج في صيغة.
+ */
+function yearMonthRanges(year, a1Range) {
+  return monthSheetNames(year).map(name => q(name) + '!' + a1Range);
+}

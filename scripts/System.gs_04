@@ -1,0 +1,419 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  ملف النظام والمشغّلات  ·  System.gs_04
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - المشغّلات الرئيسيّة (onOpen لبناء القائمة العلويّة، onEdit للتفاعل).
+ *    - نقطة الدخول الرئيسيّة لتركيب/إعادة بناء المصنّف بالكامل.
+ *    - أغلفة القائمة العامّة ولوحة التحكّم المنبثقة (TopDialog) وواجهتها البرمجيّة.
+ *
+ *  ملاحظة معماريّة: منطق نظام الطوارئ (Snapshots) انتقل بالكامل إلى
+ *  Recovery.gs_13، ومنطق التصدير/التوقّعات/التنبيهات/التهيئة/الدليل إلى وحداتها
+ *  (08-12). هذا الملف ينسّق بينها فقط عبر استدعاءات في فضاء الأسماء العام،
+ *  مع ضمان وجود معالِج onEdit/onOpen واحد فقط لا يتعارض.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) المشغّلات: onOpen و onEdit
+ * ===========================================================================*/
+
+/**
+ * مشغّل فتح المصنّف: يبني القائمة العلويّة المخصّصة لكل وظائف النظام الأربع عشرة،
+ * ثمّ يأخذ نسخة طوارئ تلقائيّة مُقيَّدة زمنياً، ويعرض دليل التهيئة لأوّل مرّة.
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu(TXT_MENU.root)
+    .addItem(TXT_MENU.openDialog, 'showTopDialog')
+    .addSeparator()
+    .addItem(TXT_MENU.install, 'installBudgetCalculator2026')
+    .addItem(TXT_MENU.onboarding, 'showOnboardingSidebar')
+    .addItem(TXT_MENU.userGuide, 'showUserGuideSidebar')
+    .addSeparator()
+    .addItem(TXT_MENU.switchYear, 'menuSwitchYear')
+    .addItem(TXT_MENU.archiveYear, 'menuArchiveYear')
+    .addSeparator()
+    .addItem(TXT_MENU.injectDemo, 'menuInjectDemo2025')
+    .addItem(TXT_MENU.cleanYears, 'menuCleanOtherYears')
+    // قائمة فرعيّة للأدوات المتقدّمة (تصدير/توقّعات/تنبيهات)
+    .addSubMenu(ui.createMenu(TXT_MENU.subTools)
+      .addItem(TXT_MENU.exportDash, 'menuExportDashboardPdf')
+      .addItem(TXT_MENU.exportMonth, 'menuExportActiveMonthPdf')
+      .addSeparator()
+      .addItem(TXT_MENU.buildForecast, 'menuBuildForecast')
+      .addSeparator()
+      .addItem(TXT_MENU.showNotifs, 'menuShowNotifications')
+      .addItem(TXT_MENU.notifyOn, 'menuInstallNotifyTrigger')
+      .addItem(TXT_MENU.notifyOff, 'menuRemoveNotifyTrigger'))
+    .addSeparator()
+    .addItem(TXT_MENU.snapshotCreate, 'menuCreateSnapshot')
+    .addItem(TXT_MENU.snapshotRestore, 'menuRestoreSnapshot')
+    .addItem(TXT_MENU.installTriggers, 'menuInstallSnapshotTriggers')
+    .addItem(TXT_MENU.removeTriggers, 'menuRemoveSnapshotTriggers')
+    .addSeparator()
+    .addItem(TXT_MENU.repairDash, 'repairDashboard2026')
+    .addToUi();
+
+  // نسخة طوارئ تلقائيّة (لا تُنشأ إلا بعد مرور الفاصل الزمني الأدنى)
+  maybeAutoSnapshot();
+  // عرض دليل التهيئة تلقائياً عند أوّل فتح فقط
+  maybeShowOnboarding();
+}
+
+/**
+ * عرض لوحة التحكّم السريعة المنبثقة (TopDialog.html) في وضع داكن وواجهة عربيّة.
+ */
+function showTopDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('TopDialog')
+    .setWidth(540).setHeight(640)
+    .setTitle(TXT_DIALOG.title);
+  SpreadsheetApp.getUi().showModalDialog(html, TXT_DIALOG.title);
+}
+
+/**
+ * مشغّل التعديل الموحَّد (معالِج واحد فقط): يُدير ثلاث مهامّ دون تعارض —
+ *   1) فرض الأرقام اللاتينيّة على المُدخل (حماية المعادلات).
+ *   2) تفعيل محرّك السنوات عند تغيير السنة النشطة في الإعدادات (F3).
+ *   3) فحص تنبيه سريع عند إدخال مصروف فعلي يتجاوز المتوقّع.
+ * @param {Object} e كائن حدث التعديل من Apps Script.
+ */
+function onEdit(e) {
+  if (!e || !e.range) return;
+  const sheet = e.range.getSheet();
+  const ss = e.source;
+
+  // (أ) فرض الأرقام اللاتينيّة على أيّ نصّ مُدخل
+  enforceLatinDigitsOnEdit(e);
+
+  // (ب) التقاط تغيير السنة النشطة من خليّة الإعدادات F3
+  if (sheet.getName() === SHEET_NAMES.settings && e.range.getA1Notation() === 'F3') {
+    const year = parseInt(toLatinDigits(e.range.getValue()), 10);
+    if (isValidYear(year) && year !== getActiveYear()) {
+      activateYear(ss, year);
+      SpreadsheetApp.getActive().toast(
+        TXT_MSG.yearSwitchedBody.replace('{year}', year), TXT_MSG.yearSwitchedTitle, 8);
+    }
+    return; // لا داعي لفحص التنبيهات على ورقة الإعدادات
+  }
+
+  // (ب-2) لوحة التحكّم المركزيّة: محدّدا السنة والعملة في اللوحة الرئيسيّة
+  if (sheet.getName() === SHEET_NAMES.dashboard) {
+    handleDashboardControlEdit(ss, e);
+    return; // لا فحص تنبيهات على اللوحة
+  }
+
+  // (ج) فحص تنبيه فوري خفيف عند تعديل ورقة شهريّة (محرّك التنبيهات)
+  notifyOnEdit(e);
+}
+
+/**
+ * معالجة تعديل خلايا التحكّم المركزي في اللوحة (السنة/العملة) وتمرير الاختيار
+ * كمتغيّر عام يؤثّر على كل الأوراق. تغيير السنة يُفعّل محرّك السنوات، وتغيير
+ * العملة يُحدّث rng_MainCurrency (خليّة الإعدادات B3) فتتبدّل كل التنسيقات.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {Object} e كائن حدث التعديل.
+ */
+function handleDashboardControlEdit(ss, e) {
+  const a1 = e.range.getA1Notation();
+
+  // محدّد السنة: نفعّل السنة الجديدة عبر محرّك السنوات (يعيد بناء كل شيء)
+  if (a1 === DASH_CTRL.yearCell) {
+    const year = parseInt(toLatinDigits(e.range.getValue()), 10);
+    if (isValidYear(year) && year !== getActiveYear()) {
+      activateYear(ss, year);
+      SpreadsheetApp.getActive().toast(
+        TXT_DASH.yearChangedBody.replace('{year}', year), TXT_DASH.yearChangedTitle, 8);
+    }
+    return;
+  }
+
+  // محدّد العملة: نكتب الاختيار في خليّة الإعدادات B3 (rng_MainCurrency)
+  // فتتحدّث كل القيم والتنسيقات المعتمدة عليها في المصنّف بأكمله.
+  if (a1 === DASH_CTRL.currencyCell) {
+    const cur = String(e.range.getValue()).trim();
+    if (!cur) return;
+    const settings = ss.getSheetByName(SHEET_NAMES.settings);
+    if (settings) settings.getRange('B3').setValue(cur);
+    SpreadsheetApp.getActive().toast(
+      TXT_DASH.currencyChangedBody.replace('{cur}', cur), TXT_DASH.currencyChangedTitle, 8);
+  }
+}
+
+/**
+ * فرض الأرقام اللاتينيّة على القيمة المُدخلة إن كانت نصّاً يحوي أرقاماً شرقيّة.
+ * @param {Object} e كائن حدث التعديل.
+ */
+function enforceLatinDigitsOnEdit(e) {
+  const val = e.range.getValue();
+  if (typeof val === 'string' && /[\u0660-\u0669\u06F0-\u06F9]/.test(val)) {
+    e.range.setValue(toLatinDigits(val));
+  }
+}
+
+/* ===========================================================================
+ *  (2) نقطة الدخول الرئيسيّة: تركيب / إعادة بناء المصنّف
+ * ===========================================================================*/
+
+/**
+ * تركيب أو إعادة بناء المصنّف بالكامل بترتيب آمن للمراجع، شاملاً كل الوحدات
+ * الأربع عشرة: الإعدادات → الأهداف → الديون → الأشهر → اللوحة → المحرّك →
+ * التوقّعات → الترحيب → النطاقات → الحماية → الأرشفة → الترتيب → الطوارئ.
+ */
+function installBudgetCalculator2026() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  // فحص مبدئي: تأكيد المتابعة إن كان المصنّف غير فارغ (حماية بيانات قائمة)
+  const sheets = ss.getSheets();
+  const nonEmpty = sheets.some(s => s.getLastRow() > 0 || s.getLastColumn() > 1);
+  if (sheets.length > 1 || nonEmpty) {
+    const r = ui.alert(TXT_MSG.installWarnTitle, TXT_MSG.installWarnBody, ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+
+  // نُفوّض كامل عمليّة البناء للدالّة المشتركة (DRY) ثمّ نُنزل المستخدم ونُعلِمه
+  buildEntireWorkbook_(ss, DEFAULT_YEAR);
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
+  ui.alert(TXT_MSG.installDoneTitle, TXT_MSG.installDoneBody, ui.ButtonSet.OK);
+}
+
+/**
+ * التثبيت الذاتي لمشروع/شيت جديد (Self-Install). نقطة دخول مخصّصة لتهيئة جدول
+ * فارغ تماماً (مثلاً بعد نسخ القالب أو عبر clasp/onInstall) دون مربّع تأكيد،
+ * لأنّ الجدول يُفترَض أنّه جديد. تعيد كائن نتيجة ليُستهلَك آلياً عند الحاجة.
+ * @return {Object} {ok, message} نتيجة موحَّدة.
+ */
+function initializeNewProject() {
+  const ss = SpreadsheetApp.getActive();
+  // نبني كامل المصنّف عبر الدالّة المشتركة نفسها (نفس منطق التركيب، بلا تكرار)
+  buildEntireWorkbook_(ss, DEFAULT_YEAR);
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
+  return { ok: true, message: TXT_MSG.installDoneTitle };
+}
+
+/**
+ * منطق البناء الكامل المشترك بين التركيب اليدوي والتثبيت الذاتي (مصدر حقيقة
+ * واحد لخطوات البناء — تطبيقاً صارماً لمبدأ DRY). يبني كل الوحدات الأربع عشرة
+ * بترتيب آمن للمراجع، ويفعّل الحماية والأرشفة ونظام الطوارئ والتهيئة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة الافتراضيّة للتركيب.
+ */
+function buildEntireWorkbook_(ss, year) {
+  // فرض الأرقام اللاتينيّة على مستوى المصنّف (حماية كل الحسابات والتواريخ)
+  enforceLatinLocale(ss);
+
+  // (1) تهيئة جذوع كل الأوراق مسبقاً لتفادي المراجع الشبح (#REF!)
+  precreateAllSheetStubs(ss, year);
+
+  // (2) البناء بالترتيب القانوني (الإعدادات أوّلاً لأنّ الكلّ يشير إليها)
+  buildSettingsSheet(ss, year);
+  buildGoals(ss);
+  buildDebtTracker(ss);          // وحدة مفكرة السلف والديون (15)
+  buildYearMonthlySheets(ss, year);
+  buildDashboard(ss, year);
+  buildDashboardEngine(ss, year);
+  buildForecast(ss, year);     // وحدة التوقّعات (11)
+  buildWelcome(ss, year);
+
+  // (3) ربط النطاقات وتطبيق الحماية والأرشفة والترتيب
+  defineNamedRanges(ss);
+  applyProtection(ss, year);
+  archiveAllExcept(ss, year);
+  reorderTabs(ss, year);
+
+  // (4) تثبيت السنة وإخفاء الأوراق الخلفيّة وتفعيل نظام الطوارئ
+  setActiveYear(year);
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.installVersion, APP_VERSION);
+  safeHideSheet(ss, SHEET_NAMES.engine);
+  safeHideSheet(ss, SHEET_NAMES.snapshots);
+  createSnapshot(ss, 'نسخة ما بعد التركيب');
+  installSnapshotTriggers();
+
+  // (5) إعادة ضبط حالة التهيئة لعرض دليل المستخدم الجديد عند الفتح
+  resetOnboarding();
+}
+
+/**
+ * إصلاح اللوحة والمحرّك والتوقّعات دون إعادة بناء كامل (بيانات الإدخال تبقى).
+ */
+function repairDashboard2026() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const year = getActiveYear();
+
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  const dash   = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (!engine || !dash) {
+    ui.alert(TXT_MSG.notFoundTitle,
+      'تأكّد من وجود ورقتَي المحرّك واللوحة الرئيسيّة قبل تشغيل الإصلاح.', ui.ButtonSet.OK);
+    return;
+  }
+
+  buildDashboardEngine(ss, year);
+  buildDashboard(ss, year);
+  buildForecast(ss, year);
+  defineNamedRanges(ss);
+  safeHideSheet(ss, SHEET_NAMES.engine);
+
+  SpreadsheetApp.flush();
+  ui.alert(TXT_MSG.repairDoneTitle, TXT_MSG.repairDoneBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (3) أغلفة القائمة العامّة (السنوات والبيانات)
+ * ===========================================================================*/
+
+/** غلاف قائمة: تغيير السنة النشطة عبر مربّع حوار. */
+function menuSwitchYear() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(TXT_MSG.yearPromptTitle, TXT_MSG.yearPromptBody, ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  const year = parseInt(toLatinDigits(resp.getResponseText().trim()), 10);
+  if (!isValidYear(year)) { ui.alert(TXT_MSG.yearPromptTitle, TXT_MSG.yearInvalid, ui.ButtonSet.OK); return; }
+
+  createSnapshot(ss, 'قبل تغيير السنة إلى ' + year);
+  activateYear(ss, year);
+  ui.alert(TXT_MSG.yearSwitchedTitle, TXT_MSG.yearSwitchedBody.replace('{year}', year), ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: أرشفة سنة محدّدة. */
+function menuArchiveYear() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(TXT_MENU.archiveYear, TXT_MSG.yearPromptBody, ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  const year = parseInt(toLatinDigits(resp.getResponseText().trim()), 10);
+  if (!isValidYear(year)) { ui.alert(TXT_MENU.archiveYear, TXT_MSG.yearInvalid, ui.ButtonSet.OK); return; }
+
+  archiveYear(ss, year);
+  ui.alert(TXT_MSG.archiveDoneTitle, TXT_MSG.archiveDoneBody.replace('{year}', year), ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: حقن بيانات 2025 التجريبيّة. */
+function menuInjectDemo2025() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  createSnapshot(ss, 'قبل حقن البيانات التجريبيّة');
+  injectDemoData2025(ss);
+  ui.alert(TXT_MSG.demoDoneTitle, TXT_MSG.demoDoneBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: تنظيف بيانات السنوات الأخرى عدا 2025. */
+function menuCleanOtherYears() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  createSnapshot(ss, 'قبل تنظيف السنوات الأخرى');
+  cleanOtherYears(ss, DEFAULT_YEAR);
+  ui.alert(TXT_MSG.cleanDoneTitle, TXT_MSG.cleanDoneBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (4) لوحة التحكّم المنبثقة: الحالة والمنفِّذ المركزي (Dispatcher)
+ * ===========================================================================*/
+
+/**
+ * إرجاع الحالة الأوّليّة للوحة التحكّم (السنة، المشغّلات، النسخ، التنبيهات).
+ * @return {Object} حالة جاهزة لاستهلاكها في TopDialog.html.
+ */
+function dialogGetState() {
+  return {
+    activeYear:     getActiveYear(),
+    years:          allSupportedYears(),
+    triggersActive: areSnapshotTriggersActive(),
+    snapshots:      listSnapshotsForDialog(),
+    notifications:  getNotifications(),   // من وحدة التنبيهات (10)
+    version:        APP_VERSION,
+  };
+}
+
+/**
+ * منفِّذ مركزي آمن لأوامر لوحة التحكّم القادمة من HTML (نمط Dispatcher).
+ * يفرض الأرقام اللاتينيّة على السنة، ويوجّه كل أمر لوحدته المختصّة.
+ * @param {string} action اسم الأمر.
+ * @param {Object} params وسائط الأمر.
+ * @return {Object} نتيجة تحوي رسالة وحالة محدَّثة.
+ */
+function dialogRunAction(action, params) {
+  const ss = SpreadsheetApp.getActive();
+  params = params || {};
+  const year = params.year ? parseInt(toLatinDigits(String(params.year)), 10) : getActiveYear();
+
+  switch (action) {
+    case 'switchYear':
+      if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
+      createSnapshot(ss, 'قبل تغيير السنة إلى ' + year);
+      activateYear(ss, year);
+      return { ok: true, message: TXT_MSG.yearSwitchedBody.replace('{year}', year), state: dialogGetState() };
+
+    case 'archive':
+      if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
+      archiveYear(ss, year);
+      return { ok: true, message: TXT_MSG.archiveDoneBody.replace('{year}', year), state: dialogGetState() };
+
+    case 'injectDemo':
+      createSnapshot(ss, 'قبل حقن البيانات التجريبيّة');
+      injectDemoData2025(ss);
+      return { ok: true, message: TXT_MSG.demoDoneBody, state: dialogGetState() };
+
+    case 'clean':
+      createSnapshot(ss, 'قبل تنظيف السنوات الأخرى');
+      cleanOtherYears(ss, DEFAULT_YEAR);
+      return { ok: true, message: TXT_MSG.cleanDoneBody, state: dialogGetState() };
+
+    case 'repair':
+      buildDashboardEngine(ss, getActiveYear());
+      buildDashboard(ss, getActiveYear());
+      buildForecast(ss, getActiveYear());
+      defineNamedRanges(ss);
+      safeHideSheet(ss, SHEET_NAMES.engine);
+      return { ok: true, message: TXT_MSG.repairDoneBody, state: dialogGetState() };
+
+    case 'forecast':
+      buildForecast(ss, getActiveYear());
+      ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.forecast));
+      return { ok: true, message: TXT_FORECAST.doneBody, state: dialogGetState() };
+
+    case 'exportDash': {
+      const url = exportDashboardPdf();
+      return { ok: !!url, message: url ? TXT_EXPORT.doneBody.replace('{url}', url) : TXT_EXPORT.failBody, state: dialogGetState() };
+    }
+
+    case 'exportMonth': {
+      const url = exportActiveMonthPdf();
+      return { ok: !!url, message: url ? TXT_EXPORT.doneBody.replace('{url}', url) : TXT_EXPORT.failBody, state: dialogGetState() };
+    }
+
+    case 'snapshot':
+      createSnapshot(ss, 'نسخة يدويّة من لوحة التحكّم');
+      return { ok: true, message: TXT_MSG.snapCreatedBody, state: dialogGetState() };
+
+    case 'restore': {
+      const key = params.key ? String(params.key) : '';
+      const exists = loadSnapshotIndex().some(snap => snap.key === key);
+      if (!key || !exists) return { ok: false, message: TXT_MSG.snapNoneBody };
+      createSnapshot(ss, 'قبل استرجاع نسخة سابقة');
+      restoreSnapshot(ss, key);
+      return { ok: true, message: TXT_MSG.snapRestoredBody, state: dialogGetState() };
+    }
+
+    case 'installTriggers':
+      installSnapshotTriggers();
+      return { ok: true, message: TXT_MSG.triggerOnBody, state: dialogGetState() };
+
+    case 'removeTriggers':
+      removeSnapshotTriggers();
+      return { ok: true, message: TXT_MSG.triggerOffBody, state: dialogGetState() };
+
+    case 'openGuide':
+      showUserGuideSidebar();
+      return { ok: true, message: TXT_GUIDE.title, state: dialogGetState() };
+
+    default:
+      return { ok: false, message: 'أمر غير معروف.' };
+  }
+}

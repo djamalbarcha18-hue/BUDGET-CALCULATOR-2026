@@ -1,0 +1,27 @@
+{
+  "scriptId": "<<ضع_معرّف_السكربت_هنا_SCRIPT_ID>>",
+  "rootDir": "deploy/dist",
+  "filePushOrder": [
+    "appsscript.json",
+    "00_Config.gs",
+    "00_Texts.gs",
+    "01_Helpers.gs",
+    "02_Sheets.gs",
+    "03_Dashboard.gs",
+    "04_System.gs",
+    "05_Demo_QA.gs",
+    "06_Core.gs",
+    "07_Manifest.gs",
+    "08_Export.gs",
+    "09_Onboarding.gs",
+    "10_Notifications.gs",
+    "11_Forecast.gs",
+    "12_UserGuide.gs",
+    "13_Recovery.gs",
+    "14_Charts.gs",
+    "15_DebtTracker.gs",
+    "TopDialog.html",
+    "OnboardingSidebar.html",
+    "UserGuideSidebar.html"
+  ]
+}

@@ -1,0 +1,92 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  نظام التوجيه وتهيئة المستخدم الجديد  ·  Onboarding.gs_09
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - عرض شريط جانبي ترحيبي (OnboardingSidebar.html) يوجّه المستخدم الجديد.
+ *    - عرضه تلقائياً أوّل مرّة فقط، مع إمكانيّة إعادة التعيين بعد كل تركيب.
+ *    - واجهة برمجيّة (google.script.run) تُغذّي الشريط بالخطوات وتنفّذ أوامره.
+ * ============================================================================
+ */
+
+/**
+ * عرض شريط التهيئة الجانبي يدويّاً (من القائمة أو لوحة التحكّم).
+ */
+function showOnboardingSidebar() {
+  // نُحمّل قالب الشريط الجانبي ونعرضه على يمين الجدول
+  const html = HtmlService.createHtmlOutputFromFile('OnboardingSidebar')
+    .setTitle(TXT_ONBOARD.title);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * عرض شريط التهيئة تلقائياً عند أوّل فتح فقط (يُستدعى من onOpen).
+ * لا يفعل شيئاً إن كانت التهيئة قد اكتملت سابقاً أو الميزة معطّلة.
+ */
+function maybeShowOnboarding() {
+  if (!isFeatureEnabled('onboarding')) return;
+  if (isOnboardingDone()) return;
+  try {
+    showOnboardingSidebar();
+  } catch (err) {
+    // قد يفشل العرض في بعض سياقات التشغيل (مثل المشغّلات) فنتجاهله بأمان
+  }
+}
+
+/**
+ * إرجاع خطوات التهيئة وبيانات الحالة للشريط الجانبي (مع أرقام لاتينيّة).
+ * @return {Object} {steps, version} جاهزة للعرض في HTML.
+ */
+function onboardingGetSteps() {
+  return {
+    title:    TXT_ONBOARD.title,
+    subtitle: TXT_ONBOARD.subtitle,
+    steps:    TXT_ONBOARD.steps,
+    version:  versionSignature(),
+  };
+}
+
+/**
+ * تنفيذ إجراء من خطوة تهيئة: إمّا فتح ورقة هدف، أو تشغيل أمر عبر المنفِّذ المركزي.
+ * @param {Object} step بيانات الخطوة ({target} أو {action}).
+ * @return {Object} نتيجة موحَّدة {ok, message}.
+ */
+function onboardingDoStep(step) {
+  const ss = SpreadsheetApp.getActive();
+  step = step || {};
+  // خطوة فتح ورقة: ننقل المستخدم للورقة المطلوبة عبر المسارات المركزيّة
+  if (step.target) {
+    const name = route(step.target);
+    const sheet = ss.getSheetByName(name);
+    if (sheet) { ss.setActiveSheet(sheet); return { ok: true, message: name }; }
+    return { ok: false, message: 'الورقة غير موجودة.' };
+  }
+  // خطوة تنفيذ أمر: نعيد استخدام منفِّذ لوحة التحكّم (DRY)
+  if (step.action) return dialogRunAction(step.action, {});
+  return { ok: false, message: 'خطوة غير معروفة.' };
+}
+
+/**
+ * إنهاء التهيئة وتسجيلها كمكتملة (يُستدعى من زرّ "إنهاء التهيئة" في الشريط).
+ * @return {Object} نتيجة موحَّدة.
+ */
+function onboardingComplete() {
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.onboardingDone, 'true');
+  return { ok: true, message: TXT_ONBOARD.doneToast };
+}
+
+/**
+ * إعادة تعيين حالة التهيئة بحيث تظهر من جديد (تُستدعى بعد كل تركيب).
+ */
+function resetOnboarding() {
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.onboardingDone, 'false');
+}
+
+/**
+ * هل أتمّ المستخدم التهيئة؟
+ * @return {boolean} صحيح إن كانت مكتملة.
+ */
+function isOnboardingDone() {
+  return PropertiesService.getDocumentProperties().getProperty(PROP_KEYS.onboardingDone) === 'true';
+}

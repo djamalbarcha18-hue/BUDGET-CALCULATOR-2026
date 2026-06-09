@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+   SmartBudget Pro 2026 · شريط دليل الاستخدام · UserGuideSidebar.html
+   شريط جانبي عربي (RTL) بوضع داكن فاخر يعرض أقسام الدليل كأكورديون قابل للطيّ،
+   مع بحث فوري، ويفرض الأرقام اللاتينيّة. يجلب المحتوى عبر google.script.run.
+   نظام تصميم موحَّد (الخلفيّة #121212 · البطاقات #1E1E1E · خطّ Tajawal).
+  ============================================================================
+-->
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page:#121212; --bg-card:#1E1E1E; --bg-elev:#2A2A2A;
+      --fg:#FFFFFF; --muted:#B0B0B0; --saving:#00B0F0; --grid:#2E2E2E;
+      --radius-card:12px; --radius-ctrl:10px;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg-page); color:var(--fg); direction:rtl;
+      font-family:'Tajawal','Cairo','Segoe UI',Tahoma,Arial,sans-serif; padding:14px; }
+    h1 { font-size:16px; margin:0 0 12px; font-weight:700; }
+    .item { background:var(--bg-card); border:1px solid var(--grid);
+      border-radius:var(--radius-card); margin-bottom:8px; overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,.3); }
+    .q { padding:11px 12px; font-size:13px; font-weight:700; cursor:pointer;
+      display:flex; align-items:center; gap:8px; transition:background .15s ease; }
+    .q:hover { background:var(--bg-elev); }
+    .q .chev { margin-inline-start:auto; color:var(--saving); transition:transform .15s; }
+    .q.open .chev { transform:rotate(90deg); }
+    .a { font-size:12px; color:var(--muted); padding:0 12px; max-height:0;
+      overflow:hidden; transition:max-height .2s ease, padding .2s ease; }
+    .a.open { max-height:240px; padding:0 12px 12px; }
+    .search { width:100%; background:var(--bg-elev); color:var(--fg);
+      border:1px solid var(--grid); border-radius:var(--radius-ctrl); padding:9px 11px;
+      font-size:13px; font-family:inherit; margin-bottom:12px; }
+    .search:focus { outline:none; border-color:var(--saving); }
+    .footer { font-size:11px; color:var(--muted); text-align:center;
+      border-top:1px solid var(--grid); padding-top:10px; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <h1 id="title">دليل الاستخدام</h1>
+  <input class="search" id="search" placeholder="ابحث في الدليل…" oninput="filter()">
+  <div id="list"></div>
+  <div class="footer" id="footer"></div>
+
+  <script>
+    /** فرض الأرقام اللاتينيّة (1, 2, 3). */
+    function toLatinDigits(v) {
+      return String(v)
+        .replace(/[\u0660-\u0669]/g, function (d){ return d.charCodeAt(0)-0x0660; })
+        .replace(/[\u06F0-\u06F9]/g, function (d){ return d.charCodeAt(0)-0x06F0; });
+    }
+    var $ = function (id){ return document.getElementById(id); };
+    var SECTIONS = [];
+
+    /** بناء عناصر الأكورديون من أقسام الدليل. */
+    function render(data) {
+      $('title').textContent = data.title;
+      $('footer').textContent = toLatinDigits(data.footer || '');
+      SECTIONS = data.sections || [];
+      draw(SECTIONS);
+    }
+
+    /** رسم قائمة الأقسام (مع دعم التصفية بالبحث). */
+    function draw(list) {
+      var wrap = $('list'); wrap.innerHTML = '';
+      list.forEach(function (sec) {
+        var item = document.createElement('div'); item.className = 'item';
+        var q = document.createElement('div'); q.className = 'q';
+        q.innerHTML = '<span>' + sec.h + '</span><span class="chev">▸</span>';
+        var a = document.createElement('div'); a.className = 'a';
+        a.textContent = toLatinDigits(sec.b);
+        q.onclick = function () { q.classList.toggle('open'); a.classList.toggle('open'); };
+        item.appendChild(q); item.appendChild(a);
+        wrap.appendChild(item);
+      });
+    }
+
+    /** تصفية الأقسام حسب نصّ البحث (في العنوان أو المحتوى). */
+    function filter() {
+      var term = $('search').value.trim();
+      if (!term) { draw(SECTIONS); return; }
+      draw(SECTIONS.filter(function (s) {
+        return (s.h + ' ' + s.b).indexOf(term) !== -1;
+      }));
+    }
+
+    /** تحميل أقسام الدليل عند فتح الشريط. */
+    (function init() {
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler(function () { $('title').textContent = 'تعذّر تحميل الدليل.'; })
+        .userGuideGetSections();
+    })();
+  </script>
+</body>
+</html>

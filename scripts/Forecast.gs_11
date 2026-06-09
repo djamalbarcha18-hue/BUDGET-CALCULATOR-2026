@@ -1,0 +1,108 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  محرّك التوقّعات المالية المستقبلية  ·  Forecast.gs_11
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - بناء ورقة "التوقّعات المالية" التي تُسقِط أداء الأشهر القادمة بناءً على
+ *      متوسّط الأداء الفعلي للسنة النشطة (مأخوذاً من المحرّك الخلفي).
+ *    - لوحة مؤشّرات (متوسّطات + رصيد متوقّع بنهاية السنة + معدّل ادخار متوقّع)
+ *      وجدول إسقاط شهري تراكمي لاثني عشر شهراً كاملة (بلا اختصارات).
+ *  كل الصيغ محصَّنة بـ IFERROR، وكل الأرقام والتواريخ لاتينيّة.
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) غلاف القائمة
+ * ===========================================================================*/
+
+/** غلاف قائمة: تحديث التوقّعات والانتقال إلى ورقتها. */
+function menuBuildForecast() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  buildForecast(ss, getActiveYear());
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.forecast));
+  ui.alert(TXT_FORECAST.doneTitle, TXT_FORECAST.doneBody, ui.ButtonSet.OK);
+}
+
+/* ===========================================================================
+ *  (2) بناء ورقة التوقّعات
+ * ===========================================================================*/
+
+/**
+ * بناء/تحديث ورقة التوقّعات المالية لسنة معيّنة. تقرأ متوسّطات الأداء من
+ * المحرّك الخلفي وتُسقِطها على اثني عشر شهراً قادماً بأسلوب تراكمي.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة.
+ */
+function buildForecast(ss, year) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.forecast);
+  s.clear();
+  const E = q(SHEET_NAMES.engine); // مرجع المحرّك الخلفي داخل الصيغ
+
+  // خلفيّة الوضع المظلم والعنوان
+  s.getRange(1, 1, 40, 6).setBackground(T.bgPage).setFontColor(T.fgPrimary);
+  mergeAndStyle(s, 'A1:F1', TXT_FORECAST.title, { bg: T.bgPage, bold: true, size: 14, align: 'center' });
+
+  // ---- لوحة المؤشّرات: المتوسّطات والإسقاطات ----
+  // B2: متوسّط الدخل الفعلي الشهري (للأشهر التي بها بيانات فقط)
+  s.getRange('A2').setValue(TXT_FORECAST.kpiAvgIncome).setFontWeight('bold');
+  s.getRange('B2').setFormula(`=IFERROR(AVERAGEIF(${E}!B2:B13, ">0"), 0)`);
+  // B3: متوسّط المصروف الفعلي الشهري
+  s.getRange('A3').setValue(TXT_FORECAST.kpiAvgExpense).setFontWeight('bold');
+  s.getRange('B3').setFormula(`=IFERROR(AVERAGEIF(${E}!C2:C13, ">0"), 0)`);
+  // D2: متوسّط الصافي الشهري المتوقّع
+  s.getRange('C2').setValue(TXT_FORECAST.kpiAvgNet).setFontWeight('bold');
+  s.getRange('D2').setFormula('=B2-B3');
+  // D3: الرصيد المتوقّع بنهاية السنة (آخر صفّ تراكمي في الجدول)
+  s.getRange('C3').setValue(TXT_FORECAST.kpiYearEnd).setFontWeight('bold');
+  s.getRange('D3').setFormula('=IFERROR(E17, 0)');
+  // F2: معدّل الادخار المتوقّع
+  s.getRange('E2').setValue(TXT_FORECAST.kpiSavingRate).setFontWeight('bold');
+  s.getRange('F2').setFormula('=IFERROR((B2-B3)/B2, 0)').setNumberFormat(FMT_PERCENT);
+
+  // ---- جدول الإسقاط الشهري (الصف 5 ترويسة، 6..17 الأشهر) ----
+  writeHeaderRow(s, 'A5:E5', TXT_FORECAST.headers);
+  // نكتب الأشهر الاثني عشر كاملةً بحلقة (لا اختصارات)، بصيغ تراكميّة
+  for (let i = 0; i < MONTHS.length; i++) {
+    const r = 6 + i;                 // صفّ الشهر في الجدول
+    s.getRange('A' + r).setValue(MONTHS[i]);
+    s.getRange('B' + r).setFormula('=$B$2');         // الدخل المتوقّع = المتوسّط
+    s.getRange('C' + r).setFormula('=$B$3');         // المصروف المتوقّع = المتوسّط
+    s.getRange('D' + r).setFormula(`=B${r}-C${r}`);  // الصافي المتوقّع
+    // الرصيد التراكمي: الشهر الأوّل = صافيه، وما بعده = السابق + الصافي
+    if (i === 0) s.getRange('E' + r).setFormula(`=D${r}`);
+    else         s.getRange('E' + r).setFormula(`=E${r - 1}+D${r}`);
+  }
+
+  // تنسيق الأعمدة الماليّة بأرقام لاتينيّة
+  applyCurrencyFormat(s.getRange('B2:D3'));
+  applyCurrencyFormat(s.getRange('B6:E17'));
+
+  // ملاحظة تفسيريّة + تجميد الترويسة
+  mergeAndStyle(s, 'A19:F19', TXT_FORECAST.note,
+    { bg: T.bgCard, fg: T.fgMuted, size: 10, align: 'center', wrap: true });
+  freezeTopRows(s, 5);
+  s.autoResizeColumns(1, 6);
+}
+
+/* ===========================================================================
+ *  (3) ملخّص للوحة/الدليل
+ * ===========================================================================*/
+
+/**
+ * إرجاع ملخّص التوقّعات لاستهلاكه في لوحة التحكّم (قيم نصّيّة بأرقام لاتينيّة).
+ * @return {Object} {avgIncome, avgExpense, avgNet, yearEnd} كنصوص.
+ */
+function forecastSummary() {
+  const ss = SpreadsheetApp.getActive();
+  const s = ss.getSheetByName(SHEET_NAMES.forecast);
+  if (!s) return null;
+  // نقرأ القيم المحسوبة من لوحة مؤشّرات ورقة التوقّعات
+  return {
+    avgIncome:  toLatinDigits(s.getRange('B2').getDisplayValue()),
+    avgExpense: toLatinDigits(s.getRange('B3').getDisplayValue()),
+    avgNet:     toLatinDigits(s.getRange('D2').getDisplayValue()),
+    yearEnd:    toLatinDigits(s.getRange('D3').getDisplayValue()),
+  };
+}

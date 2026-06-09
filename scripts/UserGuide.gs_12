@@ -1,0 +1,33 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  دليل الاستخدام المدمج  ·  UserGuide.gs_12
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - عرض شريط جانبي (UserGuideSidebar.html) يحوي دليل استخدام كامل ومنظَّم.
+ *    - تغذية الشريط بأقسام الدليل من ملف النصوص المركزي (TXT_GUIDE).
+ *  الدليل مرجع سريع داخل الجدول يغني المستخدم عن أيّ توثيق خارجي.
+ * ============================================================================
+ */
+
+/**
+ * عرض شريط دليل الاستخدام الجانبي (من القائمة أو لوحة التحكّم).
+ */
+function showUserGuideSidebar() {
+  // نُحمّل قالب الدليل ونعرضه كشريط جانبي على يمين الجدول
+  const html = HtmlService.createHtmlOutputFromFile('UserGuideSidebar')
+    .setTitle(TXT_GUIDE.title);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * إرجاع محتوى الدليل (الأقسام + العنوان + التذييل) للشريط الجانبي.
+ * @return {Object} {title, sections, footer} جاهزة للعرض في HTML.
+ */
+function userGuideGetSections() {
+  return {
+    title:    TXT_GUIDE.title,
+    sections: TXT_GUIDE.sections,
+    footer:   toLatinDigits(TXT_GUIDE.footer),
+  };
+}

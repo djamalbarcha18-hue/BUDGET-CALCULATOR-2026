@@ -1,0 +1,470 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  ملف اللوحة الرئيسيّة  ·  Dashboard.gs_03
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - هندسة الواجهة الرئيسيّة المتجاوبة (Responsive Fintech Dark UI).
+ *    - بناء المحرّك الخلفي (_DashboardEngine) لتجميع بيانات السنة النشطة.
+ *    - تثبيت مواقع الرسوم البيانيّة (Charts Locking) عبر النطاقات المُسمّاة.
+ *    - بناء ورقة الترحيب (Onboarding) بالهويّة البصريّة الموحَّدة.
+ *
+ *  تعتمد كل صيغ هذا الملف على السنة النشطة الممرَّرة كوسيط، فيتبدّل مصدر
+ *  البيانات تلقائياً عند تغيير السنة عبر محرّك السنوات (activateYear).
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (1) المحرّك الخلفي _DashboardEngine
+ * ===========================================================================*/
+
+/**
+ * بناء ورقة المحرّك الخلفي التي تُجمِّع بيانات أشهر السنة النشطة وتُغذّي
+ * بطاقات اللوحة والرسوم البيانيّة. كل خليّة مُحصَّنة بـ IFERROR لمنع تتالي
+ * أخطاء #VALUE!/#REF! نحو الواجهة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة.
+ */
+function buildDashboardEngine(ss, year) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.engine);
+  s.clear();
+  const names = monthSheetNames(year); // أسماء أوراق السنة النشطة
+
+  // A:D — شبكة المقارنة الشهريّة (الدخل/المصروف/الصافي لكل شهر)
+  writeHeaderRow(s, 'A1:D1', ['الشهر', 'الدخل الفعلي', 'المصروف الفعلي', 'صافي الربح']);
+  for (let i = 0; i < 12; i++) {
+    const name = names[i];
+    const row = i + 2;
+    s.getRange('A' + row).setValue(MONTHS[i]);
+    s.getRange('B' + row).setFormula(`=IFERROR(SUM(${q(name)}!E${LAYOUT.incomeFirstRow}:E${LAYOUT.incomeLastRow}), 0)`);
+    s.getRange('C' + row).setFormula(`=IFERROR(SUM(${q(name)}!E${LAYOUT.expenseFirstRow}:E${LAYOUT.expenseLastRow}), 0)`);
+    s.getRange('D' + row).setFormula(`=B${row}-C${row}`);
+  }
+
+  // O5 — الفائض المتراكم السنوي (يغذّي بطاقة الأصول)
+  s.getRange('O5').setFormula('=IFERROR(SUM(D2:D13), 0)');
+
+  // F:G — بيانات مخطّط الشلال (Waterfall)، محسوبة داخلياً بالكامل لتفادي المراجع الشبح
+  writeHeaderRow(s, 'F1:G1', ['العنصر', 'المبلغ']);
+  s.getRange('F2').setValue('إجمالي الدخل');
+  s.getRange('G2').setFormula('=IFERROR(H2, 0)');
+  s.getRange('F3').setValue('السكن');
+  s.getRange('G3').setFormula(buildCategorySumFormula(year, 'السكن', true, true));
+  s.getRange('F4').setValue('الطعام');
+  s.getRange('G4').setFormula(buildCategorySumFormula(year, 'الطعام', true, true));
+  s.getRange('F5').setValue('المواصلات');
+  s.getRange('G5').setFormula(buildCategorySumFormula(year, 'النقل', true, true));
+  s.getRange('F6').setValue('باقي المصاريف');
+  s.getRange('G6').setFormula('=IFERROR(-1 * (H3 + G3 + G4 + G5), 0)');
+  s.getRange('F7').setValue('صافي الربح');
+  s.getRange('G7').setFormula('=IFERROR(SUM(G2:G6), 0)');
+
+  // H:I — قيم الاتجاه (الحالي/السابق) لبطاقات المؤشّرات، كلّها محصَّنة
+  s.getRange('H2').setFormula('=IFERROR(SUM(B2:B13), 0)');  // الدخل الحالي
+  s.getRange('I2').setFormula('=IFERROR(SUM(B2:B12), 0)');  // الدخل السابق (11 شهراً)
+  s.getRange('H3').setFormula('=IFERROR(SUM(C2:C13), 0)');  // المصروف الحالي
+  s.getRange('I3').setFormula('=IFERROR(SUM(C2:C12), 0)');  // المصروف السابق
+  s.getRange('H4').setFormula('=IFERROR(H2-H3, 0)');        // الصافي الحالي
+  s.getRange('I4').setFormula('=IFERROR(I2-I3, 0)');        // الصافي السابق
+  // الأصول = المدخر في الأهداف + الفائض المتراكم
+  s.getRange('H5').setFormula(`=IFERROR(${q(SHEET_NAMES.goals)}!D2 + O5, 0)`);
+  s.getRange('I5').setFormula(`=IFERROR(${q(SHEET_NAMES.goals)}!D2 + SUM(D2:D12), 0)`);
+  // الالتزامات = إجمالي ما عليّ المتبقّي من مفكرة الديون (D2) + الأقساط الشهريّة × 12
+  s.getRange('H6').setFormula(`=IFERROR(${q(SHEET_NAMES.debts)}!D2 + ${q(SHEET_NAMES.goals)}!B3 * 12, 0)`);
+  s.getRange('I6').setFormula(`=IFERROR(${q(SHEET_NAMES.debts)}!D2 + ${q(SHEET_NAMES.goals)}!B3 * 11, 0)`);
+  s.getRange('H7').setFormula('=IFERROR((H2-H3)/H2, 0)');   // معدل الادخار الحالي
+  s.getRange('I7').setFormula('=IFERROR((I2-I3)/I2, 0)');   // معدل الادخار السابق
+
+  // I:J — دونات مصادر الدخل (تجميع كل فئة دخل عبر أشهر السنة)
+  writeHeaderRow(s, 'I1:J1', ['فئة الدخل', 'الإجمالي']);
+  for (let i = 0; i < INCOME_CATEGORIES.length; i++) {
+    s.getRange(2 + i, 9).setValue(INCOME_CATEGORIES[i]);
+    s.getRange(2 + i, 10).setFormula(buildCategorySumFormula(year, '', false, false, `I${2 + i}`));
+  }
+
+  // L:M — دونات فئات المصاريف
+  writeHeaderRow(s, 'L1:M1', ['فئة المصاريف', 'الإجمالي']);
+  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
+    s.getRange(2 + i, 12).setValue(EXPENSE_CATEGORIES[i]);
+    s.getRange(2 + i, 13).setFormula(buildCategorySumFormula(year, '', true, false, `L${2 + i}`));
+  }
+
+  // O2/O3 — درجة الصحّة المالية المركَّبة (40 ادخار + 30 انضباط + 30 أهداف)
+  const expectedExpenseSum = yearMonthRanges(year, `D${LAYOUT.expenseFirstRow}:D${LAYOUT.expenseLastRow}`).join(', ');
+  s.getRange('O2').setFormula(
+    `=ROUND(40 * MAX(0, MIN(1, IFERROR((H2 - H3) / H2, 0))) + ` +
+    `30 * MAX(0, MIN(1, IFERROR(1 - (H3 / SUM(${expectedExpenseSum})), 0))) + ` +
+    `30 * IFERROR(${q(SHEET_NAMES.goals)}!F2, 0), 0)`);
+  s.getRange('O3').setFormula(
+    `=IFS(O2>=90, "${TXT_DASH.healthLabels.excellent}", O2>=75, "${TXT_DASH.healthLabels.good}", ` +
+    `O2>=60, "${TXT_DASH.healthLabels.fair}", TRUE, "${TXT_DASH.healthLabels.poor}")`);
+
+  // Q:W — مصفوفة موحَّدة لكل معاملات السنة (تغذّي سجلّ أحدث 5 معاملات عبر QUERY)
+  writeHeaderRow(s, 'Q1:W1', TXT_HEADERS.ledger);
+  let row = 2;
+  // كتل الدخل: 12 شهراً × 19 صفّاً
+  for (let i = 0; i < 12; i++) {
+    const name = names[i], m = MONTHS[i];
+    const fi = LAYOUT.incomeFirstRow, li = LAYOUT.incomeLastRow;
+    s.getRange('Q' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fi}:A${li}="", "", "${m}"))`);
+    s.getRange('R' + row).setFormula(`=ARRAYFORMULA(${q(name)}!A${fi}:A${li})`);
+    s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fi}:A${li}="", "", "دخل"))`);
+    s.getRange('T' + row).setFormula(`=ARRAYFORMULA(${q(name)}!B${fi}:B${li})`);
+    s.getRange('U' + row).setFormula(`=ARRAYFORMULA(${q(name)}!C${fi}:C${li})`);
+    s.getRange('V' + row).setFormula(`=ARRAYFORMULA(${q(name)}!E${fi}:E${li})`);
+    s.getRange('W' + row).setFormula(`=ARRAYFORMULA(${q(name)}!G${fi}:G${li})`);
+    row += (li - fi + 1);
+  }
+  // كتل المصاريف: 12 شهراً × 30 صفّاً
+  for (let i = 0; i < 12; i++) {
+    const name = names[i], m = MONTHS[i];
+    const fe = LAYOUT.expenseFirstRow, le = LAYOUT.expenseLastRow;
+    s.getRange('Q' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fe}:A${le}="", "", "${m}"))`);
+    s.getRange('R' + row).setFormula(`=ARRAYFORMULA(${q(name)}!A${fe}:A${le})`);
+    s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fe}:A${le}="", "", "مصروف"))`);
+    s.getRange('T' + row).setFormula(`=ARRAYFORMULA(${q(name)}!B${fe}:B${le})`);
+    s.getRange('U' + row).setFormula(`=ARRAYFORMULA(${q(name)}!C${fe}:C${le})`);
+    s.getRange('V' + row).setFormula(`=ARRAYFORMULA(${q(name)}!E${fe}:E${le})`);
+    s.getRange('W' + row).setFormula(`=ARRAYFORMULA(${q(name)}!G${fe}:G${le})`);
+    row += (le - fe + 1);
+  }
+}
+
+/* ===========================================================================
+ *  (2) اللوحة الرئيسيّة (طبقة العرض فقط)
+ * ===========================================================================*/
+
+/**
+ * بناء اللوحة الرئيسيّة وفق توزيع شبكي (Grid Layout) دقيق بالوضع المظلم:
+ *   صفّ علوي (ترويسة + تحكّم مركزي) ← بطاقات مؤشّرات (تشمل السلف والديون) ←
+ *   مخطّط أعمدة المقارنة ← مخططان دائريّان مجوّفان ← جدولا بيانات سفليّان.
+ * كل المؤشّرات تقرأ من المحرّك الخلفي ومن ملخّص الديون (debtSummary).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة.
+ */
+function buildDashboard(ss, year) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.dashboard);
+  const E = SHEET_NAMES.engine;
+
+  // ---- (1) الهوية البصريّة: وضع داكن صافٍ + خطّ معتمد + إخفاء الشبكة ----
+  s.clearConditionalFormatRules();
+  s.getCharts().forEach(c => s.removeChart(c)); // إزالة مخططات سابقة (إعادة بناء آمنة)
+  s.setHiddenGridlines(true);
+  s.getRange(1, 1, 60, 12)
+    .setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text).setFontFamily(FONT_FAMILY);
+
+  // ---- (2) الترويسة: مساحة شعار فارغة (A1:D4) + تحكّم مركزي مقابل ----
+  mergeAndStyle(s, 'A1:D4', '', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, align: 'center', vAlign: 'middle' });
+  s.getRange('A1').setNote('أدرج شعار المشروع هنا (Insert → Image → in cell)');
+  mergeAndStyle(s, 'E1:L1', TXT_TITLES.dashboard + ' — ' + year,
+    { bg: DASH_DARK.page, fg: DASH_DARK.text, size: 18, bold: true, align: 'center', fontFamily: FONT_FAMILY });
+  buildDashboardControls(s, ss, year);
+
+  // ---- (3) الصف الأول: بطاقات المؤشّرات (تشمل السلف والديون) ----
+  const D = q(SHEET_NAMES.debts);
+  const cards = [
+    { anchor: 'A6:B10',  value: `=IFERROR(${E}!H2, 0)`, def: TXT_DASH.cardIncome,  trend: ['H2', 'I2'], pct: false, accent: CHART_COLORS.income },
+    { anchor: 'C6:D10',  value: `=IFERROR(${E}!H3, 0)`, def: TXT_DASH.cardExpense, trend: ['H3', 'I3'], pct: false, accent: CHART_COLORS.expense },
+    { anchor: 'E6:F10',  value: `=IFERROR(${E}!H4, 0)`, def: TXT_DASH.cardNet,     trend: ['H4', 'I4'], pct: false, accent: CHART_COLORS.saving },
+    { anchor: 'G6:H10',  value: `=IFERROR(${D}!B2, 0)`, def: TXT_DASH.cardOwedToMe, trend: null,        pct: false, accent: CHART_COLORS.income },
+    { anchor: 'I6:J10',  value: `=IFERROR(${D}!D2, 0)`, def: TXT_DASH.cardOwedByMe, trend: null,        pct: false, accent: CHART_COLORS.expense },
+    { anchor: 'K6:L10',  value: `=IFERROR(${E}!H7, 0)`, def: TXT_DASH.cardSavings, trend: ['H7', 'I7'], pct: true,  accent: CHART_COLORS.saving },
+  ];
+  const rules = [];
+  cards.forEach(c => buildKpiCard(s, c, rules));
+  s.setConditionalFormatRules(rules);
+
+  // ---- (4) الصف الثاني والثالث: المخططات (أعمدة + دائريّان مجوّفان) ----
+  buildDashboardCharts_(s, ss);
+
+  // ---- (5) الصف الرابع: جدولا البيانات السفليّان ----
+  buildDashboardTables_(s, ss);
+}
+
+/**
+ * إدراج مخططات اللوحة بخلفيّة شفافة تندمج مع الوضع المظلم وبالهوية اللونيّة
+ * الصارمة (الدخل أخضر، المصاريف أحمر، الادخار أزرق فاتح).
+ *   - مخطّط أعمدة: المقارنة الشهريّة (دخل/مصاريف/ادخار) من شبكة المحرّك A1:D13.
+ *   - دونات الدخل: توزيع مصادر الدخل (I1:J9).
+ *   - دونات المصاريف: توزيع فئات المصاريف (L1:M13).
+ * @param {Sheet} s ورقة اللوحة.
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function buildDashboardCharts_(s, ss) {
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!engine) return;
+  const lightTxt = { color: DASH_DARK.text };
+
+  // مخطّط الأعمدة المقارن (ثلاث سلاسل بألوان صارمة) — مساحة واسعة أسفل المؤشّرات
+  const col = s.newChart().asColumnChart()
+    .addRange(engine.getRange('A1:D13'))
+    .setOption('colors', [CHART_COLORS.income, CHART_COLORS.expense, CHART_COLORS.saving])
+    .setOption('backgroundColor', 'transparent')
+    .setOption('title', 'مقارنة الأداء المالي الشهري (دخل · مصاريف · ادخار)')
+    .setOption('titleTextStyle', lightTxt)
+    .setOption('legend', { position: 'top', textStyle: lightTxt })
+    .setOption('hAxis', { textStyle: lightTxt })
+    .setOption('vAxis', { textStyle: lightTxt, gridlines: { color: DASH_DARK.grid } })
+    .setOption('fontName', FONT_FAMILY)
+    .setOption('width', 760).setOption('height', 300)
+    .setPosition(12, 1, 0, 0)
+    .build();
+  s.insertChart(col);
+
+  // دونات الدخل (توزيع المصادر)
+  const dIncome = s.newChart().asPieChart()
+    .addRange(engine.getRange('I1:J9'))
+    .setOption('pieHole', 0.5)
+    .setOption('backgroundColor', 'transparent')
+    .setOption('title', 'توزيع مصادر الدخل')
+    .setOption('titleTextStyle', lightTxt)
+    .setOption('legend', { position: 'right', textStyle: lightTxt })
+    .setOption('pieSliceText', 'percentage')
+    .setOption('fontName', FONT_FAMILY)
+    .setOption('width', 370).setOption('height', 280)
+    .setPosition(29, 1, 0, 0)
+    .build();
+  s.insertChart(dIncome);
+
+  // دونات المصاريف (توزيع الفئات) بلوحة شرائح متناسقة
+  const dExpense = s.newChart().asPieChart()
+    .addRange(engine.getRange('L1:M13'))
+    .setOption('pieHole', 0.5)
+    .setOption('backgroundColor', 'transparent')
+    .setOption('colors', EXPENSE_SLICE_COLORS)
+    .setOption('title', 'توزيع المصاريف حسب الفئة')
+    .setOption('titleTextStyle', lightTxt)
+    .setOption('legend', { position: 'right', textStyle: lightTxt })
+    .setOption('pieSliceText', 'percentage')
+    .setOption('fontName', FONT_FAMILY)
+    .setOption('width', 370).setOption('height', 280)
+    .setPosition(29, 7, 0, 0)
+    .build();
+  s.insertChart(dExpense);
+}
+
+/**
+ * بناء جدولَي البيانات السفليّين بتصميم مظلم:
+ *   - اليمين (A:F): سجلّ آخر 5 معاملات (التاريخ/الوصف/الفئة/المبلغ) عبر QUERY.
+ *   - اليسار (H:L): ملخّص مفكرة السلف والديون مستدعى من debtSummary().
+ * @param {Sheet} s ورقة اللوحة.
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function buildDashboardTables_(s, ss) {
+  const E = q(SHEET_NAMES.engine);
+  const headRow = 45;
+
+  // --- جدول آخر 5 معاملات (جهة اليمين في العرض RTL) ---
+  mergeAndStyle(s, `A${headRow - 1}:F${headRow - 1}`, '🧾 آخر 5 معاملات مالية',
+    { bg: DASH_DARK.card, fg: DASH_DARK.text, bold: true, size: 12, align: 'center' });
+  s.getRange(`A${headRow}:D${headRow}`).setValues([['التاريخ', 'الوصف', 'الفئة', 'المبلغ']])
+    .setBackground(DASH_DARK.card).setFontColor(DASH_DARK.text).setFontWeight('bold')
+    .setHorizontalAlignment('center');
+  // نختار أعمدة السجلّ من المحرّك: التاريخ(Col2) الوصف(Col5) الفئة(Col4) المبلغ(Col6)
+  s.getRange(`A${headRow + 1}`).setFormula(
+    `=IFERROR(QUERY(${E}!Q2:W, "select Col2, Col5, Col4, Col6 where Col2 is not null order by Col2 desc limit 5", 0), "")`);
+  s.getRange(`A${headRow + 1}:D${headRow + 6}`).setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text);
+  enforceLatinNumberFormat(s.getRange(`D${headRow + 1}:D${headRow + 6}`));
+
+  // --- جدول ملخّص الديون (جهة اليسار) مستدعى من debtSummary() ---
+  const debt = debtSummary() || { owedToMe: 0, owedByMe: 0, net: 0 };
+  mergeAndStyle(s, `H${headRow - 1}:L${headRow - 1}`, '💳 ملخّص مفكرة السلف والديون',
+    { bg: DASH_DARK.card, fg: DASH_DARK.text, bold: true, size: 12, align: 'center' });
+  const debtRows = [
+    [TXT_DEBTS.totalOwedToMe, formatLatinNumber(debt.owedToMe)],
+    [TXT_DEBTS.totalOwedByMe, formatLatinNumber(debt.owedByMe)],
+    [TXT_DEBTS.netPosition,   formatLatinNumber(debt.net)],
+  ];
+  for (let i = 0; i < debtRows.length; i++) {
+    const r = headRow + i;
+    mergeAndStyle(s, `H${r}:J${r}`, debtRows[i][0],
+      { bg: DASH_DARK.page, fg: DASH_DARK.textMute, align: 'right' });
+    mergeAndStyle(s, `K${r}:L${r}`, debtRows[i][1],
+      { bg: DASH_DARK.page, fg: DASH_DARK.text, bold: true, align: 'center' });
+  }
+  // تلوين دلالي: ما لي أخضر · ما عليّ أحمر · الصافي سماوي
+  s.getRange(`K${headRow}:L${headRow}`).setFontColor(CHART_COLORS.income);
+  s.getRange(`K${headRow + 1}:L${headRow + 1}`).setFontColor(CHART_COLORS.expense);
+  s.getRange(`K${headRow + 2}:L${headRow + 2}`).setFontColor(CHART_COLORS.saving);
+}
+
+/**
+ * بناء لوحة التحكّم المركزيّة أعلى اللوحة الرئيسيّة: محدّد السنة (قائمة منسدلة
+ * 2025-2035) ومحدّد العملة (قائمة عملات القالب). اختيارات هذه الخلايا تُمرَّر
+ * كمتغيّرات عامّة عبر onEdit فتؤثّر على كل الأوراق دفعةً واحدة.
+ * @param {Sheet} s ورقة اللوحة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة الحاليّة.
+ */
+function buildDashboardControls(s, ss, year) {
+  const settings = ss.getSheetByName(SHEET_NAMES.settings);
+
+  // تسميتان أنيقتان بالوضع المظلم في الجهة المقابلة للشعار (أعلى يسار)
+  mergeAndStyle(s, 'J2:K2', TXT_DASH.ctrlYearLabel,
+    { bg: DASH_DARK.page, fg: DASH_DARK.textMute, size: 11, align: 'right', fontFamily: FONT_FAMILY });
+  mergeAndStyle(s, 'J3:K3', TXT_DASH.ctrlCurrencyLabel,
+    { bg: DASH_DARK.page, fg: DASH_DARK.textMute, size: 11, align: 'right', fontFamily: FONT_FAMILY });
+
+  // محدّد السنة النشطة (قائمة منسدلة بالأرقام اللاتينيّة 2025-2035)
+  const yearCell = s.getRange(DASH_CTRL.yearCell);
+  yearCell.setValue(String(year))
+    .setBackground(DASH_DARK.card).setFontColor(DASH_DARK.text).setFontWeight('bold')
+    .setFontFamily(FONT_FAMILY).setHorizontalAlignment('center');
+  yearCell.setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(allSupportedYears().map(String), true)
+    .setAllowInvalid(false).build());
+
+  // محدّد عملة القالب (قائمة منسدلة من جدول العملات في ورقة الإعدادات)
+  const curCell = s.getRange(DASH_CTRL.currencyCell);
+  const curNow = settings ? settings.getRange('B3').getValue() : 'USD';
+  curCell.setValue(curNow || 'USD')
+    .setBackground(DASH_DARK.card).setFontColor(DASH_DARK.text).setFontWeight('bold')
+    .setFontFamily(FONT_FAMILY).setHorizontalAlignment('center');
+  if (settings) {
+    curCell.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInRange(settings.getRange('A7:A20'), true)
+      .setAllowInvalid(false).build());
+  }
+}
+
+/**
+ * بناء بطاقة مؤشّر واحدة في الشبكة المظلمة (عنوان + رقم بارز + اتجاه + ملاحظة).
+ * دالّة موحَّدة تُستدعى لكل البطاقات (DRY). تشتقّ مواقع الصفوف من المرساة،
+ * وتدعم اتجاهاً اختيارياً (للبطاقات المرتبطة بالمحرّك) وتمرّر قواعد التنسيق الشرطي.
+ * @param {Sheet} s ورقة اللوحة.
+ * @param {Object} c تعريف البطاقة {anchor, value, def, trend?, pct, accent}.
+ * @param {Array} rules مصفوفة قواعد التنسيق الشرطي (تُعدَّل في المكان).
+ */
+function buildKpiCard(s, c, rules) {
+  // نشتقّ حدود البطاقة من المرساة (مثال: 'A6:B10')
+  const cols = c.anchor.split(':');
+  const startCol = cols[0].match(/[A-Z]+/)[0];
+  const endCol = cols[1].match(/[A-Z]+/)[0];
+  const topRow = parseInt(cols[0].match(/\d+/)[0], 10);
+  const numRow = topRow + 1, trendRow = topRow + 3, noteRow = topRow + 4;
+  const numCell = startCol + numRow, trendCell = startCol + trendRow;
+
+  // خلفيّة البطاقة الداكنة المتباينة
+  s.getRange(c.anchor).setBackground(DASH_DARK.card).setFontFamily(FONT_FAMILY);
+
+  // العنوان (مكتوم) + الرقم البارز بلون دلالي + الملاحظة
+  mergeAndStyle(s, `${startCol}${topRow}:${endCol}${topRow}`, c.def.label,
+    { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'right', fontFamily: FONT_FAMILY });
+  mergeAndStyle(s, `${startCol}${numRow}:${endCol}${numRow + 1}`, '',
+    { bg: DASH_DARK.card, fg: c.accent || DASH_DARK.text, size: 22, bold: true, align: 'right', fontFamily: FONT_FAMILY });
+  const valCell = s.getRange(numCell).setFormula(c.value);
+  if (c.pct) valCell.setNumberFormat(FMT_PERCENT); else enforceLatinNumberFormat(valCell);
+
+  // صفّ الاتجاه (اختياري): يظهر فقط للبطاقات التي لها قيمة سابقة في المحرّك
+  mergeAndStyle(s, `${startCol}${trendRow}:${endCol}${trendRow}`, '',
+    { bg: DASH_DARK.card, size: 12, align: 'right', fontFamily: FONT_FAMILY });
+  if (c.trend) {
+    s.getRange(trendCell).setFormula(buildTrendFormula(c.trend[0], c.trend[1]));
+    const rng = s.getRange(trendCell);
+    rules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=LEFT($${trendCell},1)="▲"`)
+        .setFontColor(CHART_COLORS.income).setBackground(DASH_DARK.card).setRanges([rng]).build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=LEFT($${trendCell},1)="▼"`)
+        .setFontColor(CHART_COLORS.expense).setBackground(DASH_DARK.card).setRanges([rng]).build());
+  }
+  mergeAndStyle(s, `${startCol}${noteRow}:${endCol}${noteRow}`, c.def.note,
+    { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 8, align: 'right', wrap: true, fontFamily: FONT_FAMILY });
+}
+
+/**
+ * بناء صيغة الاتجاه المحصَّنة (▲/▼ + نسبة التغيّر) لبطاقة مؤشّر.
+ * تُعالج القيم النصّيّة والقسمة على صفر فتُرجع شرطة "—" بدل الأخطاء.
+ * @param {string} curCell خليّة القيمة الحاليّة في المحرّك (مثال 'H2').
+ * @param {string} priCell خليّة القيمة السابقة في المحرّك (مثال 'I2').
+ * @return {string} الصيغة الجاهزة.
+ */
+function buildTrendFormula(curCell, priCell) {
+  // نُكره القيم على أن تكون أرقاماً (+0) داخل IFERROR ثمّ نحسب نسبة التغيّر
+  const E = SHEET_NAMES.engine;
+  const cur = `IFERROR(${E}!${curCell}+0, 0)`;
+  const pri = `IFERROR(${E}!${priCell}+0, 0)`;
+  return (
+    '=IFERROR(LET(' +
+    `cur, ${cur}, pri, ${pri}, ` +
+    'IF(pri=0, "—", IF(cur >= pri, "▲ " & TEXT((cur-pri)/pri, "0.0%"), ' +
+    '"▼ " & TEXT((cur-pri)/pri, "0.0%")))), "—")'
+  );
+}
+
+/* ===========================================================================
+ *  (3) ورقة الترحيب (Onboarding)
+ * ===========================================================================*/
+
+/**
+ * بناء ورقة الترحيب: ترويسة مزدوجة، نبذة، ثلاث بطاقات بدء سريع بروابط حيّة،
+ * كتلة توقيع المطوّر (محصورة هنا حصراً)، وشريط Footer.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة النشطة (لربط بطاقة الشهر الأوّل).
+ */
+function buildWelcome(ss, year) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.welcome);
+
+  // خلفيّة الصفحة وارتفاعات الصفوف
+  s.getRange(1, 1, 40, 16).setBackground(T.bgPage).setFontColor(T.fgPrimary);
+  for (let i = 1; i <= 40; i++) s.setRowHeight(i, 24);
+  for (let i = 2; i <= 4; i++) s.setRowHeight(i, 60);
+
+  // الترويسة المزدوجة (Hero)
+  const hero = s.getRange('B2:O4');
+  hero.merge();
+  hero.setValue(TXT_TITLES.heroAr + '\n' + TXT_TITLES.heroEn)
+    .setBackground(T.bgCard).setFontColor(T.fgPrimary)
+    .setFontSize(20).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+
+  // النبذة التعريفيّة
+  mergeAndStyle(s, 'B6:O9', TXT_WELCOME.tagline,
+    { bg: T.bgPage, fg: T.fgMuted, size: 13, align: 'center', wrap: true });
+
+  // بطاقات البدء السريع الثلاث
+  const cardCols = [['B', 'F'], ['G', 'K'], ['L', 'P']];
+  TXT_WELCOME.cards.forEach((c, i) => {
+    const [colStart, colEnd] = cardCols[i];
+    const accent = T[c.accentKey];
+    paintCard(s, `${colStart}11:${colEnd}23`);
+    s.getRange(`${colStart}11:${colEnd}11`).setBackground(accent); // حدّ علوي ملوّن
+    mergeAndStyle(s, `${colStart}12:${colEnd}13`, c.id, { bg: T.bgCard, fg: accent, size: 30, bold: true, align: 'right' });
+    mergeAndStyle(s, `${colStart}14:${colEnd}15`, c.title, { bg: T.bgCard, fg: T.fgPrimary, size: 16, bold: true, align: 'right' });
+    mergeAndStyle(s, `${colStart}16:${colEnd}22`, c.body, { bg: T.bgCard, fg: T.fgMuted, size: 11, align: 'right', wrap: true });
+
+    // رابط Hyperlink حيّ يُحلّ لمعرّف الورقة الفعلي وقت التركيب
+    const targetName = resolveWelcomeTarget(c.target, year);
+    const target = ss.getSheetByName(targetName);
+    if (target) {
+      mergeAndStyle(s, `${colStart}23:${colEnd}23`, '', { bg: T.bgCard, align: 'right' });
+      s.getRange(`${colStart}23`).setFormula(`=HYPERLINK("#gid=${target.getSheetId()}", "${c.link}")`)
+        .setFontColor(T.accentIncome).setFontSize(11);
+    }
+  });
+
+  // كتلة توقيع المطوّر (المكان الوحيد في المصنّف)
+  paintCard(s, 'B26:O29');
+  mergeAndStyle(s, 'B26:O27', TXT_WELCOME.signLine1, { bg: T.bgCard, fg: T.fgPrimary, size: 14, bold: true, align: 'center', vAlign: 'middle' });
+  mergeAndStyle(s, 'B28:O29', TXT_WELCOME.signLine2, { bg: T.bgCard, fg: T.fgMuted, size: 12, align: 'center', vAlign: 'middle' });
+
+  // شريط Footer
+  mergeAndStyle(s, 'B32:O32', TXT_WELCOME.footerVersion, { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
+  mergeAndStyle(s, 'B33:O33', TXT_WELCOME.footerDisclaimer, { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
+  mergeAndStyle(s, 'B34:O34', TXT_WELCOME.footerEn, { bg: T.bgPage, fg: T.fgMuted, size: 9, align: 'center' });
+}
+
+/**
+ * تحويل مفتاح هدف بطاقة الترحيب إلى اسم ورقة فعلي (يتعامل مع الشهر الأوّل).
+ * @param {string} key مفتاح الهدف (settings | firstMonth | dashboard).
+ * @param {number} year السنة النشطة.
+ * @return {string} اسم الورقة الفعلي.
+ */
+function resolveWelcomeTarget(key, year) {
+  // نربط مفاتيح البطاقات بأسماء الأوراق الحقيقيّة (الشهر الأوّل يعتمد السنة)
+  if (key === 'settings')  return SHEET_NAMES.settings;
+  if (key === 'dashboard') return SHEET_NAMES.dashboard;
+  if (key === 'firstMonth')return monthSheetName(0, year);
+  return SHEET_NAMES.settings;
+}

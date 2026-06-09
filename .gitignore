@@ -1,0 +1,10 @@
+# ملفّات اعتماد clasp (لا تُرفع أبداً للمستودع)
+.clasprc.json
+~/.clasprc.json
+
+# مجلّد النشر المُولَّد آلياً عبر deploy/build.sh (مشتقّ من scripts/)
+deploy/dist/
+
+# ملفّات النظام
+.DS_Store
+node_modules/
