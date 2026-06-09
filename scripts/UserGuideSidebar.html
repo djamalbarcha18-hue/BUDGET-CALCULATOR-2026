@@ -2,35 +2,43 @@
 <!--
   ============================================================================
    SmartBudget Pro 2026 · شريط دليل الاستخدام · UserGuideSidebar.html
-   شريط جانبي عربي (RTL) بوضع داكن يعرض أقسام الدليل كأكورديون قابل للطيّ،
-   ويفرض الأرقام اللاتينيّة. يجلب المحتوى من الخادم عبر google.script.run.
+   شريط جانبي عربي (RTL) بوضع داكن فاخر يعرض أقسام الدليل كأكورديون قابل للطيّ،
+   مع بحث فوري، ويفرض الأرقام اللاتينيّة. يجلب المحتوى عبر google.script.run.
+   نظام تصميم موحَّد (الخلفيّة #121212 · البطاقات #1E1E1E · خطّ Tajawal).
   ============================================================================
 -->
 <html lang="ar" dir="rtl">
 <head>
   <base target="_top">
   <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-page:#0F172A; --bg-card:#1F2937; --fg:#F1F5F9; --muted:#94A3B8;
-      --accent:#06B6D4; --grid:#334155;
+      --bg-page:#121212; --bg-card:#1E1E1E; --bg-elev:#2A2A2A;
+      --fg:#FFFFFF; --muted:#B0B0B0; --saving:#00B0F0; --grid:#2E2E2E;
+      --radius-card:12px; --radius-ctrl:10px;
     }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg-page); color:var(--fg); direction:rtl;
-      font-family:'Tajawal','Segoe UI',Tahoma,Arial,sans-serif; padding:14px; }
-    h1 { font-size:16px; margin:0 0 12px; }
+      font-family:'Tajawal','Cairo','Segoe UI',Tahoma,Arial,sans-serif; padding:14px; }
+    h1 { font-size:16px; margin:0 0 12px; font-weight:700; }
     .item { background:var(--bg-card); border:1px solid var(--grid);
-      border-radius:10px; margin-bottom:8px; overflow:hidden; }
-    .q { padding:10px 12px; font-size:13px; font-weight:700; cursor:pointer;
-      display:flex; align-items:center; gap:8px; }
-    .q .chev { margin-inline-start:auto; color:var(--accent); transition:transform .15s; }
+      border-radius:var(--radius-card); margin-bottom:8px; overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,.3); }
+    .q { padding:11px 12px; font-size:13px; font-weight:700; cursor:pointer;
+      display:flex; align-items:center; gap:8px; transition:background .15s ease; }
+    .q:hover { background:var(--bg-elev); }
+    .q .chev { margin-inline-start:auto; color:var(--saving); transition:transform .15s; }
     .q.open .chev { transform:rotate(90deg); }
     .a { font-size:12px; color:var(--muted); padding:0 12px; max-height:0;
       overflow:hidden; transition:max-height .2s ease, padding .2s ease; }
     .a.open { max-height:240px; padding:0 12px 12px; }
-    .search { width:100%; background:var(--bg-page); color:var(--fg);
-      border:1px solid var(--grid); border-radius:8px; padding:8px 10px;
+    .search { width:100%; background:var(--bg-elev); color:var(--fg);
+      border:1px solid var(--grid); border-radius:var(--radius-ctrl); padding:9px 11px;
       font-size:13px; font-family:inherit; margin-bottom:12px; }
+    .search:focus { outline:none; border-color:var(--saving); }
     .footer { font-size:11px; color:var(--muted); text-align:center;
       border-top:1px solid var(--grid); padding-top:10px; margin-top:10px; }
   </style>

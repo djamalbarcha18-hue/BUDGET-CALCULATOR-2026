@@ -3,9 +3,10 @@
   ============================================================================
    SmartBudget Pro 2026 · لوحة التحكّم السريعة المنبثقة · TopDialog.html
   ----------------------------------------------------------------------------
-   نافذة حواريّة عربيّة (RTL) بتصميم Fintech Dark Mode، تُعرَض فوق شريط أدوات
-   Google Sheets عبر showTopDialog(). تتواصل مع الخادم (Apps Script) حصراً عبر
-   google.script.run، وتفرض الأرقام اللاتينيّة (1, 2, 3) على كل المُدخلات والعرض.
+   نافذة حواريّة عربيّة (RTL) بتصميم Fintech Dark Mode فاخر، تُعرَض فوق شريط
+   أدوات Google Sheets عبر showTopDialog(). تتواصل مع الخادم حصراً عبر
+   google.script.run، وتفرض الأرقام اللاتينيّة (1, 2, 3) على كل العرض والمُدخلات.
+   نظام التصميم موحَّد عبر كل واجهات HTML (الخلفيّة #121212 · البطاقات #1E1E1E).
   ============================================================================
 -->
 <html lang="ar" dir="rtl">
@@ -13,95 +14,104 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- خطّ Tajawal (مع Cairo بديلاً) من Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ---- لوحة ألوان الوضع المظلم (مطابقة لثابت T في Config.gs_00) ---- */
+    /* ---- نظام التصميم الموحَّد (Fintech Dark Mode) ---- */
     :root {
-      --bg-page: #0F172A;
-      --bg-card: #1F2937;
-      --fg-primary: #F1F5F9;
-      --fg-muted: #94A3B8;
-      --accent-income: #10B981;
-      --accent-expense: #DC2626;
-      --accent-net: #06B6D4;
-      --gridline: #334155;
-      --amber: #F59E0B;
+      --bg-page:   #121212;  /* خلفيّة عامّة داكنة جداً */
+      --bg-card:   #1E1E1E;  /* خلفيّة البطاقات */
+      --bg-elev:   #2A2A2A;  /* عناصر مرتفعة (أزرار/حقول) */
+      --fg:        #FFFFFF;  /* نصّ أساسي أبيض */
+      --muted:     #B0B0B0;  /* نصّ ثانوي رمادي فاتح */
+      --income:    #00B050;  /* أخضر الدخل */
+      --expense:   #FF0000;  /* أحمر المصاريف */
+      --saving:    #00B0F0;  /* أزرق الادخار/الإجراءات المحايدة */
+      --amber:     #F59E0B;  /* تحذير */
+      --grid:      #2E2E2E;  /* حدود خافتة */
+      --radius-card: 14px;
+      --radius-ctrl: 10px;
     }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0;
-      background: var(--bg-page); color: var(--fg-primary);
-      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+      background: var(--bg-page); color: var(--fg);
+      font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
       direction: rtl;
     }
     .wrap { padding: 16px 18px 12px; }
     header { text-align: center; margin-bottom: 14px; }
     header h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
-    header p { font-size: 12px; color: var(--fg-muted); margin: 0; }
+    header p { font-size: 12px; color: var(--muted); margin: 0; }
 
     /* ---- شارة حالة المشغّل الدوري ---- */
     .trigger-badge {
-      display: inline-block; margin-top: 8px; padding: 4px 12px;
+      display: inline-block; margin-top: 8px; padding: 5px 14px;
       border-radius: 999px; font-size: 12px; font-weight: 600;
-      background: var(--bg-card); border: 1px solid var(--gridline);
+      background: var(--bg-elev); border: 1px solid var(--grid);
     }
-    .trigger-badge.on  { color: var(--accent-income); }
-    .trigger-badge.off { color: var(--fg-muted); }
+    .trigger-badge.on  { color: var(--income); border-color: var(--income); }
+    .trigger-badge.off { color: var(--muted); }
 
     /* ---- البطاقات والأقسام ---- */
     .card {
-      background: var(--bg-card); border: 1px solid var(--gridline);
-      border-radius: 12px; padding: 14px; margin-bottom: 12px;
+      background: var(--bg-card); border: 1px solid var(--grid);
+      border-radius: var(--radius-card); padding: 14px; margin-bottom: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
     }
     .card h2 {
-      font-size: 13px; color: var(--fg-muted); margin: 0 0 10px;
+      font-size: 13px; color: var(--muted); margin: 0 0 10px;
       font-weight: 700; letter-spacing: .2px;
     }
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    label { font-size: 13px; color: var(--fg-primary); }
+    label { font-size: 13px; color: var(--fg); }
 
     select, input {
-      background: var(--bg-page); color: var(--fg-primary);
-      border: 1px solid var(--gridline); border-radius: 8px;
-      padding: 8px 10px; font-size: 14px; font-family: inherit;
+      background: var(--bg-elev); color: var(--fg);
+      border: 1px solid var(--grid); border-radius: var(--radius-ctrl);
+      padding: 9px 11px; font-size: 14px; font-family: inherit;
       direction: ltr; text-align: center; /* الأرقام لاتينيّة دائماً */
     }
+    select:focus, input:focus { outline: none; border-color: var(--saving); }
 
-    /* ---- الأزرار ---- */
+    /* ---- الأزرار (حواف ناعمة وانتقالات أنيقة) ---- */
     button {
       flex: 1 1 auto; min-width: 130px;
-      background: var(--bg-page); color: var(--fg-primary);
-      border: 1px solid var(--gridline); border-radius: 8px;
-      padding: 9px 12px; font-size: 13px; font-family: inherit;
-      cursor: pointer; transition: transform .05s ease, background .15s ease;
+      background: var(--bg-elev); color: var(--fg);
+      border: 1px solid var(--grid); border-radius: var(--radius-ctrl);
+      padding: 10px 12px; font-size: 13px; font-weight: 500; font-family: inherit;
+      cursor: pointer; transition: transform .05s ease, background .15s ease, box-shadow .15s ease;
     }
-    button:hover  { background: #25324a; }
+    button:hover  { background: #343434; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
     button:active { transform: scale(0.98); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    button.primary { background: var(--accent-net); border-color: var(--accent-net); color: #04222b; font-weight: 700; }
-    button.good    { border-color: var(--accent-income); color: var(--accent-income); }
-    button.warn    { border-color: var(--amber); color: var(--amber); }
-    button.danger  { border-color: var(--accent-expense); color: var(--accent-expense); }
+    button.primary { background: var(--saving);  border-color: var(--saving);  color: #04222b; font-weight: 700; }
+    button.good    { border-color: var(--income);  color: var(--income); }
+    button.warn    { border-color: var(--amber);   color: var(--amber); }
+    button.danger  { border-color: var(--expense); color: var(--expense); }
 
     /* ---- شريط الحالة السفلي ---- */
     .statusbar {
       display: flex; align-items: center; gap: 8px;
-      font-size: 12px; color: var(--fg-muted);
-      border-top: 1px solid var(--gridline); padding-top: 10px; margin-top: 4px;
+      font-size: 12px; color: var(--muted);
+      border-top: 1px solid var(--grid); padding-top: 10px; margin-top: 4px;
     }
     .spinner {
-      width: 14px; height: 14px; border: 2px solid var(--gridline);
-      border-top-color: var(--accent-net); border-radius: 50%;
+      width: 14px; height: 14px; border: 2px solid var(--grid);
+      border-top-color: var(--saving); border-radius: 50%;
       animation: spin .7s linear infinite; display: none;
     }
     .spinner.show { display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* مركز التنبيهات: أسطر ملوّنة حسب الخطورة */
-    .notif { font-size: 12px; padding: 7px 10px; border-radius: 8px; margin-bottom: 6px;
-      border: 1px solid var(--gridline); background: var(--bg-page); color: var(--fg-primary); }
-    .notif.high { border-color: var(--accent-expense); }
+    .notif { font-size: 12px; padding: 8px 11px; border-radius: var(--radius-ctrl); margin-bottom: 6px;
+      border: 1px solid var(--grid); background: var(--bg-elev); color: var(--fg); }
+    .notif.high { border-color: var(--expense); }
     .notif.mid  { border-color: var(--amber); }
-    .notif.ok   { border-color: var(--accent-income); color: var(--accent-income); }
+    .notif.ok   { border-color: var(--income); color: var(--income); }
   </style>
 </head>
 <body>
