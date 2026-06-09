@@ -1,0 +1,117 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  محرّك المخططات البيانيّة للأوراق الشهريّة  ·  Charts.gs_14
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - رسم مخطّط دائري مجوّف (Donut) لتوزيع فئات المصاريف بجوار جدول المصاريف.
+ *    - رسم مخطّط أعمدة مقارن (الدخل/المصاريف/الادخار) بجوار الجداول.
+ *    - الالتزام الصارم بالهوية اللونيّة (CHART_COLORS): أخضر/أحمر/أزرق فاتح.
+ *
+ *  ملاحظة: تُبنى جداول مصدر صغيرة في أعمدة مخفيّة (T:W) لتغذية المخططات بقيم
+ *  ديناميكيّة عبر SUMIF ومراجع لوحة المؤشّرات، مع إبقاء الأرقام لاتينيّة.
+ * ============================================================================
+ */
+
+/* ثوابت مواضع جداول المصدر والمخططات داخل كل ورقة شهر (مركزيّة لمنع التكرار). */
+const CHART_LAYOUT = {
+  donutTableCol:  20,  // العمود T: جدول مصدر الدونات (الفئة + المبلغ)
+  donutValueCol:  21,  // العمود U: مبالغ الفئات
+  colTableRow:    16,  // صفّ بيانات مخطّط الأعمدة في جدول المصدر
+  hiddenFirstCol: 20,  // أوّل عمود مخفيّ (T)
+  hiddenColCount: 4,   // عدد الأعمدة المخفيّة (T:W)
+};
+
+/**
+ * بناء (أو إعادة بناء) مخططَي الشهر: الدونات للمصاريف وأعمدة المقارنة.
+ * تُستدعى في نهاية buildMonth لكل ورقة من الأوراق الاثنتي عشرة.
+ * @param {Sheet} s ورقة الشهر.
+ */
+function buildMonthCharts(s) {
+  // نحذف أيّ مخططات قائمة أوّلاً لتفادي التكرار عند إعادة البناء (Idempotent)
+  s.getCharts().forEach(c => s.removeChart(c));
+
+  // نبني جداول المصدر المخفيّة ثمّ نرسم المخططين فوقها
+  buildChartSourceTables_(s);
+  drawExpenseDonut_(s);
+  drawComparisonColumn_(s);
+
+  // نُخفي أعمدة جداول المصدر حتى لا تشتّت المستخدم
+  s.hideColumns(CHART_LAYOUT.hiddenFirstCol, CHART_LAYOUT.hiddenColCount);
+}
+
+/**
+ * بناء جداول المصدر المخفيّة للمخططات:
+ *   - T1:U13  جدول توزيع المصاريف (فئة + مجموعها عبر SUMIF).
+ *   - T15:W16 جدول المقارنة (الدخل/المصاريف/الادخار) كثلاث سلاسل.
+ * @param {Sheet} s ورقة الشهر.
+ */
+function buildChartSourceTables_(s) {
+  const L = LAYOUT;
+  // --- جدول الدونات: فئات المصاريف ومجاميعها ---
+  s.getRange('T1').setValue('الفئة');
+  s.getRange('U1').setValue('المبلغ');
+  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
+    const r = 2 + i;
+    s.getRange('T' + r).setValue(EXPENSE_CATEGORIES[i]); // اسم الفئة حرفياً (لا اعتماد على نطاق مُسمّى)
+    // مجموع الفئة من عمود الفعلي للمصاريف عبر SUMIF محصَّن
+    s.getRange('U' + r).setFormula(
+      `=IFERROR(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, T${r}, ` +
+      `E${L.expenseFirstRow}:E${L.expenseLastRow}), 0)`);
+  }
+  // تنسيق المبالغ بأرقام لاتينيّة
+  enforceLatinNumberFormat(s.getRange('U2:U' + (1 + EXPENSE_CATEGORIES.length)));
+
+  // --- جدول الأعمدة المقارن: ثلاث سلاسل (دخل/مصاريف/ادخار) ---
+  s.getRange('T15').setValue('');           // خليّة الزاوية
+  s.getRange('U15').setValue('الدخل');
+  s.getRange('V15').setValue('المصاريف');
+  s.getRange('W15').setValue('الادخار');
+  s.getRange('T16').setValue('الإجمالي');
+  s.getRange('U16').setFormula('=IFERROR(B4, 0)'); // إجمالي الدخل الفعلي
+  s.getRange('V16').setFormula('=IFERROR(D4, 0)'); // إجمالي المصاريف الفعلي
+  s.getRange('W16').setFormula('=IFERROR(B5, 0)'); // صافي الادخار
+  enforceLatinNumberFormat(s.getRange('U16:W16'));
+}
+
+/**
+ * رسم المخطّط الدائري المجوّف لتوزيع فئات المصاريف بجوار جدول المصاريف.
+ * @param {Sheet} s ورقة الشهر.
+ */
+function drawExpenseDonut_(s) {
+  const lastRow = 1 + EXPENSE_CATEGORIES.length; // آخر صفّ في جدول المصدر
+  const chart = s.newChart()
+    .asPieChart()
+    .addRange(s.getRange('T1:U' + lastRow))
+    .setOption('pieHole', 0.5)                         // التجويف (Donut)
+    .setOption('title', 'توزيع المصاريف حسب الفئة')
+    .setOption('titleTextStyle', { color: T.fgPrimary })
+    .setOption('legend', { position: 'right', textStyle: { color: '#333333' } })
+    .setOption('colors', EXPENSE_SLICE_COLORS)         // درجات متناسقة للشرائح
+    .setOption('pieSliceText', 'percentage')           // عرض النسب
+    .setOption('width', 360).setOption('height', 280)
+    // نضع المخطّط بجوار جدول المصاريف (يمين الكتلة، أعلى صفّ ترويسة المصاريف)
+    .setPosition(LAYOUT.expenseHeaderRow, 10, 0, 0)
+    .build();
+  s.insertChart(chart);
+}
+
+/**
+ * رسم مخطّط الأعمدة المقارن (الدخل/المصاريف/الادخار) بالهوية اللونيّة الصارمة.
+ * @param {Sheet} s ورقة الشهر.
+ */
+function drawComparisonColumn_(s) {
+  const chart = s.newChart()
+    .asColumnChart()
+    .addRange(s.getRange('T15:W16'))                   // ثلاث سلاسل
+    .setOption('title', 'مقارنة: الدخل · المصاريف · الادخار')
+    .setOption('titleTextStyle', { color: T.fgPrimary })
+    .setOption('legend', { position: 'top', textStyle: { color: '#333333' } })
+    // الهوية اللونيّة الصارمة: السلسلة 1 دخل (أخضر)، 2 مصاريف (أحمر)، 3 ادخار (أزرق)
+    .setOption('colors', [CHART_COLORS.income, CHART_COLORS.expense, CHART_COLORS.saving])
+    .setOption('width', 360).setOption('height', 240)
+    // نضع المخطّط بجوار كتلة الدخل (يمين الكتلة، عند صفّ ترويسة الدخل)
+    .setPosition(LAYOUT.incomeHeaderRow, 10, 0, 0)
+    .build();
+  s.insertChart(chart);
+}

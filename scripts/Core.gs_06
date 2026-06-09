@@ -31,6 +31,14 @@ function buildMonth(ss, monthIndex, year) {
   const s = getOrCreateSheet(ss, name);
   const L = LAYOUT; // اختصار لمراجع التخطيط (منعاً للتكرار)
 
+  // إخفاء خطوط الشبكة لمظهر لوحة قيادة نظيف
+  s.setHiddenGridlines(true);
+  // خلفيّة باستيليّة مميِّزة للشهر على كامل مساحة الورقة المرئيّة
+  s.getRange('A1:R70').setBackground(PASTEL_MONTHS[monthIndex]);
+  // إبقاء جداول الإدخال بيضاء (الدخل والمصاريف) لمنع تشتيت المستخدم أثناء الإدخال
+  s.getRange(`A${L.incomeFirstRow}:G${L.incomeTotalRow}`).setBackground(T.white);
+  s.getRange(`A${L.expenseFirstRow}:H${L.expenseTotalRow}`).setBackground(T.white);
+
   // صفّ العنوان (يحوي اسم الشهر والسنة)
   mergeAndStyle(s, 'A1:G1', monthTitle(monthIndex, year), { bold: true, size: 14, align: 'center' });
 
@@ -113,6 +121,9 @@ function buildMonth(ss, monthIndex, year) {
   // تجميد لوحة المؤشّرات وضبط عرض الأعمدة
   freezeTopRows(s, L.kpiFrozenRows);
   s.autoResizeColumns(1, 8);
+
+  // رسم مخططَي الشهر (دونات المصاريف + أعمدة المقارنة) بالهوية اللونيّة الصارمة
+  buildMonthCharts(s);
 }
 
 /**

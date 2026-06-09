@@ -40,6 +40,7 @@ declare -A MAP=(
   ["Forecast.gs_11"]="11_Forecast.gs"
   ["UserGuide.gs_12"]="12_UserGuide.gs"
   ["Recovery.gs_13"]="13_Recovery.gs"
+  ["Charts.gs_14"]="14_Charts.gs"
 )
 
 echo "🔁 تحويل ملفّات .gs_NN إلى أسماء صالحة لـ clasp…"
