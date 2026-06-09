@@ -125,9 +125,8 @@ function enforceLatinDigitsOnEdit(e) {
 function installBudgetCalculator2026() {
   const ss = SpreadsheetApp.getActive();
   const ui = SpreadsheetApp.getUi();
-  const year = DEFAULT_YEAR;
 
-  // فحص مبدئي: تأكيد المتابعة إن كان المصنّف غير فارغ
+  // فحص مبدئي: تأكيد المتابعة إن كان المصنّف غير فارغ (حماية بيانات قائمة)
   const sheets = ss.getSheets();
   const nonEmpty = sheets.some(s => s.getLastRow() > 0 || s.getLastColumn() > 1);
   if (sheets.length > 1 || nonEmpty) {
@@ -135,13 +134,41 @@ function installBudgetCalculator2026() {
     if (r !== ui.Button.YES) return;
   }
 
-  // فرض الأرقام اللاتينيّة على مستوى المصنّف
+  // نُفوّض كامل عمليّة البناء للدالّة المشتركة (DRY) ثمّ نُنزل المستخدم ونُعلِمه
+  buildEntireWorkbook_(ss, DEFAULT_YEAR);
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
+  ui.alert(TXT_MSG.installDoneTitle, TXT_MSG.installDoneBody, ui.ButtonSet.OK);
+}
+
+/**
+ * التثبيت الذاتي لمشروع/شيت جديد (Self-Install). نقطة دخول مخصّصة لتهيئة جدول
+ * فارغ تماماً (مثلاً بعد نسخ القالب أو عبر clasp/onInstall) دون مربّع تأكيد،
+ * لأنّ الجدول يُفترَض أنّه جديد. تعيد كائن نتيجة ليُستهلَك آلياً عند الحاجة.
+ * @return {Object} {ok, message} نتيجة موحَّدة.
+ */
+function initializeNewProject() {
+  const ss = SpreadsheetApp.getActive();
+  // نبني كامل المصنّف عبر الدالّة المشتركة نفسها (نفس منطق التركيب، بلا تكرار)
+  buildEntireWorkbook_(ss, DEFAULT_YEAR);
+  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
+  return { ok: true, message: TXT_MSG.installDoneTitle };
+}
+
+/**
+ * منطق البناء الكامل المشترك بين التركيب اليدوي والتثبيت الذاتي (مصدر حقيقة
+ * واحد لخطوات البناء — تطبيقاً صارماً لمبدأ DRY). يبني كل الوحدات الأربع عشرة
+ * بترتيب آمن للمراجع، ويفعّل الحماية والأرشفة ونظام الطوارئ والتهيئة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة الافتراضيّة للتركيب.
+ */
+function buildEntireWorkbook_(ss, year) {
+  // فرض الأرقام اللاتينيّة على مستوى المصنّف (حماية كل الحسابات والتواريخ)
   enforceLatinLocale(ss);
 
   // (1) تهيئة جذوع كل الأوراق مسبقاً لتفادي المراجع الشبح (#REF!)
   precreateAllSheetStubs(ss, year);
 
-  // (2) البناء بالترتيب القانوني
+  // (2) البناء بالترتيب القانوني (الإعدادات أوّلاً لأنّ الكلّ يشير إليها)
   buildSettingsSheet(ss, year);
   buildGoals(ss);
   buildDebts(ss);
@@ -165,10 +192,8 @@ function installBudgetCalculator2026() {
   createSnapshot(ss, 'نسخة ما بعد التركيب');
   installSnapshotTriggers();
 
-  // (5) إعادة ضبط حالة التهيئة لعرض الدليل، والإنزال على ورقة الترحيب
+  // (5) إعادة ضبط حالة التهيئة لعرض دليل المستخدم الجديد عند الفتح
   resetOnboarding();
-  ss.setActiveSheet(ss.getSheetByName(SHEET_NAMES.welcome));
-  ui.alert(TXT_MSG.installDoneTitle, TXT_MSG.installDoneBody, ui.ButtonSet.OK);
 }
 
 /**
