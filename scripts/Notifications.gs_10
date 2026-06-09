@@ -90,35 +90,29 @@ function scanGoalsAtRisk(ss, out) {
 }
 
 /**
- * فحص مفكرة الديون: يضيف تنبيهاً لكل دين غير مسدَّد يستحقّ خلال المدّة المحدّدة.
+ * فحص مفكرة الديون: يضيف تنبيهاً لكل دين "عليّ" نشط (متبقٍّ > 0) كتذكير مالي.
+ * يقرأ التخطيط الجديد: B=الطرف، C=النوع، G=المتبقّي، H=الحالة.
  * @param {Spreadsheet} ss المصنّف.
  * @param {Array} out مصفوفة التنبيهات.
  */
 function scanDebtsDueSoon(ss, out) {
   const debts = ss.getSheetByName(SHEET_NAMES.debts);
   if (!debts) return;
-  const tz = ss.getSpreadsheetTimeZone();
-  const today = new Date();
   const data = debts.getRange(
     `A${LAYOUT.debtsFirstRow}:H${LAYOUT.debtsLastRow}`).getValues();
   data.forEach(row => {
-    const party = row[0];                 // A الطرف
-    const remaining = Number(row[4]) || 0;// E المتبقّي
-    const dueRaw = row[6];                 // G تاريخ الاستحقاق
+    const party = row[1];                  // B الطرف/الاسم
+    const type = row[2];                   // C النوع
+    const remaining = Number(row[6]) || 0; // G المتبقّي
     const status = row[7];                 // H الحالة
-    if (!party || status === DEBT_STATUSES[2] || remaining <= 0) return; // مسدَّد بالكامل يُتجاهَل
-    const due = dueRaw instanceof Date ? dueRaw : (dueRaw ? new Date(dueRaw) : null);
-    if (!due || isNaN(due.getTime())) return;
-    const days = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (days >= 0 && days <= NOTIFY_CONFIG.dueSoonDays) {
-      out.push({
-        level: 'high', icon: '💳',
-        text: TXT_NOTIFY.debtDue
-          .replace('{party}', party)
-          .replace('{days}', toLatinDigits(days))
-          .replace('{amount}', toLatinDigits(remaining)),
-      });
-    }
+    // ننبّه فقط على الديون التي "عليّ" والنشطة وبها مبلغ متبقٍّ
+    if (!party || type !== DEBT_TYPES[1] || status !== DEBT_STATUS.active || remaining <= 0) return;
+    out.push({
+      level: 'high', icon: '💳',
+      text: TXT_NOTIFY.debtActive
+        .replace('{party}', party)
+        .replace('{amount}', toLatinDigits(remaining)),
+    });
   });
 }
 

@@ -273,13 +273,8 @@ function applyProtection(ss, year) {
       goals.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
   }
 
-  // مفكرة السلف والديون: حماية الأعمدة المحسوبة (المتبقي + الحالة)
-  const debts = ss.getSheetByName(SHEET_NAMES.debts);
-  if (debts) {
-    [`E${LAYOUT.debtsFirstRow}:E${LAYOUT.debtsLastRow}`,
-     `H${LAYOUT.debtsFirstRow}:H${LAYOUT.debtsLastRow}`].forEach(r =>
-      debts.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
-  }
+  // مفكرة السلف والديون: تُدار حمايتها داخل وحدتها المستقلّة (DebtTracker.gs_15)
+  // عبر applyDebtTrackerProtection_، فلا نكرّرها هنا (تفادي تعارض الحمايات).
 
   // الأوراق الشهريّة للسنة النشطة: حماية لوحة المؤشّرات والأعمدة المحسوبة
   monthSheetNames(year).forEach(name => {

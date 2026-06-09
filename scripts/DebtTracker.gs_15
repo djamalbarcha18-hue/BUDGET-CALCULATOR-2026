@@ -1,0 +1,168 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  وحدة مفكرة السلف والديون  ·  DebtTracker.gs_15
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - بناء ورقة "مفكرة السلف والديون" بأعمدة ذكيّة ومعادلات آليّة.
+ *    - توحيد بصري بوضع داكن صافٍ (#121212) وخطّ معتمد وإخفاء خطوط الشبكة.
+ *    - تصدير ملخّص (ما لي النشط / ما عليّ النشط) ليُستهلَك من اللوحة الرئيسيّة.
+ *    - حماية فولاذيّة للترويسات والأعمدة المحسوبة مع فتح نطاقات الإدخال.
+ *
+ *  تخطيط الأعمدة (A→H):
+ *    A=التاريخ · B=الطرف/الاسم · C=النوع · D=المبلغ الأصلي · E=المبلغ المسدد ·
+ *    F=طريقة الدفع · G=المبلغ المتبقي (معادلة) · H=الحالة (معادلة).
+ *  كل الأرقام والتواريخ تُعرَض لاتينيّة عبر دوال Helpers.gs_01.
+ * ============================================================================
+ */
+
+/* أعمدة المفكرة (مركزيّة لمنع الأرقام السحريّة وتسهيل أيّ تعديل مستقبلي). */
+const DEBT_COLS = {
+  date: 'A', party: 'B', type: 'C', original: 'D',
+  paid: 'E', payment: 'F', remaining: 'G', status: 'H',
+};
+
+/**
+ * بناء (أو إعادة بناء) ورقة مفكرة السلف والديون كاملةً.
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function buildDebtTracker(ss) {
+  const s = getOrCreateSheet(ss, SHEET_NAMES.debts);
+  const L = LAYOUT;
+
+  // تنظيف أيّ بقايا من بناء سابق (محتوى/تنسيقات/تحقّقات/تنسيق شرطي/حمايات)
+  s.clear();
+  s.clearConditionalFormatRules();
+  s.getRange(1, 1, s.getMaxRows(), Math.max(8, s.getMaxColumns())).clearDataValidations();
+  removeAllProtections_(s);
+
+  // ---- التوحيد البصري: وضع داكن + خطّ معتمد + إخفاء الشبكة ----
+  s.setHiddenGridlines(true);
+  const canvas = s.getRange(1, 1, 60, 8);
+  canvas.setBackground(DEBT_DARK_BG).setFontColor(T.fgPrimary).setFontFamily(FONT_FAMILY);
+
+  // العنوان الرئيسي
+  mergeAndStyle(s, 'A1:H1', TXT_TITLES.debts,
+    { bg: DEBT_DARK_BG, fg: T.fgPrimary, size: 16, bold: true, align: 'center', fontFamily: FONT_FAMILY });
+
+  // ---- لوحة ملخّص المركز المالي (صفوف 2-3) ----
+  // تُحسب على "النشط" فقط (الحالة = نشط) لتعكس الالتزامات/الحقوق القائمة فعلاً
+  const g = `${DEBT_COLS.remaining}${L.debtsFirstRow}:${DEBT_COLS.remaining}${L.debtsLastRow}`;
+  const c = `${DEBT_COLS.type}${L.debtsFirstRow}:${DEBT_COLS.type}${L.debtsLastRow}`;
+  const h = `${DEBT_COLS.status}${L.debtsFirstRow}:${DEBT_COLS.status}${L.debtsLastRow}`;
+
+  s.getRange('A2').setValue(TXT_DEBTS.totalOwedToMe).setFontWeight('bold').setFontColor(CHART_COLORS.income);
+  s.getRange('B2').setFormula(`=IFERROR(SUMIFS(${g}, ${c}, "${DEBT_TYPES[0]}", ${h}, "${DEBT_STATUS.active}"), 0)`);
+  s.getRange('C2').setValue(TXT_DEBTS.totalOwedByMe).setFontWeight('bold').setFontColor(CHART_COLORS.expense);
+  // D2: إجمالي ما عليّ النشط — تعتمد عليه بطاقة الالتزامات في المحرّك الخلفي (debts!D2)
+  s.getRange('D2').setFormula(`=IFERROR(SUMIFS(${g}, ${c}, "${DEBT_TYPES[1]}", ${h}, "${DEBT_STATUS.active}"), 0)`);
+  s.getRange('A3').setValue(TXT_DEBTS.netPosition).setFontWeight('bold');
+  s.getRange('B3').setFormula('=B2-D2');
+  s.getRange('C3').setValue(TXT_DEBTS.countOpen).setFontWeight('bold');
+  s.getRange('D3').setFormula(`=COUNTIF(${h}, "${DEBT_STATUS.active}")`);
+  enforceLatinNumberFormat(s.getRange('B2:B3')); enforceLatinNumberFormat(s.getRange('D2'));
+
+  // ---- ترويسة الجدول (صف 6) بألوان دلاليّة ----
+  writeHeaderRow(s, `A${L.debtsHeaderRow}:H${L.debtsHeaderRow}`, TXT_HEADERS.debts);
+  // تمييز دلالي: عمودا المعادلات (المتبقي/الحالة) بلون سماوي يميّزهما عن الإدخال
+  s.getRange(`${DEBT_COLS.remaining}${L.debtsHeaderRow}:${DEBT_COLS.status}${L.debtsHeaderRow}`)
+    .setFontColor(CHART_COLORS.saving);
+
+  // ---- المعادلات لكل صفّ (المتبقّي + الحالة) ----
+  for (let r = L.debtsFirstRow; r <= L.debtsLastRow; r++) {
+    // G: المبلغ المتبقّي = الأصلي - المسدّد (لا يقلّ عن صفر)
+    s.getRange(DEBT_COLS.remaining + r).setFormula(
+      `=IF(${DEBT_COLS.original}${r}="", "", MAX(0, IFERROR(${DEBT_COLS.original}${r}-${DEBT_COLS.paid}${r}, ${DEBT_COLS.original}${r})))`);
+    // H: الحالة — "مكتمل" إذا المتبقّي صفر، و"نشط" إذا بقي مبلغ
+    s.getRange(DEBT_COLS.status + r).setFormula(
+      `=IF(${DEBT_COLS.original}${r}="", "", IF(${DEBT_COLS.remaining}${r}<=0, "${DEBT_STATUS.done}", "${DEBT_STATUS.active}"))`);
+  }
+
+  // ---- التنسيقات اللاتينيّة (تواريخ + مبالغ) ----
+  applyDateFormat(s.getRange(`${DEBT_COLS.date}${L.debtsFirstRow}:${DEBT_COLS.date}${L.debtsLastRow}`));
+  enforceLatinNumberFormat(s.getRange(`${DEBT_COLS.original}${L.debtsFirstRow}:${DEBT_COLS.original}${L.debtsLastRow}`));
+  enforceLatinNumberFormat(s.getRange(`${DEBT_COLS.paid}${L.debtsFirstRow}:${DEBT_COLS.paid}${L.debtsLastRow}`));
+  enforceLatinNumberFormat(s.getRange(`${DEBT_COLS.remaining}${L.debtsFirstRow}:${DEBT_COLS.remaining}${L.debtsLastRow}`));
+
+  // ---- قوائم منسدلة: النوع (دائن/مدين) وطريقة الدفع ----
+  const typeDv = SpreadsheetApp.newDataValidation()
+    .requireValueInList(DEBT_TYPES, true).setAllowInvalid(false).build();
+  s.getRange(`${DEBT_COLS.type}${L.debtsFirstRow}:${DEBT_COLS.type}${L.debtsLastRow}`).setDataValidation(typeDv);
+  const payDv = SpreadsheetApp.newDataValidation()
+    .requireValueInList(PAYMENT_METHODS, true).setAllowInvalid(false).build();
+  s.getRange(`${DEBT_COLS.payment}${L.debtsFirstRow}:${DEBT_COLS.payment}${L.debtsLastRow}`).setDataValidation(payDv);
+
+  // ---- التنسيق الشرطي على عمود الحالة (مكتمل أخضر / نشط أحمر) ----
+  applyDebtStatusFormatting_(s);
+
+  // ---- التجميد والعرض والحماية الفولاذيّة ----
+  freezeTopRows(s, L.debtsHeaderRow);
+  s.autoResizeColumns(1, 8);
+  applyDebtTrackerProtection_(s);
+}
+
+/**
+ * تطبيق التنسيق الشرطي على عمود الحالة وفق الهوية اللونيّة الصارمة.
+ * "مكتمل" → أخضر (#00B050) · "نشط" → أحمر (#FF0000).
+ * @param {Sheet} s ورقة المفكرة.
+ */
+function applyDebtStatusFormatting_(s) {
+  const L = LAYOUT;
+  const statusRange = s.getRange(`${DEBT_COLS.status}${L.debtsFirstRow}:${DEBT_COLS.status}${L.debtsLastRow}`);
+  const ref = `$${DEBT_COLS.status}${L.debtsFirstRow}`;
+  const rules = s.getConditionalFormatRules();
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${ref}="${DEBT_STATUS.done}"`)
+      .setBackground(CHART_COLORS.income).setFontColor(T.white).setRanges([statusRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${ref}="${DEBT_STATUS.active}"`)
+      .setBackground(CHART_COLORS.expense).setFontColor(T.white).setRanges([statusRange]).build());
+  s.setConditionalFormatRules(rules);
+}
+
+/**
+ * الحماية الفولاذيّة: قفل كامل الورقة (الترويسات + الملخّص + عمودا المعادلات)
+ * مع فتح نطاقات الإدخال فقط (التاريخ/الطرف/النوع/الأصلي/المسدد/طريقة الدفع).
+ * @param {Sheet} s ورقة المفكرة.
+ */
+function applyDebtTrackerProtection_(s) {
+  const L = LAYOUT;
+  removeAllProtections_(s); // تفادي تراكم الحمايات عند إعادة البناء
+  const protection = s.protect().setDescription(TXT_WARN.calcCell);
+  // النطاق المفتوح للإدخال: الأعمدة A→F من أوّل صفّ بيانات حتى آخره
+  const inputRange = s.getRange(
+    `${DEBT_COLS.date}${L.debtsFirstRow}:${DEBT_COLS.payment}${L.debtsLastRow}`);
+  protection.setUnprotectedRanges([inputRange]);
+  // قفل صارم (وليس تحذيراً فقط) للترويسات والأعمدة المحسوبة
+  protection.setWarningOnly(false);
+}
+
+/**
+ * إزالة كل حمايات الورقة والنطاقات (دالّة مساعدة لإعادة البناء بأمان).
+ * @param {Sheet} s الورقة.
+ */
+function removeAllProtections_(s) {
+  s.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(p => p.remove());
+  s.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
+}
+
+/**
+ * ملخّص المفكرة لتصديره إلى اللوحة الرئيسيّة (Dashboard.gs_03) كمتغيّرات عامّة.
+ * يُرجع القيم الرقميّة ونصوصها اللاتينيّة معاً لسهولة الاستهلاك.
+ * @return {Object|null} {owedToMe, owedByMe, net, ...Text} أو null إن غابت الورقة.
+ */
+function debtSummary() {
+  const s = SpreadsheetApp.getActive().getSheetByName(SHEET_NAMES.debts);
+  if (!s) return null;
+  // نقرأ خلايا الملخّص المحسوبة (B2 ما لي · D2 ما عليّ · B3 الصافي)
+  const owedToMe = Number(s.getRange('B2').getValue()) || 0;
+  const owedByMe = Number(s.getRange('D2').getValue()) || 0;
+  const net = owedToMe - owedByMe;
+  return {
+    owedToMe: owedToMe, owedByMe: owedByMe, net: net,
+    owedToMeText: formatLatinNumber(owedToMe), // نصوص لاتينيّة جاهزة للعرض
+    owedByMeText: formatLatinNumber(owedByMe),
+    netText: formatLatinNumber(net),
+  };
+}

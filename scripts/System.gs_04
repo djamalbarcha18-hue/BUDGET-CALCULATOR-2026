@@ -210,7 +210,7 @@ function buildEntireWorkbook_(ss, year) {
   // (2) البناء بالترتيب القانوني (الإعدادات أوّلاً لأنّ الكلّ يشير إليها)
   buildSettingsSheet(ss, year);
   buildGoals(ss);
-  buildDebts(ss);
+  buildDebtTracker(ss);          // وحدة مفكرة السلف والديون (15)
   buildYearMonthlySheets(ss, year);
   buildDashboard(ss, year);
   buildDashboardEngine(ss, year);
