@@ -52,6 +52,7 @@ function onOpen() {
     .addItem(TXT_MENU.snapshotRestore, 'menuRestoreSnapshot')
     .addItem(TXT_MENU.installTriggers, 'menuInstallSnapshotTriggers')
     .addItem(TXT_MENU.removeTriggers, 'menuRemoveSnapshotTriggers')
+    .addItem(TXT_MENU.purgeStorage, 'menuPurgeLegacyStorage')
     .addSeparator()
     .addItem(TXT_MENU.repairDash, 'repairDashboard2026')
     .addToUi();
