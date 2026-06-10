@@ -319,15 +319,20 @@ function menuCleanOtherYears() {
 
 /**
  * إرجاع الحالة الأوّليّة للوحة التحكّم (السنة، المشغّلات، النسخ، التنبيهات).
+ * مُحصَّنة بالكامل: كل مصدر بيانات يُقرأ بالاسم الصريح (لا يعتمد على الورقة
+ * النشطة) ويُغلَّف بـ try/catch، فتُحمَّل اللوحة كاملةً من أيّ ورقة كان يقف
+ * المستخدم عليها (حتى لو كانت ورقة نظام مخفيّة) دون تجمّد أو نقص عناصر.
  * @return {Object} حالة جاهزة لاستهلاكها في TopDialog.html.
  */
 function dialogGetState() {
+  // غلاف آمن: يمنع فشل أيّ مصدر من إسقاط بناء الحالة بأكمله (عزل السياق)
+  const safe = function (fn, fallback) { try { return fn(); } catch (e) { return fallback; } };
   return {
-    activeYear:     getActiveYear(),
+    activeYear:     safe(getActiveYear, DEFAULT_YEAR),
     years:          allSupportedYears(),
-    triggersActive: areSnapshotTriggersActive(),
-    snapshots:      listSnapshotsForDialog(),
-    notifications:  getNotifications(),   // من وحدة التنبيهات (10)
+    triggersActive: safe(areSnapshotTriggersActive, false),
+    snapshots:      safe(listSnapshotsForDialog, []),
+    notifications:  safe(getNotifications, []),
     version:        APP_VERSION,
   };
 }
@@ -380,13 +385,14 @@ function dialogRunAction(action, params) {
       return { ok: true, message: TXT_FORECAST.doneBody, state: dialogGetState() };
 
     case 'exportDash': {
-      const url = exportDashboardPdf();
-      return { ok: !!url, message: url ? TXT_EXPORT.doneBody.replace('{url}', url) : TXT_EXPORT.failBody, state: dialogGetState() };
+      const r = exportDashboardPdf();
+      return { ok: r.ok, message: r.message, state: dialogGetState() };
     }
 
     case 'exportMonth': {
-      const url = exportActiveMonthPdf();
-      return { ok: !!url, message: url ? TXT_EXPORT.doneBody.replace('{url}', url) : TXT_EXPORT.failBody, state: dialogGetState() };
+      // عزل السياق: نصدّر شهراً يُحلّ بالاسم من السنة النشطة، لا الورقة النشطة
+      const r = exportMonthForDialog_();
+      return { ok: r.ok, message: r.message, state: dialogGetState() };
     }
 
     case 'snapshot':

@@ -20,6 +20,8 @@
 const SNAP_CHUNK_SIZE = 45000; // أقصى حجم قطعة في الخليّة الواحدة (حدّ الخليّة 50000)
 const SNAP_FIRST_DATA_ROW = 2; // أوّل صفّ بيانات (الصفّ 1 ترويسة)
 const SNAP_PAYLOAD_FIRST_COL = 4; // العمود D: أوّل عمود لحمولة JSON المُقسَّمة
+const SNAP_CACHE_KEY = 'SBP_SNAP_INDEX_CACHE'; // مفتاح التخزين المؤقّت لفهرس النسخ
+const SNAP_CACHE_TTL = 300;    // مدّة صلاحيّة الكاش بالثواني (5 دقائق)
 
 /* ===========================================================================
  *  (1) أغلفة القائمة الخاصّة بالطوارئ
@@ -202,6 +204,7 @@ function createSnapshot(ss, label) {
 
   // تدوير اللقطات للحفاظ على الحدّ الأقصى
   rotateSnapshots_(sheet);
+  invalidateSnapshotCache_(); // إبطال الكاش بعد تغيّر الفهرس
   return key;
 }
 
@@ -308,18 +311,33 @@ function captureRange(s, a1) {
 }
 
 /**
- * قراءة فهرس النسخ المرتّب من الورقة المخفيّة (الأقدم أوّلاً).
+ * قراءة فهرس النسخ المرتّب من الورقة المخفيّة (الأقدم أوّلاً)، مع تخزين مؤقّت
+ * ذكي (CacheService) لتسريع فتح اللوحة وتقليل قراءات الورقة المتكرّرة.
  * @return {Array<Object>} عناصر [{key, label, ts}].
  */
 function loadSnapshotIndex() {
+  // محاولة القراءة من الكاش أوّلاً (أسرع بكثير من I/O الورقة)
+  const cache = CacheService.getDocumentCache();
+  if (cache) {
+    const hit = cache.get(SNAP_CACHE_KEY);
+    if (hit) { try { return JSON.parse(hit); } catch (e) { /* كاش تالف ⇒ نتجاهله */ } }
+  }
   const ss = SpreadsheetApp.getActive();
   const s = ss.getSheetByName(SHEET_NAMES.snapshots);
   if (!s || s.getLastRow() < SNAP_FIRST_DATA_ROW) return [];
-  // نقرأ الأعمدة الثلاثة الأولى فقط (المفتاح/الوصف/الطابع) للفهرسة
+  // نقرأ الأعمدة الثلاثة الأولى فقط (المفتاح/الوصف/الطابع) للفهرسة دفعة واحدة
   const rows = s.getRange(SNAP_FIRST_DATA_ROW, 1, s.getLastRow() - 1, 3).getValues();
-  return rows.filter(r => r[0]).map(r => ({
+  const index = rows.filter(r => r[0]).map(r => ({
     key: String(r[0]), label: String(r[1]), ts: String(r[2]),
   }));
+  if (cache) cache.put(SNAP_CACHE_KEY, JSON.stringify(index), SNAP_CACHE_TTL);
+  return index;
+}
+
+/** إبطال كاش فهرس النسخ (يُستدعى بعد أيّ تغيّر في اللقطات). */
+function invalidateSnapshotCache_() {
+  const cache = CacheService.getDocumentCache();
+  if (cache) cache.remove(SNAP_CACHE_KEY);
 }
 
 /**
