@@ -156,8 +156,10 @@ function buildDashboard(ss, year) {
   // ---- (2) الترويسة: مساحة شعار فارغة (A1:D4) + تحكّم مركزي مقابل ----
   mergeAndStyle(s, 'A1:D4', '', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, align: 'center', vAlign: 'middle' });
   s.getRange('A1').setNote('أدرج شعار المشروع هنا (Insert → Image → in cell)');
-  mergeAndStyle(s, 'E1:L1', TXT_TITLES.dashboard + ' — ' + year,
+  mergeAndStyle(s, 'E1:L1', '',
     { bg: DASH_DARK.page, fg: DASH_DARK.text, size: 18, bold: true, align: 'center', fontFamily: FONT_FAMILY });
+  // العنوان يقرأ السنة آلياً من الإعدادات (التقرير السنوي بلا أيّ اختيار)
+  s.getRange('E1').setFormula('=IFERROR("' + TXT_TITLES.dashboard + ' — "&rng_ActiveYear, "' + TXT_TITLES.dashboard + '")');
   buildDashboardControls(s, ss, year);
 
   // ---- (3) الصف الأول: بطاقات المؤشّرات (تشمل السلف والديون) ----
@@ -297,34 +299,26 @@ function buildDashboardTables_(s, ss) {
  * @param {number} year السنة النشطة الحاليّة.
  */
 function buildDashboardControls(s, ss, year) {
-  const settings = ss.getSheetByName(SHEET_NAMES.settings);
-
-  // تسميتان أنيقتان بالوضع المظلم في الجهة المقابلة للشعار (أعلى يسار)
+  // عرض فقط: السنة والعملة تُقرآن بالمعادلة من صفحة الإعدادات (مصدر الإدخال الوحيد).
+  // أُلغيت القوائم المنسدلة هنا تماماً وفق مركزيّة الإدخال في صفحة الإعدادات.
   mergeAndStyle(s, 'J2:K2', TXT_DASH.ctrlYearLabel,
     { bg: DASH_DARK.page, fg: DASH_DARK.textMute, size: 11, align: 'right', fontFamily: FONT_FAMILY });
   mergeAndStyle(s, 'J3:K3', TXT_DASH.ctrlCurrencyLabel,
     { bg: DASH_DARK.page, fg: DASH_DARK.textMute, size: 11, align: 'right', fontFamily: FONT_FAMILY });
 
-  // محدّد السنة النشطة (قائمة منسدلة بالأرقام اللاتينيّة 2025-2035)
+  // خليّة السنة: قراءة فقط بالمعادلة من النطاق المُسمّى rng_ActiveYear (نُزيل أيّ تحقّق)
   const yearCell = s.getRange(DASH_CTRL.yearCell);
-  yearCell.setValue(String(year))
+  yearCell.setDataValidation(null);
+  yearCell.setFormula('=IFERROR(rng_ActiveYear, "")')
     .setBackground(DASH_DARK.card).setFontColor(DASH_DARK.text).setFontWeight('bold')
     .setFontFamily(FONT_FAMILY).setHorizontalAlignment('center');
-  yearCell.setDataValidation(SpreadsheetApp.newDataValidation()
-    .requireValueInList(allSupportedYears().map(String), true)
-    .setAllowInvalid(false).build());
 
-  // محدّد عملة القالب (قائمة منسدلة من جدول العملات في ورقة الإعدادات)
+  // خليّة العملة: قراءة فقط بالمعادلة من النطاق المُسمّى rng_MainCurrency
   const curCell = s.getRange(DASH_CTRL.currencyCell);
-  const curNow = settings ? settings.getRange('B3').getValue() : 'USD';
-  curCell.setValue(curNow || 'USD')
+  curCell.setDataValidation(null);
+  curCell.setFormula('=IFERROR(rng_MainCurrency, "USD")')
     .setBackground(DASH_DARK.card).setFontColor(DASH_DARK.text).setFontWeight('bold')
     .setFontFamily(FONT_FAMILY).setHorizontalAlignment('center');
-  if (settings) {
-    curCell.setDataValidation(SpreadsheetApp.newDataValidation()
-      .requireValueInRange(settings.getRange('A7:A20'), true)
-      .setAllowInvalid(false).build());
-  }
 }
 
 /**

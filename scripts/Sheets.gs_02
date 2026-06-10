@@ -101,21 +101,25 @@ function buildSettingsSheet(ss, year) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.settings);
   s.clear(); // نبدأ من ورقة نظيفة لضمان عدم بقاء أيّ تخطيط قديم
 
-  // العنوان والتلميح
-  mergeAndStyle(s, 'A1:D1', TXT_TITLES.settings, { bold: true, size: 14, align: 'center' });
-  mergeAndStyle(s, 'A2:D2', TXT_TITLES.settingsHint, { fg: T.fgMuted, size: 10, align: 'center' });
+  // مظهر احترافي: إخفاء خطوط الشبكة + خلفيّة داكنة موحَّدة + نصّ فاتح
+  s.setHiddenGridlines(true);
+  s.getRange(1, 1, 24, 12).setBackground(T.bgPage).setFontColor(T.fgPrimary).setFontFamily(FONT_FAMILY);
 
-  // العملة الرئيسيّة والتنسيق وسعر الصرف
+  // العنوان والتلميح
+  mergeAndStyle(s, 'A1:D1', TXT_TITLES.settings, { bg: T.bgPage, fg: T.fgPrimary, bold: true, size: 14, align: 'center' });
+  mergeAndStyle(s, 'A2:D2', TXT_TITLES.settingsHint, { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
+
+  // العملة الرئيسيّة والتنسيق وسعر الصرف — B3 خليّة الإدخال الحصريّة لاختيار العملة
   s.getRange('A3').setValue(TXT_LABELS.mainCurrency);
-  s.getRange('B3').setValue('USD');
+  s.getRange('B3').setValue('USD').setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontWeight('bold');
   s.getRange('A4').setValue(TXT_LABELS.activeFormat);
   s.getRange('B4').setFormula('=XLOOKUP(B3, A7:A20, D7:D20)');
   s.getRange('A5').setValue(TXT_LABELS.mainRate);
   s.getRange('B5').setFormula('=XLOOKUP(B3, A7:A20, C7:C20)');
 
-  // السنة النشطة في F3 (خارج جدول العملات A:D حتى لا يتعارض النطاق المُسمّى)
+  // السنة النشطة في F3 — خليّة الإدخال الحصريّة لاختيار السنة (المكان الوحيد بالقالب)
   s.getRange('E3').setValue(TXT_LABELS.activeYear).setFontWeight('bold');
-  s.getRange('F3').setValue(year);
+  s.getRange('F3').setValue(year).setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontWeight('bold');
   const yearDv = SpreadsheetApp.newDataValidation()
     .requireValueInList(allSupportedYears().map(String), true)
     .setAllowInvalid(false).build();
@@ -149,6 +153,35 @@ function buildSettingsSheet(ss, year) {
   s.getRange('B3').setDataValidation(dvCur);
 
   s.autoResizeColumns(1, 10);
+}
+
+/**
+ * تهيئة/تحديث أسعار الصرف آلياً في جدول الإعدادات عبر GOOGLEFINANCE.
+ * يكتب لكل عملة سعرها مقابل الدولار (USD = 1) مع قيمة احتياطيّة من البذور عند
+ * تعذّر الجلب، فتبقى المعادلات سليمة دائماً. يُستدعى من القائمة أو عند الحاجة.
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function refreshExchangeRates(ss) {
+  const s = ss.getSheetByName(SHEET_NAMES.settings);
+  if (!s) return;
+  // نكتب صيغة حيّة لكل عملة (USDXXX = كم وحدة من XXX يساوي دولاراً واحداً)
+  for (let i = 0; i < CURRENCIES.length; i++) {
+    const r = 7 + i;
+    const code = CURRENCIES[i][0];
+    if (code === 'USD') { s.getRange('C' + r).setValue(1); continue; }
+    s.getRange('C' + r).setFormula(
+      `=IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"), ${CURRENCIES[i][2]})`);
+  }
+  // فرض صيغة الأرقام اللاتينيّة على عمود الأسعار
+  enforceLatinNumberFormat(s.getRange(7, 3, CURRENCIES.length, 1), '#,##0.0000');
+}
+
+/** غلاف قائمة: تحديث أسعار الصرف آلياً عبر GOOGLEFINANCE. */
+function menuRefreshRates() {
+  const ui = SpreadsheetApp.getUi();
+  refreshExchangeRates(SpreadsheetApp.getActive());
+  SpreadsheetApp.flush();
+  ui.alert(TXT_MSG.ratesDoneTitle, TXT_MSG.ratesDoneBody, ui.ButtonSet.OK);
 }
 
 /* ===========================================================================

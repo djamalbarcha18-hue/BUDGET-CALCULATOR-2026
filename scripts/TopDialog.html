@@ -122,17 +122,13 @@
       <div id="triggerBadge" class="trigger-badge off">…</div>
     </header>
 
-    <!-- قسم محرّك السنوات -->
+    <!-- السنة النشطة (عرض فقط) — التغيير حصراً من صفحة الإعدادات -->
     <section class="card">
-      <h2>محرّك السنوات</h2>
-      <div class="row" style="margin-bottom:10px;">
-        <label for="yearSelect">السنة النشطة</label>
-        <select id="yearSelect"></select>
-      </div>
-      <div class="row">
-        <button class="primary" onclick="run('switchYear', true)">تفعيل السنة</button>
-        <button class="warn" onclick="run('archive', true)">أرشفة هذه السنة</button>
-      </div>
+      <h2>السنة النشطة والعملة</h2>
+      <div id="activeInfo" class="notif ok" style="flex:1 1 100%;">…</div>
+      <p style="font-size:11px; color:var(--muted); margin:8px 0 0;">
+        لتغيير السنة أو العملة: افتح صفحة «الإعدادات وأسعار الصرف» (هي مكان الإدخال الوحيد).
+      </p>
     </section>
 
     <!-- قسم البيانات والصيانة -->
@@ -216,17 +212,14 @@
       for (var i = 0; i < btns.length; i++) btns[i].disabled = busy;
     }
 
-    /** تحديث شارة حالة المشغّل الدوري ومحدّد السنة من حالة الخادم. */
+    /** تحديث شارة حالة المشغّل الدوري وبطاقة السنة/العملة (عرض فقط) من حالة الخادم. */
     function applyState(state) {
-      // محدّد السنة: نملؤه بالأرقام اللاتينيّة ونحدّد السنة النشطة
-      var sel = $('yearSelect');
-      sel.innerHTML = '';
-      (state.years || []).forEach(function (y) {
-        var opt = document.createElement('option');
-        opt.value = y; opt.textContent = toLatinDigits(y);
-        if (y === state.activeYear) opt.selected = true;
-        sel.appendChild(opt);
-      });
+      // بطاقة السنة النشطة والعملة (عرض فقط — التغيير من صفحة الإعدادات)
+      var info = $('activeInfo');
+      if (info) {
+        info.textContent = 'السنة النشطة: ' + toLatinDigits(state.activeYear) +
+                           '  ·  العملة: ' + (state.currency || 'USD');
+      }
       // شارة المشغّل الدوري
       var badge = $('triggerBadge');
       if (state.triggersActive) {
@@ -293,14 +286,12 @@
     }
 
     /**
-     * تنفيذ أمر على الخادم عبر google.script.run.
+     * تنفيذ أمر على الخادم عبر google.script.run (لا يحتاج أيّ أمر للسنة بعد
+     * نقل اختيار السنة/العملة حصراً إلى صفحة الإعدادات).
      * @param {string} action اسم الأمر.
-     * @param {boolean} needsYear هل يحتاج الأمر للسنة المختارة.
      */
-    function run(action, needsYear) {
+    function run(action) {
       setBusy(true); setStatus('جارٍ التنفيذ…', true);
-      // نقرأ السنة المختارة ونفرض عليها الأرقام اللاتينيّة قبل الإرسال
-      var params = needsYear ? { year: parseInt(toLatinDigits($('yearSelect').value), 10) } : {};
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
@@ -315,7 +306,7 @@
           setBusy(false);
           setStatus('حدث خطأ: ' + (err && err.message ? err.message : err), false);
         })
-        .dialogRunAction(action, params);
+        .dialogRunAction(action, {});
     }
 
     /** تحميل الحالة الأوّليّة عند فتح اللوحة. */
