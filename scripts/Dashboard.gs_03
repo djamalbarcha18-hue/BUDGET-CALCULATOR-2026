@@ -149,6 +149,7 @@ function buildDashboard(ss, year) {
   // ---- (1) الهوية البصريّة: وضع داكن صافٍ + خطّ معتمد + إخفاء الشبكة ----
   s.clearConditionalFormatRules();
   s.getCharts().forEach(c => s.removeChart(c)); // إزالة مخططات سابقة (إعادة بناء آمنة)
+  s.setHiddenGridlines(true); // مظهر احترافي: إخفاء خطوط الشبكة
   s.setHiddenGridlines(true);
   s.getRange(1, 1, 60, 12)
     .setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text).setFontFamily(FONT_FAMILY);

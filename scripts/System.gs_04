@@ -309,6 +309,7 @@ function dialogGetState() {
     activeYear:     safe(function () { return getActiveYear(); }, (typeof DEFAULT_YEAR !== 'undefined' ? DEFAULT_YEAR : 2025)),
     years:          safe(function () { return allSupportedYears(); }, [2025]),
     currency:       safe(function () { const st = SpreadsheetApp.getActive().getSheetByName(SHEET_NAMES.settings); return st ? String(st.getRange('B3').getDisplayValue()) : 'USD'; }, 'USD'),
+    currencies:     safe(function () { return CURRENCIES.map(function (c) { return c[0]; }); }, ['USD']),
     triggersActive: safe(function () { return areSnapshotTriggersActive(); }, false),
     snapshots:      safe(function () { return listSnapshotsForDialog(); }, []),
     notifications:  safe(function () { return getNotifications(); }, []),
@@ -330,6 +331,25 @@ function dialogRunAction(action, params) {
 
   try {
   switch (action) {
+    case 'applyControls': {
+      // التحكّم الفعلي الحصري من اللوحة: تطبيق السنة والعملة معاً بضغطة واحدة
+      createSnapshot(ss, 'قبل تطبيق تغييرات اللوحة'); // لقطة طوارئ مُقسَّمة قبل الترحيل
+      // (1) العملة: نكتبها في مصدر الحقيقة (الإعدادات B3) ونحدّث أسعار الصرف آلياً
+      if (params.currency) {
+        const st = ss.getSheetByName(SHEET_NAMES.settings);
+        if (st) st.getRange('B3').setValue(String(params.currency));
+        refreshExchangeRates(ss);
+      }
+      // (2) السنة: نفعّل محرّك السنوات (يبني/يُظهر/يؤرشف ويعيد ربط كل شيء)
+      const yy = isValidYear(year) ? year : getActiveYear();
+      activateYear(ss, yy);
+      return {
+        ok: true,
+        message: TXT_DASH.yearChangedBody.replace('{year}', yy),
+        state: dialogGetState(),
+      };
+    }
+
     case 'switchYear':
       if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
       createSnapshot(ss, 'قبل تغيير السنة إلى ' + year);

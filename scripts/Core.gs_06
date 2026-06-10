@@ -163,6 +163,7 @@ function applyAlertConditionalFormat(s, a1) {
 function buildGoals(ss) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.goals);
   s.clear();
+  s.setHiddenGridlines(true); // مظهر احترافي: إخفاء خطوط الشبكة
 
   // العنوان
   mergeAndStyle(s, 'A1:I1', TXT_TITLES.goals, { bold: true, size: 14, align: 'center' });
