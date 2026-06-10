@@ -325,15 +325,20 @@ function menuCleanOtherYears() {
  * @return {Object} حالة جاهزة لاستهلاكها في TopDialog.html.
  */
 function dialogGetState() {
-  // غلاف آمن: يمنع فشل أيّ مصدر من إسقاط بناء الحالة بأكمله (عزل السياق)
-  const safe = function (fn, fallback) { try { return fn(); } catch (e) { return fallback; } };
+  // غلاف آمن: نُمرّر دالّة مغلَّفة (لا مرجع اسم مباشر) حتى يُحلّ اسم الدالّة
+  // داخل try/catch؛ فلو غابت أيّ دالّة خلفيّة (ReferenceError) تُمسَك هنا ولا
+  // تُسقِط بناء الحالة. هذا يضمن تحميل اللوحة كاملةً من أيّ ورقة ودون أيّ خطأ.
+  const safe = function (fn, fallback) {
+    try { const v = fn(); return (v === undefined || v === null) ? fallback : v; }
+    catch (e) { return fallback; }
+  };
   return {
-    activeYear:     safe(getActiveYear, DEFAULT_YEAR),
-    years:          allSupportedYears(),
-    triggersActive: safe(areSnapshotTriggersActive, false),
-    snapshots:      safe(listSnapshotsForDialog, []),
-    notifications:  safe(getNotifications, []),
-    version:        APP_VERSION,
+    activeYear:     safe(function () { return getActiveYear(); }, (typeof DEFAULT_YEAR !== 'undefined' ? DEFAULT_YEAR : 2025)),
+    years:          safe(function () { return allSupportedYears(); }, [2025]),
+    triggersActive: safe(function () { return areSnapshotTriggersActive(); }, false),
+    snapshots:      safe(function () { return listSnapshotsForDialog(); }, []),
+    notifications:  safe(function () { return getNotifications(); }, []),
+    version:        safe(function () { return APP_VERSION; }, ''),
   };
 }
 
@@ -349,6 +354,7 @@ function dialogRunAction(action, params) {
   params = params || {};
   const year = params.year ? parseInt(toLatinDigits(String(params.year)), 10) : getActiveYear();
 
+  try {
   switch (action) {
     case 'switchYear':
       if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
@@ -422,5 +428,9 @@ function dialogRunAction(action, params) {
 
     default:
       return { ok: false, message: 'أمر غير معروف.' };
+  }
+  } catch (e) {
+    // أيّ خطأ غير متوقّع يعود كنتيجة واضحة مع حالة محدَّثة (لا تجمّد للواجهة)
+    return { ok: false, message: 'حدث خطأ أثناء التنفيذ: ' + e, state: dialogGetState() };
   }
 }
