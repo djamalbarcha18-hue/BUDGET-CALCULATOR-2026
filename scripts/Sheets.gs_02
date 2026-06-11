@@ -399,6 +399,7 @@ function activateYear(ss, year) {
   if (settings) settings.getRange('F3').setValue(year);
 
   // (4) إعادة بناء المحرّك واللوحة على أشهر السنة النشطة (Charts Locking يبقى ثابتاً)
+  recalcGoalSavings(ss); // تحديث مدّخرات الأهداف لأشهر السنة النشطة
   buildDashboardEngine(ss, year);
   buildDashboard(ss, year);
 

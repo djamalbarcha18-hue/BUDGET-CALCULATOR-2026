@@ -181,18 +181,24 @@ function buildGoals(ss) {
   s.getRange(7, 1, GOALS_SEED.length, 9).setValues(GOALS_SEED);
   applyDateFormat(s.getRange(7, 5, GOALS_SEED.length, 1)); // تواريخ الاستحقاق لاتينيّة
 
-  // الأعمدة المحسوبة لكل صفّ من 7 حتى 26 (نكتب صفّاً صفّاً لإبقاء المراجع نسبيّة)
+  // ألوان متبادلة خفيفة ومريحة للعين على نطاق البيانات (أبيض / أزرق فاتح ناعم)
+  s.getBandings().forEach(b => b.remove()); // إزالة أيّ تنميط سابق لتفادي التكرار
+  const banding = s.getRange('A7:I26').applyRowBanding();
+  banding.setFirstRowColor('#FFFFFF').setSecondRowColor('#EAF1FB')
+    .setHeaderRowColor(null).setFooterRowColor(null);
+
+  // الأعمدة المحسوبة لكل صفّ من 7 حتى 26 (نخفي القيم في الصفوف الفارغة)
   for (let r = 7; r <= 26; r++) {
-    // D: نسبة الإنجاز
-    s.getRange('D' + r).setFormula(`=IFERROR(C${r}/B${r}, 0)`).setNumberFormat(FMT_PERCENT);
-    // F: الأشهر المتبقية حتى الموعد المستهدف
-    s.getRange('F' + r).setFormula(`=IFERROR(MAX(0, DATEDIF(TODAY(), E${r}, "M")), 0)`);
-    // G: القسط الشهري المطلوب لبلوغ الهدف
-    s.getRange('G' + r).setFormula(`=IF(C${r}>=B${r}, 0, IFERROR((B${r}-C${r})/F${r}, 0))`);
+    // D: نسبة الإنجاز (تُخفى إن كان اسم الهدف فارغاً)
+    s.getRange('D' + r).setFormula(`=IF(A${r}="", "", IFERROR(C${r}/B${r}, 0))`).setNumberFormat(FMT_PERCENT);
+    // F: الأشهر المتبقية حتى الموعد المستهدف (تُخفى للصفوف الفارغة)
+    s.getRange('F' + r).setFormula(`=IF(A${r}="", "", IFERROR(MAX(0, DATEDIF(TODAY(), E${r}, "M")), 0))`);
+    // G: القسط الشهري المطلوب (يُخفى للصفوف الفارغة)
+    s.getRange('G' + r).setFormula(`=IF(A${r}="", "", IF(C${r}>=B${r}, 0, IFERROR((B${r}-C${r})/F${r}, 0)))`);
     // H: حالة الهدف (مكتمل/قيد الادخار/لم يبدأ)
     s.getRange('H' + r).setFormula(
-      `=IFS(B${r}="", "", IFERROR(C${r}/B${r}, 0) >= 1, "${TXT_GOAL_STATUS.done}", ` +
-      `IFERROR(C${r}/B${r}, 0) >= 0.01, "${TXT_GOAL_STATUS.saving}", TRUE, "${TXT_GOAL_STATUS.notStarted}")`);
+      `=IF(A${r}="", "", IFS(IFERROR(C${r}/B${r}, 0) >= 1, "${TXT_GOAL_STATUS.done}", ` +
+      `IFERROR(C${r}/B${r}, 0) >= 0.01, "${TXT_GOAL_STATUS.saving}", TRUE, "${TXT_GOAL_STATUS.notStarted}"))`);
     // I: التوصية الذكيّة (تدمج العملة عبر TEXT والتنسيق النشط)
     s.getRange('I' + r).setFormula(buildGoalRecommendationFormula(r));
   }
@@ -202,6 +208,75 @@ function buildGoals(ss) {
 
   freezeTopRows(s, 6);
   s.autoResizeColumns(1, 9);
+
+  // حساب المبلغ المدّخر تلقائياً لكل هدف من تخصيصات الأوراق الشهريّة
+  recalcGoalSavings(ss);
+}
+
+/**
+ * حساب المبلغ المدّخر تلقائياً لكل هدف بالبحث في الأوراق الشهريّة للسنة النشطة
+ * عن أيّ تخصيص يحمل اسم الهدف (في عمود الوصف) وجمع مبالغه الفعليّة، ثمّ كتابته
+ * في عمود "المبلغ المدّخر حالياً" (C). الصفوف الفارغة تبقى فارغة (لا أصفار).
+ * آليّة التخصيص: يكتب المستخدم اسم الهدف في وصف معاملة مصروف لتُحتسَب ادخاراً له.
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function recalcGoalSavings(ss) {
+  const goals = ss.getSheetByName(SHEET_NAMES.goals);
+  if (!goals) return;
+  const names = goals.getRange('A7:A26').getValues().map(r => String(r[0]).trim());
+
+  // نجمع تخصيصات كل اسم هدف عبر أوراق أشهر السنة النشطة (وصف المصروف = اسم الهدف)
+  const totals = {};
+  monthSheetNames(getActiveYear()).forEach(name => {
+    const s = ss.getSheetByName(name);
+    if (!s) return;
+    // C=الوصف، D=المتوقّع، E=الفعلي ضمن كتلة المصاريف
+    const data = s.getRange(`C${LAYOUT.expenseFirstRow}:E${LAYOUT.expenseLastRow}`).getValues();
+    data.forEach(row => {
+      const desc = String(row[0]).trim();
+      const amount = Number(row[2]) || 0;
+      if (desc && amount) totals[desc] = (totals[desc] || 0) + amount;
+    });
+  });
+
+  // نكتب المجاميع في العمود C (الصفوف المسمّاة فقط؛ الفارغة تبقى فارغة)
+  const out = names.map(n => (n ? [totals[n] || 0] : ['']));
+  goals.getRange('C7:C26').setValues(out);
+}
+
+/** غلاف قائمة: إعادة حساب مدّخرات الأهداف من تخصيصات الأوراق الشهريّة. */
+function menuRecalcGoals() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  recalcGoalSavings(ss);
+  SpreadsheetApp.flush();
+  ui.alert(TXT_MSG.goalsRecalcTitle, TXT_MSG.goalsRecalcBody, ui.ButtonSet.OK);
+}
+
+/**
+ * استخراج "أهم N أهداف نشطة" (الأعلى نسبة إنجاز وغير المكتملة) للوحة الرئيسيّة.
+ * @param {number} n عدد الأهداف المطلوبة (افتراضياً 3).
+ * @return {Array<Object>} عناصر [{name, pct, pctText}] مرتّبة تنازلياً بالنسبة.
+ */
+function topActiveGoals(n) {
+  const ss = SpreadsheetApp.getActive();
+  const goals = ss.getSheetByName(SHEET_NAMES.goals);
+  if (!goals) return [];
+  const data = goals.getRange('A7:D26').getValues(); // A اسم، B هدف، C مدّخر، D نسبة
+  const list = [];
+  data.forEach(r => {
+    const name = String(r[0]).trim();
+    const target = Number(r[1]) || 0;
+    const saved = Number(r[2]) || 0;
+    if (!name || target <= 0) return;
+    const pct = saved / target;
+    if (pct >= 1) return; // المكتمل يُستبعَد (نشط فقط)
+    list.push({ name: name, pct: pct });
+  });
+  list.sort((a, b) => b.pct - a.pct);
+  return list.slice(0, n || 3).map(g => ({
+    name: g.name, pct: g.pct, pctText: toLatinDigits((g.pct * 100).toFixed(1)) + '%',
+  }));
 }
 
 /**

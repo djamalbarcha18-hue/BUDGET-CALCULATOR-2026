@@ -38,6 +38,7 @@ function onOpen() {
     .addItem(TXT_MENU.injectDemo, 'menuInjectDemo2025')
     .addItem(TXT_MENU.cleanYears, 'menuCleanOtherYears')
     .addItem(TXT_MENU.refreshRates, 'menuRefreshRates')
+    .addItem(TXT_MENU.recalcGoals, 'menuRecalcGoals')
     // قائمة فرعيّة للأدوات المتقدّمة (تصدير/توقّعات/تنبيهات)
     .addSubMenu(ui.createMenu(TXT_MENU.subTools)
       .addItem(TXT_MENU.exportDash, 'menuExportDashboardPdf')
@@ -186,6 +187,7 @@ function buildEntireWorkbook_(ss, year) {
   buildGoals(ss);
   buildDebtTracker(ss);          // وحدة مفكرة السلف والديون (15)
   buildYearMonthlySheets(ss, year);
+  recalcGoalSavings(ss);       // حساب مدّخرات الأهداف بعد توفّر الأوراق الشهريّة
   buildDashboard(ss, year);
   buildDashboardEngine(ss, year);
   buildForecast(ss, year);     // وحدة التوقّعات (11)
