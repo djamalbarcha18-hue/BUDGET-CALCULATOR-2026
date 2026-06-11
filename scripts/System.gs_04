@@ -61,8 +61,36 @@ function onOpen() {
 
   // نسخة طوارئ تلقائيّة (لا تُنشأ إلا بعد مرور الفاصل الزمني الأدنى)
   maybeAutoSnapshot();
+  // هجرة تحديث #41 الصامتة لمرة واحدة فقط (فحص خفيف جداً للمفتاح)
+  runPR41MigrationOnce_(SpreadsheetApp.getActive());
   // عرض دليل التهيئة تلقائياً عند أوّل فتح فقط
   maybeShowOnboarding();
+}
+
+/**
+ * هجرة تحديث #41 بنمط (One-Time Migration): فحص خفيف جداً لمفتاح مخفي في
+ * خصائص المستند؛ فإن كان موجوداً يتوقّف فوراً (لا أثر على سرعة الفتح). وإن كان
+ * غائباً (مستخدم على نسخة قديمة) يُعيد بناء صفحة الأهداف واللوحة الرئيسيّة مرّة
+ * واحدة بصمت، ثمّ يحفظ المفتاح فيتوقّف نهائياً في الفتحات اللاحقة.
+ * @param {Spreadsheet} ss المصنّف النشط.
+ */
+function runPR41MigrationOnce_(ss) {
+  const props = PropertiesService.getDocumentProperties();
+  // فحص خفيف: إن وُجد المفتاح ننهي فوراً دون أيّ عمليّة ثقيلة
+  if (props.getProperty(PROP_KEYS.pr41Updated)) return;
+  try {
+    const year = getActiveYear();
+    buildGoals(ss);                 // تحديث صفحة الأهداف (UI + معادلات + المدّخرات)
+    buildDashboardEngine(ss, year); // المحرّك الخلفي قبل اللوحة
+    buildDashboard(ss, year);       // اللوحة الرئيسيّة (ودجت الأهداف + العرض فقط)
+    defineNamedRanges(ss);          // ضمان النطاقات المُسمّاة للودجت والمعادلات
+    safeHideSheet(ss, SHEET_NAMES.engine);
+    // نحفظ المفتاح فقط بعد نجاح البناء حتى لا "تُحرَق" الهجرة عند خطأ عابر
+    props.setProperty(PROP_KEYS.pr41Updated, 'true');
+  } catch (err) {
+    // لا نوقف فتح المصنّف عند أيّ خطأ في الهجرة (تُعاد المحاولة في الفتح التالي)
+    console.error('فشل تنفيذ هجرة #41: ' + err);
+  }
 }
 
 /**
@@ -202,6 +230,8 @@ function buildEntireWorkbook_(ss, year) {
   // (4) تثبيت السنة وإخفاء الأوراق الخلفيّة وتفعيل نظام الطوارئ
   setActiveYear(year);
   PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.installVersion, APP_VERSION);
+  // التركيب الجديد محدَّث أصلاً ⇒ نُعلِّم هجرة #41 كمنفَّذة لتفادي إعادة بناء عند أوّل فتح
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.pr41Updated, 'true');
   safeHideSheet(ss, SHEET_NAMES.engine);
   safeHideSheet(ss, SHEET_NAMES.snapshots);
   createSnapshot(ss, 'نسخة ما بعد التركيب');
