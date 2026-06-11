@@ -101,25 +101,25 @@ function buildSettingsSheet(ss, year) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.settings);
   s.clear(); // نبدأ من ورقة نظيفة لضمان عدم بقاء أيّ تخطيط قديم
 
-  // العنوان والتلميح
-  mergeAndStyle(s, 'A1:D1', TXT_TITLES.settings, { bold: true, size: 14, align: 'center' });
-  mergeAndStyle(s, 'A2:D2', TXT_TITLES.settingsHint, { fg: T.fgMuted, size: 10, align: 'center' });
+  // مظهر احترافي: إخفاء خطوط الشبكة + خلفيّة داكنة موحَّدة + نصّ فاتح
+  s.setHiddenGridlines(true);
+  s.getRange(1, 1, 24, 12).setBackground(T.bgPage).setFontColor(T.fgPrimary).setFontFamily(FONT_FAMILY);
 
-  // العملة الرئيسيّة والتنسيق وسعر الصرف
+  // العنوان والتلميح
+  mergeAndStyle(s, 'A1:D1', TXT_TITLES.settings, { bg: T.bgPage, fg: T.fgPrimary, bold: true, size: 14, align: 'center' });
+  mergeAndStyle(s, 'A2:D2', TXT_TITLES.settingsHint, { bg: T.bgPage, fg: T.fgMuted, size: 10, align: 'center' });
+
+  // العملة الرئيسيّة والتنسيق وسعر الصرف — B3 خليّة عرض (التحكّم حصراً من لوحة التحكّم السريعة)
   s.getRange('A3').setValue(TXT_LABELS.mainCurrency);
-  s.getRange('B3').setValue('USD');
+  s.getRange('B3').setValue('USD').setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontWeight('bold');
   s.getRange('A4').setValue(TXT_LABELS.activeFormat);
   s.getRange('B4').setFormula('=XLOOKUP(B3, A7:A20, D7:D20)');
   s.getRange('A5').setValue(TXT_LABELS.mainRate);
   s.getRange('B5').setFormula('=XLOOKUP(B3, A7:A20, C7:C20)');
 
-  // السنة النشطة في F3 (خارج جدول العملات A:D حتى لا يتعارض النطاق المُسمّى)
+  // السنة النشطة في F3 — خليّة عرض فقط (التحكّم الفعلي من لوحة التحكّم السريعة)
   s.getRange('E3').setValue(TXT_LABELS.activeYear).setFontWeight('bold');
-  s.getRange('F3').setValue(year);
-  const yearDv = SpreadsheetApp.newDataValidation()
-    .requireValueInList(allSupportedYears().map(String), true)
-    .setAllowInvalid(false).build();
-  s.getRange('F3').setDataValidation(yearDv);
+  s.getRange('F3').setValue(year).setBackground(T.bgCard).setFontColor(T.fgPrimary).setFontWeight('bold');
 
   // ترويسة جدول العملات (الصف 6) والبيانات (الصفوف 7..20)
   writeHeaderRow(s, 'A6:D6', TXT_HEADERS.currency);
@@ -142,13 +142,36 @@ function buildSettingsSheet(ss, year) {
     .setFontWeight('bold').setBackground(T.headerBar).setFontColor(T.fgPrimary);
   s.getRange(7, 10, PAYMENT_METHODS.length, 1).setValues(PAYMENT_METHODS.map(v => [v]));
 
-  // قاعدة التحقّق على العملة الرئيسيّة (مرجع مباشر لأنّ النطاق المُسمّى لم يُعرَّف بعد)
-  const dvCur = SpreadsheetApp.newDataValidation()
-    .requireValueInRange(s.getRange('A7:A20'), true)
-    .setAllowInvalid(false).build();
-  s.getRange('B3').setDataValidation(dvCur);
-
   s.autoResizeColumns(1, 10);
+}
+
+/**
+ * تهيئة/تحديث أسعار الصرف آلياً في جدول الإعدادات عبر GOOGLEFINANCE.
+ * يكتب لكل عملة سعرها مقابل الدولار (USD = 1) مع قيمة احتياطيّة من البذور عند
+ * تعذّر الجلب، فتبقى المعادلات سليمة دائماً. يُستدعى من القائمة أو عند الحاجة.
+ * @param {Spreadsheet} ss المصنّف.
+ */
+function refreshExchangeRates(ss) {
+  const s = ss.getSheetByName(SHEET_NAMES.settings);
+  if (!s) return;
+  // نكتب صيغة حيّة لكل عملة (USDXXX = كم وحدة من XXX يساوي دولاراً واحداً)
+  for (let i = 0; i < CURRENCIES.length; i++) {
+    const r = 7 + i;
+    const code = CURRENCIES[i][0];
+    if (code === 'USD') { s.getRange('C' + r).setValue(1); continue; }
+    s.getRange('C' + r).setFormula(
+      `=IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"), ${CURRENCIES[i][2]})`);
+  }
+  // فرض صيغة الأرقام اللاتينيّة على عمود الأسعار
+  enforceLatinNumberFormat(s.getRange(7, 3, CURRENCIES.length, 1), '#,##0.0000');
+}
+
+/** غلاف قائمة: تحديث أسعار الصرف آلياً عبر GOOGLEFINANCE. */
+function menuRefreshRates() {
+  const ui = SpreadsheetApp.getUi();
+  refreshExchangeRates(SpreadsheetApp.getActive());
+  SpreadsheetApp.flush();
+  ui.alert(TXT_MSG.ratesDoneTitle, TXT_MSG.ratesDoneBody, ui.ButtonSet.OK);
 }
 
 /* ===========================================================================
@@ -250,20 +273,24 @@ function applyProtection(ss, year) {
      'B11:M26', 'N11:Y26', 'B29:G44', 'H29:M44',
      'N29:S44', 'T29:Y44', 'H47:N56'].forEach(r =>
       dash.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
+    // قفل صارم (Hard Lock) لخليّتَي عرض السنة/العملة — التحكّم حصراً من اللوحة السريعة
+    dash.getRange(DASH_CTRL.yearCell).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(false);
+    dash.getRange(DASH_CTRL.currencyCell).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(false);
   }
 
-  // ورقة الإعدادات: حماية الكل عدا الخلايا القابلة للتحرير
+  // ورقة الإعدادات: حماية الكل عدا الخلايا القابلة للتحرير (الفئات وأسعار الصرف)
   const settings = ss.getSheetByName(SHEET_NAMES.settings);
   if (settings) {
     const p = settings.protect().setDescription(TXT_WARN.settings).setWarningOnly(true);
     p.setUnprotectedRanges([
-      settings.getRange('B3'),       // العملة الرئيسيّة
-      settings.getRange('F3'),       // السنة النشطة
-      settings.getRange('C7:C20'),   // تحديث أسعار الصرف
+      settings.getRange('C7:C20'),   // تحديث أسعار الصرف يدوياً (تجاوز اختياري)
       settings.getRange('H7:H14'),   // توسعة فئات الدخل
       settings.getRange('I7:I18'),   // توسعة فئات المصاريف
       settings.getRange('J7:J10'),   // توسعة طرق الدفع
     ]);
+    // قفل صارم لخليّتَي العرض (العملة B3 / السنة F3) — تُكتبان فقط من اللوحة السريعة
+    settings.getRange('B3').protect().setDescription(TXT_WARN.calcCell).setWarningOnly(false);
+    settings.getRange('F3').protect().setDescription(TXT_WARN.calcCell).setWarningOnly(false);
   }
 
   // ورقة الأهداف: حماية الأعمدة المحسوبة
@@ -372,6 +399,7 @@ function activateYear(ss, year) {
   if (settings) settings.getRange('F3').setValue(year);
 
   // (4) إعادة بناء المحرّك واللوحة على أشهر السنة النشطة (Charts Locking يبقى ثابتاً)
+  recalcGoalSavings(ss); // تحديث مدّخرات الأهداف لأشهر السنة النشطة
   buildDashboardEngine(ss, year);
   buildDashboard(ss, year);
 

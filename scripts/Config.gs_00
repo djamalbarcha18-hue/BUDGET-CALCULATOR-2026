@@ -208,6 +208,7 @@ const PROP_KEYS = {
   triggerInstalled:'SBP_TRIGGER_INSTALLED',// علامة تركيب مشغّل النسخ الدوري
   notifyInstalled: 'SBP_NOTIFY_INSTALLED', // علامة تركيب مشغّل التنبيهات اليومي
   onboardingDone:  'SBP_ONBOARDING_DONE',  // علامة إتمام تهيئة المستخدم الجديد
+  pr41Updated:     'is_PR41_Updated',      // علامة هجرة تحديث #41 (لمرة واحدة فقط)
 };
 
 /** إعدادات نظام نسخ الطوارئ والمشغّلات الدوريّة. */

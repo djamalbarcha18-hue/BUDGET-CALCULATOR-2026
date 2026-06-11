@@ -4,118 +4,142 @@
  *  محرّك التصدير إلى PDF والطباعة  ·  Export.gs_08
  * ----------------------------------------------------------------------------
  *  الغرض من هذا الملف:
- *    - تصدير اللوحة الرئيسيّة أو الشهر الحالي كملفّ PDF أنيق.
- *    - حفظ الملفّ في مجلّد مخصّص على Google Drive وإرجاع رابطه.
- *    - أغلفة قائمة لتشغيل التصدير وعرض رابط الملفّ للمستخدم.
+ *    - تصدير اللوحة الرئيسيّة أو شهر محدّد كملفّ PDF أنيق وحفظه في Drive.
+ *    - معالجة أخطاء صريحة: كل دالّة تُرجع كائن نتيجة {ok, url, message} بدل
+ *      الإرجاع الصامت بـ null، حتى تعرض الواجهة رسالة واضحة ولا تتجمّد.
  *
- *  الآليّة: نبني رابط تصدير Google Sheets الرسمي (export?format=pdf) مع
- *  إعدادات تخطيط أفقي وهوامش، ونجلبه عبر UrlFetchApp برمز OAuth الحالي،
- *  ثمّ نحفظ الـ blob في Drive. كل أسماء الملفّات بأرقام لاتينيّة.
+ *  ▶ تحديث #41 (المهمّة 2): إصلاح فشل التصدير الصامت + عزل سياق الواجهة —
+ *    التصدير من اللوحة المنبثقة لم يعد يعتمد على الورقة النشطة (التي قد تكون
+ *    ورقة نظام مخفيّة)، بل يحلّ ورقة الشهر بالاسم من السنة النشطة.
  * ============================================================================
  */
 
 /* ===========================================================================
- *  (1) أغلفة القائمة
+ *  (1) أغلفة القائمة (تعرض رسالة النتيجة الصريحة)
  * ===========================================================================*/
 
-/** غلاف قائمة: تصدير اللوحة الرئيسيّة إلى PDF وعرض الرابط. */
+/** غلاف قائمة: تصدير اللوحة الرئيسيّة إلى PDF. */
 function menuExportDashboardPdf() {
   const ui = SpreadsheetApp.getUi();
-  const url = exportDashboardPdf();
-  if (url) ui.alert(TXT_EXPORT.doneTitle, TXT_EXPORT.doneBody.replace('{url}', url), ui.ButtonSet.OK);
-  else     ui.alert(TXT_EXPORT.failTitle, TXT_EXPORT.failBody, ui.ButtonSet.OK);
+  const r = exportDashboardPdf();
+  ui.alert(r.ok ? TXT_EXPORT.doneTitle : TXT_EXPORT.failTitle, r.message, ui.ButtonSet.OK);
 }
 
-/** غلاف قائمة: تصدير الشهر الحالي (الورقة النشطة) إلى PDF. */
+/** غلاف قائمة: تصدير الورقة النشطة (شهر) إلى PDF — من القائمة المستخدم على ورقة الشهر. */
 function menuExportActiveMonthPdf() {
   const ui = SpreadsheetApp.getUi();
-  const url = exportActiveMonthPdf();
-  if (url) ui.alert(TXT_EXPORT.doneTitle, TXT_EXPORT.doneBody.replace('{url}', url), ui.ButtonSet.OK);
-  else     ui.alert(TXT_EXPORT.failTitle, TXT_EXPORT.failBody, ui.ButtonSet.OK);
+  const r = exportActiveMonthPdf();
+  ui.alert(r.ok ? TXT_EXPORT.doneTitle : TXT_EXPORT.failTitle, r.message, ui.ButtonSet.OK);
 }
 
 /* ===========================================================================
- *  (2) دوال التصدير عالية المستوى
+ *  (2) دوال التصدير عالية المستوى (تُرجع كائن نتيجة موحَّد)
  * ===========================================================================*/
 
 /**
- * تصدير ورقة اللوحة الرئيسيّة إلى PDF بصيغة أفقيّة (Landscape).
- * @return {string|null} رابط الملفّ في Drive، أو null عند الفشل.
+ * تصدير ورقة اللوحة الرئيسيّة إلى PDF بصيغة أفقيّة.
+ * @return {Object} {ok, url, message}.
  */
 function exportDashboardPdf() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(SHEET_NAMES.dashboard);
-  if (!sheet) return null;
+  if (!sheet) return exportResult_(false, '', TXT_EXPORT.failBody + ' (لوحة غير موجودة)');
   const name = TXT_EXPORT.pdfDashName.replace('{year}', getActiveYear());
   return exportSheetToPdf(sheet, name, /*landscape=*/true);
 }
 
 /**
- * تصدير الورقة النشطة (يُفترَض أنّها ورقة شهر) إلى PDF.
- * @return {string|null} رابط الملفّ في Drive، أو null عند الفشل.
+ * تصدير الورقة النشطة (تُستعمل من القائمة فقط؛ يُفترَض أنّها ورقة شهر).
+ * @return {Object} {ok, url, message}.
  */
 function exportActiveMonthPdf() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getActiveSheet();
-  if (!sheet) return null;
-  // نشتقّ اسم الملفّ من اسم الورقة النشطة (مثال: "يناير 2025")
-  const name = toLatinDigits('تقرير - ' + sheet.getName());
-  return exportSheetToPdf(sheet, name, /*landscape=*/false);
+  if (!sheet) return exportResult_(false, '', TXT_EXPORT.failBody);
+  return exportSheetToPdf(sheet, toLatinDigits('تقرير - ' + sheet.getName()), /*landscape=*/false);
+}
+
+/**
+ * تصدير شهر للوحة التحكّم المنبثقة — مستقلّ تماماً عن الورقة النشطة (عزل السياق).
+ * يحلّ ورقة الشهر بالاسم: شهر التقويم الحالي من السنة النشطة، أو الشهر الأوّل.
+ * @return {Object} {ok, url, message}.
+ */
+function exportMonthForDialog_() {
+  const ss = SpreadsheetApp.getActive();
+  const year = getActiveYear();
+  let idx = (new Date()).getMonth();              // 0-11 شهر التقويم الحالي
+  let name = monthSheetName(idx, year);
+  if (!ss.getSheetByName(name)) { idx = 0; name = monthSheetName(0, year); } // fallback للشهر الأوّل
+  const sheet = ss.getSheetByName(name);
+  if (!sheet) return exportResult_(false, '', TXT_EXPORT.failBody + ' (ورقة الشهر غير موجودة)');
+  return exportSheetToPdf(sheet, toLatinDigits('تقرير - ' + name), /*landscape=*/false);
 }
 
 /* ===========================================================================
- *  (3) محرّك التصدير منخفض المستوى
+ *  (3) محرّك التصدير منخفض المستوى (مع معالجة أخطاء صريحة)
  * ===========================================================================*/
 
 /**
- * تصدير ورقة محدّدة إلى ملفّ PDF محفوظ في مجلّد التقارير، وإرجاع رابطه.
+ * تصدير ورقة محدّدة إلى PDF محفوظ في مجلّد التقارير. يُرجع كائن نتيجة واضح
+ * في كل الحالات (نجاح/فشل HTTP/استثناء) فلا تتجمّد الواجهة أبداً.
  * @param {Sheet} sheet الورقة المراد تصديرها.
  * @param {string} fileName اسم الملفّ (بدون امتداد).
- * @param {boolean} landscape هل التخطيط أفقي (true) أم عمودي (false).
- * @return {string|null} رابط الملفّ، أو null عند الفشل.
+ * @param {boolean} landscape هل التخطيط أفقي.
+ * @return {Object} {ok, url, message}.
  */
 function exportSheetToPdf(sheet, fileName, landscape) {
   try {
     const ss = SpreadsheetApp.getActive();
-    // نبني رابط التصدير الرسمي مع إعدادات تخطيط احترافيّة
     const url = buildPdfExportUrl(ss.getId(), sheet.getSheetId(), landscape);
-    // نجلب الـ PDF برمز OAuth الخاص بالمستخدم الحالي
-    const token = ScriptApp.getOAuthToken();
+    const token = ScriptApp.getOAuthToken(); // تدفّق صلاحيّات OAuth الحالي
     const resp = UrlFetchApp.fetch(url, {
       headers: { Authorization: 'Bearer ' + token },
-      muteHttpExceptions: true,
+      muteHttpExceptions: true, // لا نرمي استثناءً عند خطأ HTTP — نعالجه بوضوح
     });
-    if (resp.getResponseCode() !== 200) return null;
-
-    // نحفظ الملفّ في مجلّد التقارير المخصّص ونُرجع رابطه
+    const code = resp.getResponseCode();
+    if (code !== 200) {
+      // فشل صريح مع رمز HTTP (مثلاً 401 صلاحيّات / 429 ضغط) بدل التجميد الصامت
+      return exportResult_(false, '', TXT_EXPORT.failBody + ' (HTTP ' + toLatinDigits(code) + ')');
+    }
     const stamp = toLatinDigits(Utilities.formatDate(
       new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm'));
     const blob = resp.getBlob().setName(toLatinDigits(fileName) + ' (' + stamp + ').pdf');
-    const folder = getOrCreateExportFolder();
-    const file = folder.createFile(blob);
-    return file.getUrl();
+    const file = getOrCreateExportFolder().createFile(blob);
+    return exportResult_(true, file.getUrl(),
+      TXT_EXPORT.doneBody.replace('{url}', file.getUrl()));
   } catch (err) {
+    // أيّ خطأ (صلاحيّات Drive، شبكة…) يعود كرسالة واضحة للمستخدم
     console.error('فشل تصدير PDF: ' + err);
-    return null;
+    return exportResult_(false, '', TXT_EXPORT.failBody + ' — ' + err);
   }
+}
+
+/**
+ * بناء كائن نتيجة تصدير موحَّد (دالّة مساعدة لمنع التكرار).
+ * @param {boolean} ok نجاح العمليّة.
+ * @param {string} url رابط الملفّ.
+ * @param {string} message رسالة للمستخدم.
+ * @return {Object} {ok, url, message}.
+ */
+function exportResult_(ok, url, message) {
+  return { ok: ok, url: url || '', message: message || '' };
 }
 
 /**
  * بناء رابط تصدير PDF لـ Google Sheets مع إعدادات تخطيط أنيقة (هوامش/توسيط).
  * @param {string} ssId معرّف المصنّف.
- * @param {number} gid معرّف الورقة (Sheet ID).
+ * @param {number} gid معرّف الورقة.
  * @param {boolean} landscape التخطيط الأفقي.
  * @return {string} رابط التصدير الكامل.
  */
 function buildPdfExportUrl(ssId, gid, landscape) {
-  // نجمّع معاملات التصدير في كائن ثمّ نحوّله لسلسلة استعلام (DRY وقابل للقراءة)
   const params = {
     format: 'pdf',
     gid: String(gid),
     portrait: landscape ? 'false' : 'true',
     size: 'A4',
-    fitw: 'true',           // ملاءمة العرض للصفحة
-    gridlines: 'false',     // إخفاء خطوط الشبكة لمظهر تقرير نظيف
+    fitw: 'true',
+    gridlines: 'false',
     printtitle: 'false',
     sheetnames: 'false',
     top_margin: '0.50', bottom_margin: '0.50',
@@ -131,7 +155,6 @@ function buildPdfExportUrl(ssId, gid, landscape) {
  * @return {Folder} مجلّد حفظ ملفّات PDF.
  */
 function getOrCreateExportFolder() {
-  // نبحث باسم المجلّد المعرّف في الإعدادات، وننشئه عند غيابه
   const it = DriveApp.getFoldersByName(EXPORT_CONFIG.folderName);
   return it.hasNext() ? it.next() : DriveApp.createFolder(EXPORT_CONFIG.folderName);
 }

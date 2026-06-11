@@ -38,6 +38,7 @@ function menuBuildForecast() {
 function buildForecast(ss, year) {
   const s = getOrCreateSheet(ss, SHEET_NAMES.forecast);
   s.clear();
+  s.setHiddenGridlines(true); // مظهر احترافي: إخفاء خطوط الشبكة في التقرير
   const E = q(SHEET_NAMES.engine); // مرجع المحرّك الخلفي داخل الصيغ
 
   // خلفيّة الوضع المظلم والعنوان

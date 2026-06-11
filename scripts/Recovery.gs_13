@@ -8,11 +8,20 @@
  *    - النسخ التلقائيّة عند الفتح والمشغّلات المُركَّبة الدوريّة في الخلفيّة.
  *    - أغلفة القائمة الخاصّة بالطوارئ + واجهة قائمة النسخ للوحة التحكّم.
  *
- *  المبدأ: نلتقط بيانات الإدخال (الأوراق الشهريّة + الأهداف + الديون) كـ JSON
- *  ونخزّنها في خصائص المستند مع فهرس مرتّب. الاسترجاع يعيد كتابة القيم في
- *  أماكنها؛ أمّا الصيغ والتنسيقات فتُعاد بناؤها عبر buildXxx لتوفير المساحة.
+ *  ▶ تحديث #41 (إصلاح انهيار السعة): انتقل تخزين اللقطات من PropertiesService
+ *    (المحدود بـ 500KB) إلى ورقة مخفيّة (_RecoverySnapshots) كقاعدة بيانات
+ *    خلفيّة. كل لقطة تُحفَظ في صفّ واحد: [المفتاح، الوصف، الطابع الزمني] ثمّ
+ *    حمولة JSON مُقسَّمة إلى قطع ≤ 45000 حرف عبر الأعمدة (لتفادي حدّ 50000
+ *    حرف لكل خليّة). بهذا تختفي علّة "Storage Quota Exceeded" نهائياً.
  * ============================================================================
  */
+
+/* إعدادات قاعدة بيانات اللقطات على الورقة المخفيّة. */
+const SNAP_CHUNK_SIZE = 45000; // أقصى حجم قطعة في الخليّة الواحدة (حدّ الخليّة 50000)
+const SNAP_FIRST_DATA_ROW = 2; // أوّل صفّ بيانات (الصفّ 1 ترويسة)
+const SNAP_PAYLOAD_FIRST_COL = 4; // العمود D: أوّل عمود لحمولة JSON المُقسَّمة
+const SNAP_CACHE_KEY = 'SBP_SNAP_INDEX_CACHE'; // مفتاح التخزين المؤقّت لفهرس النسخ
+const SNAP_CACHE_TTL = 300;    // مدّة صلاحيّة الكاش بالثواني (5 دقائق)
 
 /* ===========================================================================
  *  (1) أغلفة القائمة الخاصّة بالطوارئ
@@ -59,6 +68,13 @@ function menuRemoveSnapshotTriggers() {
   const ui = SpreadsheetApp.getUi();
   removeSnapshotTriggers();
   ui.alert(TXT_MSG.triggerOffTitle, TXT_MSG.triggerOffBody, ui.ButtonSet.OK);
+}
+
+/** غلاف قائمة: تنظيف تخزين الخصائص القديم الممتلئ (هجرة لمرّة واحدة). */
+function menuPurgeLegacyStorage() {
+  const ui = SpreadsheetApp.getUi();
+  const removed = purgeLegacySnapshotStorage();
+  ui.alert(TXT_MSG.purgeTitle, TXT_MSG.purgeBody.replace('{n}', toLatinDigits(removed)), ui.ButtonSet.OK);
 }
 
 /* ===========================================================================
@@ -110,34 +126,93 @@ function areSnapshotTriggersActive() {
 }
 
 /* ===========================================================================
- *  (3) منطق النسخ: إنشاء، تلقائي، استرجاع، التقاط، فهرسة
+ *  (3) قاعدة بيانات اللقطات على الورقة المخفيّة (Hidden-Sheet DB)
  * ===========================================================================*/
 
 /**
- * إنشاء نسخة طوارئ كاملة لبيانات الإدخال وتخزينها مع تدوير النسخ القديمة.
+ * إرجاع ورقة قاعدة بيانات اللقطات (مخفيّة)، وإنشاؤها بترويستها إن غابت.
+ * @param {Spreadsheet} ss المصنّف.
+ * @return {Sheet} ورقة _RecoverySnapshots جاهزة.
+ */
+function getSnapshotSheet_(ss) {
+  let s = ss.getSheetByName(SHEET_NAMES.snapshots);
+  if (!s) s = ss.insertSheet(SHEET_NAMES.snapshots);
+  // نضمن وجود صفّ الترويسة (مرّة واحدة) لتنظيم القاعدة
+  if (s.getRange('A1').getValue() !== 'key') {
+    s.getRange('A1:D1').setValues([['key', 'label', 'timestamp', 'payload_chunks']]);
+  }
+  s.hideSheet(); // تبقى مخفيّة دائماً
+  return s;
+}
+
+/**
+ * تدوير اللقطات: حذف الأقدم (من الأعلى) حتى لا تتجاوز الحدّ الأقصى المعرَّف.
+ * @param {Sheet} sheet ورقة قاعدة اللقطات.
+ */
+function rotateSnapshots_(sheet) {
+  let dataRows = sheet.getLastRow() - 1; // باستثناء الترويسة
+  while (dataRows > SNAPSHOT_CONFIG.maxSnapshots) {
+    sheet.deleteRow(SNAP_FIRST_DATA_ROW); // حذف أقدم صفّ
+    dataRows--;
+  }
+}
+
+/**
+ * قراءة حمولة JSON الكاملة للقطة عبر مفتاحها (تجميع القطع من الأعمدة).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} key مفتاح اللقطة.
+ * @return {string|null} نصّ JSON الكامل أو null إن لم تُوجَد.
+ */
+function readSnapshotPayload_(ss, key) {
+  const s = ss.getSheetByName(SHEET_NAMES.snapshots);
+  if (!s || s.getLastRow() < SNAP_FIRST_DATA_ROW) return null;
+  const lastCol = Math.max(SNAP_PAYLOAD_FIRST_COL, s.getLastColumn());
+  const data = s.getRange(SNAP_FIRST_DATA_ROW, 1,
+    s.getLastRow() - 1, lastCol).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === key) {
+      // نجمع قطع الحمولة من العمود D فصاعداً (القيم الفارغة تُضاف كـ '')
+      return data[i].slice(SNAP_PAYLOAD_FIRST_COL - 1).join('');
+    }
+  }
+  return null;
+}
+
+/* ===========================================================================
+ *  (4) منطق النسخ: إنشاء، تلقائي، استرجاع، التقاط، فهرسة
+ * ===========================================================================*/
+
+/**
+ * إنشاء نسخة طوارئ كاملة لبيانات الإدخال وتخزينها في الورقة المخفيّة مع التدوير.
  * @param {Spreadsheet} ss المصنّف.
  * @param {string} label وصف مختصر للنسخة.
  * @return {string} مفتاح النسخة المخزَّنة.
  */
 function createSnapshot(ss, label) {
-  const payload = captureWorkbookData(ss);
-  const props = PropertiesService.getDocumentProperties();
-  const key = 'SBP_SNAP_' + Date.now();
-  props.setProperty(key, JSON.stringify(payload));
+  const sheet = getSnapshotSheet_(ss);
+  const payload = JSON.stringify(captureWorkbookData(ss));
+  const key = 'SNAP_' + Date.now();
 
-  // نُحدّث الفهرس ونُدوّر النسخ بحيث لا تتجاوز الحدّ الأقصى
-  const index = loadSnapshotIndex();
-  index.push({ key: key, label: label || 'نسخة', ts: latinTimestamp() });
-  while (index.length > SNAPSHOT_CONFIG.maxSnapshots) {
-    const removed = index.shift();
-    props.deleteProperty(removed.key);
+  // نُقسّم الحمولة إلى قطع ≤ الحدّ الأقصى للخليّة لتفادي تجاوز سعة الخليّة
+  const chunks = [];
+  for (let i = 0; i < payload.length; i += SNAP_CHUNK_SIZE) {
+    chunks.push(payload.substring(i, i + SNAP_CHUNK_SIZE));
   }
-  saveSnapshotIndex(index);
+  // الصفّ: [المفتاح، الوصف، الطابع الزمني، ...قطع الحمولة]
+  const row = [key, label || 'نسخة', latinTimestamp()].concat(chunks);
+  sheet.appendRow(row);
+
+  // تدوير اللقطات للحفاظ على الحدّ الأقصى
+  rotateSnapshots_(sheet);
+  invalidateSnapshotCache_(); // إبطال الكاش بعد تغيّر الفهرس
   return key;
 }
 
 /** إنشاء نسخة تلقائيّة فقط إذا مرّ الفاصل الزمني الأدنى منذ آخر نسخة تلقائيّة. */
 function maybeAutoSnapshot() {
+  // هجرة لمرّة واحدة: تفريغ تخزين الخصائص القديم الممتلئ (إن وُجد) لمنع التعارض
+  purgeLegacySnapshotStorage();
+
   const props = PropertiesService.getDocumentProperties();
   const last = parseInt(props.getProperty(PROP_KEYS.lastAutoSnap) || '0', 10);
   const now = Date.now();
@@ -152,12 +227,12 @@ function maybeAutoSnapshot() {
 }
 
 /**
- * استرجاع نسخة طوارئ: إعادة كتابة بيانات الإدخال المحفوظة في أماكنها.
+ * استرجاع نسخة طوارئ: قراءة الحمولة من الورقة المخفيّة وإعادة كتابة القيم.
  * @param {Spreadsheet} ss المصنّف.
  * @param {string} key مفتاح النسخة.
  */
 function restoreSnapshot(ss, key) {
-  const raw = PropertiesService.getDocumentProperties().getProperty(key);
+  const raw = readSnapshotPayload_(ss, key);
   if (!raw) return;
   const payload = JSON.parse(raw);
   Object.keys(payload.sheets).forEach(sheetName => {
@@ -168,6 +243,24 @@ function restoreSnapshot(ss, key) {
     }
   });
   SpreadsheetApp.flush();
+}
+
+/**
+ * تفريغ تخزين اللقطات القديم من PropertiesService (مفاتيح SBP_SNAP_* والفهرس).
+ * يُصلح علّة "Storage Quota Exceeded" بإخلاء المساحة الممتلئة سابقاً.
+ * @return {number} عدد المفاتيح التي أُزيلت.
+ */
+function purgeLegacySnapshotStorage() {
+  const props = PropertiesService.getDocumentProperties();
+  let removed = 0;
+  props.getKeys().forEach(k => {
+    // نحذف لقطات الإصدار القديم وفهرسها فقط، دون المساس بالمفاتيح الصغيرة الأخرى
+    if (k.indexOf('SBP_SNAP_') === 0 || k === PROP_KEYS.snapshotIndex) {
+      props.deleteProperty(k);
+      removed++;
+    }
+  });
+  return removed;
 }
 
 /**
@@ -217,16 +310,34 @@ function captureRange(s, a1) {
   return { a1: a1, values: s.getRange(a1).getValues() };
 }
 
-/** قراءة فهرس النسخ المرتّب من الخصائص (الأقدم أوّلاً). */
+/**
+ * قراءة فهرس النسخ المرتّب من الورقة المخفيّة (الأقدم أوّلاً)، مع تخزين مؤقّت
+ * ذكي (CacheService) لتسريع فتح اللوحة وتقليل قراءات الورقة المتكرّرة.
+ * @return {Array<Object>} عناصر [{key, label, ts}].
+ */
 function loadSnapshotIndex() {
-  const raw = PropertiesService.getDocumentProperties().getProperty(PROP_KEYS.snapshotIndex);
-  return raw ? JSON.parse(raw) : [];
+  // محاولة القراءة من الكاش أوّلاً (أسرع بكثير من I/O الورقة)
+  const cache = CacheService.getDocumentCache();
+  if (cache) {
+    const hit = cache.get(SNAP_CACHE_KEY);
+    if (hit) { try { return JSON.parse(hit); } catch (e) { /* كاش تالف ⇒ نتجاهله */ } }
+  }
+  const ss = SpreadsheetApp.getActive();
+  const s = ss.getSheetByName(SHEET_NAMES.snapshots);
+  if (!s || s.getLastRow() < SNAP_FIRST_DATA_ROW) return [];
+  // نقرأ الأعمدة الثلاثة الأولى فقط (المفتاح/الوصف/الطابع) للفهرسة دفعة واحدة
+  const rows = s.getRange(SNAP_FIRST_DATA_ROW, 1, s.getLastRow() - 1, 3).getValues();
+  const index = rows.filter(r => r[0]).map(r => ({
+    key: String(r[0]), label: String(r[1]), ts: String(r[2]),
+  }));
+  if (cache) cache.put(SNAP_CACHE_KEY, JSON.stringify(index), SNAP_CACHE_TTL);
+  return index;
 }
 
-/** حفظ فهرس النسخ في الخصائص. */
-function saveSnapshotIndex(index) {
-  PropertiesService.getDocumentProperties()
-    .setProperty(PROP_KEYS.snapshotIndex, JSON.stringify(index));
+/** إبطال كاش فهرس النسخ (يُستدعى بعد أيّ تغيّر في اللقطات). */
+function invalidateSnapshotCache_() {
+  const cache = CacheService.getDocumentCache();
+  if (cache) cache.remove(SNAP_CACHE_KEY);
 }
 
 /**

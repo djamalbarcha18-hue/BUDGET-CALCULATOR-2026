@@ -37,6 +37,8 @@ function onOpen() {
     .addSeparator()
     .addItem(TXT_MENU.injectDemo, 'menuInjectDemo2025')
     .addItem(TXT_MENU.cleanYears, 'menuCleanOtherYears')
+    .addItem(TXT_MENU.refreshRates, 'menuRefreshRates')
+    .addItem(TXT_MENU.recalcGoals, 'menuRecalcGoals')
     // قائمة فرعيّة للأدوات المتقدّمة (تصدير/توقّعات/تنبيهات)
     .addSubMenu(ui.createMenu(TXT_MENU.subTools)
       .addItem(TXT_MENU.exportDash, 'menuExportDashboardPdf')
@@ -52,14 +54,43 @@ function onOpen() {
     .addItem(TXT_MENU.snapshotRestore, 'menuRestoreSnapshot')
     .addItem(TXT_MENU.installTriggers, 'menuInstallSnapshotTriggers')
     .addItem(TXT_MENU.removeTriggers, 'menuRemoveSnapshotTriggers')
+    .addItem(TXT_MENU.purgeStorage, 'menuPurgeLegacyStorage')
     .addSeparator()
     .addItem(TXT_MENU.repairDash, 'repairDashboard2026')
     .addToUi();
 
   // نسخة طوارئ تلقائيّة (لا تُنشأ إلا بعد مرور الفاصل الزمني الأدنى)
   maybeAutoSnapshot();
+  // هجرة تحديث #41 الصامتة لمرة واحدة فقط (فحص خفيف جداً للمفتاح)
+  runPR41MigrationOnce_(SpreadsheetApp.getActive());
   // عرض دليل التهيئة تلقائياً عند أوّل فتح فقط
   maybeShowOnboarding();
+}
+
+/**
+ * هجرة تحديث #41 بنمط (One-Time Migration): فحص خفيف جداً لمفتاح مخفي في
+ * خصائص المستند؛ فإن كان موجوداً يتوقّف فوراً (لا أثر على سرعة الفتح). وإن كان
+ * غائباً (مستخدم على نسخة قديمة) يُعيد بناء صفحة الأهداف واللوحة الرئيسيّة مرّة
+ * واحدة بصمت، ثمّ يحفظ المفتاح فيتوقّف نهائياً في الفتحات اللاحقة.
+ * @param {Spreadsheet} ss المصنّف النشط.
+ */
+function runPR41MigrationOnce_(ss) {
+  const props = PropertiesService.getDocumentProperties();
+  // فحص خفيف: إن وُجد المفتاح ننهي فوراً دون أيّ عمليّة ثقيلة
+  if (props.getProperty(PROP_KEYS.pr41Updated)) return;
+  try {
+    const year = getActiveYear();
+    buildGoals(ss);                 // تحديث صفحة الأهداف (UI + معادلات + المدّخرات)
+    buildDashboardEngine(ss, year); // المحرّك الخلفي قبل اللوحة
+    buildDashboard(ss, year);       // اللوحة الرئيسيّة (ودجت الأهداف + العرض فقط)
+    defineNamedRanges(ss);          // ضمان النطاقات المُسمّاة للودجت والمعادلات
+    safeHideSheet(ss, SHEET_NAMES.engine);
+    // نحفظ المفتاح فقط بعد نجاح البناء حتى لا "تُحرَق" الهجرة عند خطأ عابر
+    props.setProperty(PROP_KEYS.pr41Updated, 'true');
+  } catch (err) {
+    // لا نوقف فتح المصنّف عند أيّ خطأ في الهجرة (تُعاد المحاولة في الفتح التالي)
+    console.error('فشل تنفيذ هجرة #41: ' + err);
+  }
 }
 
 /**
@@ -87,7 +118,7 @@ function onEdit(e) {
   // (أ) فرض الأرقام اللاتينيّة على أيّ نصّ مُدخل
   enforceLatinDigitsOnEdit(e);
 
-  // (ب) التقاط تغيير السنة النشطة من خليّة الإعدادات F3
+  // (ب) التقاط تغيير السنة النشطة من خليّة الإعدادات F3 (مصدر الإدخال الوحيد للسنة)
   if (sheet.getName() === SHEET_NAMES.settings && e.range.getA1Notation() === 'F3') {
     const year = parseInt(toLatinDigits(e.range.getValue()), 10);
     if (isValidYear(year) && year !== getActiveYear()) {
@@ -98,47 +129,19 @@ function onEdit(e) {
     return; // لا داعي لفحص التنبيهات على ورقة الإعدادات
   }
 
-  // (ب-2) لوحة التحكّم المركزيّة: محدّدا السنة والعملة في اللوحة الرئيسيّة
-  if (sheet.getName() === SHEET_NAMES.dashboard) {
-    handleDashboardControlEdit(ss, e);
-    return; // لا فحص تنبيهات على اللوحة
-  }
-
-  // (ج) فحص تنبيه فوري خفيف عند تعديل ورقة شهريّة (محرّك التنبيهات)
-  notifyOnEdit(e);
-}
-
-/**
- * معالجة تعديل خلايا التحكّم المركزي في اللوحة (السنة/العملة) وتمرير الاختيار
- * كمتغيّر عام يؤثّر على كل الأوراق. تغيير السنة يُفعّل محرّك السنوات، وتغيير
- * العملة يُحدّث rng_MainCurrency (خليّة الإعدادات B3) فتتبدّل كل التنسيقات.
- * @param {Spreadsheet} ss المصنّف.
- * @param {Object} e كائن حدث التعديل.
- */
-function handleDashboardControlEdit(ss, e) {
-  const a1 = e.range.getA1Notation();
-
-  // محدّد السنة: نفعّل السنة الجديدة عبر محرّك السنوات (يعيد بناء كل شيء)
-  if (a1 === DASH_CTRL.yearCell) {
-    const year = parseInt(toLatinDigits(e.range.getValue()), 10);
-    if (isValidYear(year) && year !== getActiveYear()) {
-      activateYear(ss, year);
+  // (ب-2) التقاط تغيير العملة الأساسيّة من خليّة الإعدادات B3 (مصدر الإدخال الوحيد للعملة)
+  if (sheet.getName() === SHEET_NAMES.settings && e.range.getA1Notation() === 'B3') {
+    const cur = String(e.range.getValue()).trim();
+    if (cur) {
+      // العملة تنتشر آلياً عبر النطاق المُسمّى rng_MainCurrency لكل الأوراق واللوحة
       SpreadsheetApp.getActive().toast(
-        TXT_DASH.yearChangedBody.replace('{year}', year), TXT_DASH.yearChangedTitle, 8);
+        TXT_DASH.currencyChangedBody.replace('{cur}', cur), TXT_DASH.currencyChangedTitle, 6);
     }
     return;
   }
 
-  // محدّد العملة: نكتب الاختيار في خليّة الإعدادات B3 (rng_MainCurrency)
-  // فتتحدّث كل القيم والتنسيقات المعتمدة عليها في المصنّف بأكمله.
-  if (a1 === DASH_CTRL.currencyCell) {
-    const cur = String(e.range.getValue()).trim();
-    if (!cur) return;
-    const settings = ss.getSheetByName(SHEET_NAMES.settings);
-    if (settings) settings.getRange('B3').setValue(cur);
-    SpreadsheetApp.getActive().toast(
-      TXT_DASH.currencyChangedBody.replace('{cur}', cur), TXT_DASH.currencyChangedTitle, 8);
-  }
+  // (ج) فحص تنبيه فوري خفيف عند تعديل ورقة شهريّة (محرّك التنبيهات)
+  notifyOnEdit(e);
 }
 
 /**
@@ -212,6 +215,7 @@ function buildEntireWorkbook_(ss, year) {
   buildGoals(ss);
   buildDebtTracker(ss);          // وحدة مفكرة السلف والديون (15)
   buildYearMonthlySheets(ss, year);
+  recalcGoalSavings(ss);       // حساب مدّخرات الأهداف بعد توفّر الأوراق الشهريّة
   buildDashboard(ss, year);
   buildDashboardEngine(ss, year);
   buildForecast(ss, year);     // وحدة التوقّعات (11)
@@ -226,6 +230,8 @@ function buildEntireWorkbook_(ss, year) {
   // (4) تثبيت السنة وإخفاء الأوراق الخلفيّة وتفعيل نظام الطوارئ
   setActiveYear(year);
   PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.installVersion, APP_VERSION);
+  // التركيب الجديد محدَّث أصلاً ⇒ نُعلِّم هجرة #41 كمنفَّذة لتفادي إعادة بناء عند أوّل فتح
+  PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.pr41Updated, 'true');
   safeHideSheet(ss, SHEET_NAMES.engine);
   safeHideSheet(ss, SHEET_NAMES.snapshots);
   createSnapshot(ss, 'نسخة ما بعد التركيب');
@@ -318,16 +324,28 @@ function menuCleanOtherYears() {
 
 /**
  * إرجاع الحالة الأوّليّة للوحة التحكّم (السنة، المشغّلات، النسخ، التنبيهات).
+ * مُحصَّنة بالكامل: كل مصدر بيانات يُقرأ بالاسم الصريح (لا يعتمد على الورقة
+ * النشطة) ويُغلَّف بـ try/catch، فتُحمَّل اللوحة كاملةً من أيّ ورقة كان يقف
+ * المستخدم عليها (حتى لو كانت ورقة نظام مخفيّة) دون تجمّد أو نقص عناصر.
  * @return {Object} حالة جاهزة لاستهلاكها في TopDialog.html.
  */
 function dialogGetState() {
+  // غلاف آمن: نُمرّر دالّة مغلَّفة (لا مرجع اسم مباشر) حتى يُحلّ اسم الدالّة
+  // داخل try/catch؛ فلو غابت أيّ دالّة خلفيّة (ReferenceError) تُمسَك هنا ولا
+  // تُسقِط بناء الحالة. هذا يضمن تحميل اللوحة كاملةً من أيّ ورقة ودون أيّ خطأ.
+  const safe = function (fn, fallback) {
+    try { const v = fn(); return (v === undefined || v === null) ? fallback : v; }
+    catch (e) { return fallback; }
+  };
   return {
-    activeYear:     getActiveYear(),
-    years:          allSupportedYears(),
-    triggersActive: areSnapshotTriggersActive(),
-    snapshots:      listSnapshotsForDialog(),
-    notifications:  getNotifications(),   // من وحدة التنبيهات (10)
-    version:        APP_VERSION,
+    activeYear:     safe(function () { return getActiveYear(); }, (typeof DEFAULT_YEAR !== 'undefined' ? DEFAULT_YEAR : 2025)),
+    years:          safe(function () { return allSupportedYears(); }, [2025]),
+    currency:       safe(function () { const st = SpreadsheetApp.getActive().getSheetByName(SHEET_NAMES.settings); return st ? String(st.getRange('B3').getDisplayValue()) : 'USD'; }, 'USD'),
+    currencies:     safe(function () { return CURRENCIES.map(function (c) { return c[0]; }); }, ['USD']),
+    triggersActive: safe(function () { return areSnapshotTriggersActive(); }, false),
+    snapshots:      safe(function () { return listSnapshotsForDialog(); }, []),
+    notifications:  safe(function () { return getNotifications(); }, []),
+    version:        safe(function () { return APP_VERSION; }, ''),
   };
 }
 
@@ -343,7 +361,27 @@ function dialogRunAction(action, params) {
   params = params || {};
   const year = params.year ? parseInt(toLatinDigits(String(params.year)), 10) : getActiveYear();
 
+  try {
   switch (action) {
+    case 'applyControls': {
+      // التحكّم الفعلي الحصري من اللوحة: تطبيق السنة والعملة معاً بضغطة واحدة
+      createSnapshot(ss, 'قبل تطبيق تغييرات اللوحة'); // لقطة طوارئ مُقسَّمة قبل الترحيل
+      // (1) العملة: نكتبها في مصدر الحقيقة (الإعدادات B3) ونحدّث أسعار الصرف آلياً
+      if (params.currency) {
+        const st = ss.getSheetByName(SHEET_NAMES.settings);
+        if (st) st.getRange('B3').setValue(String(params.currency));
+        refreshExchangeRates(ss);
+      }
+      // (2) السنة: نفعّل محرّك السنوات (يبني/يُظهر/يؤرشف ويعيد ربط كل شيء)
+      const yy = isValidYear(year) ? year : getActiveYear();
+      activateYear(ss, yy);
+      return {
+        ok: true,
+        message: TXT_DASH.yearChangedBody.replace('{year}', yy),
+        state: dialogGetState(),
+      };
+    }
+
     case 'switchYear':
       if (!isValidYear(year)) return { ok: false, message: TXT_MSG.yearInvalid };
       createSnapshot(ss, 'قبل تغيير السنة إلى ' + year);
@@ -379,13 +417,14 @@ function dialogRunAction(action, params) {
       return { ok: true, message: TXT_FORECAST.doneBody, state: dialogGetState() };
 
     case 'exportDash': {
-      const url = exportDashboardPdf();
-      return { ok: !!url, message: url ? TXT_EXPORT.doneBody.replace('{url}', url) : TXT_EXPORT.failBody, state: dialogGetState() };
+      const r = exportDashboardPdf();
+      return { ok: r.ok, message: r.message, state: dialogGetState() };
     }
 
     case 'exportMonth': {
-      const url = exportActiveMonthPdf();
-      return { ok: !!url, message: url ? TXT_EXPORT.doneBody.replace('{url}', url) : TXT_EXPORT.failBody, state: dialogGetState() };
+      // عزل السياق: نصدّر شهراً يُحلّ بالاسم من السنة النشطة، لا الورقة النشطة
+      const r = exportMonthForDialog_();
+      return { ok: r.ok, message: r.message, state: dialogGetState() };
     }
 
     case 'snapshot':
@@ -415,5 +454,9 @@ function dialogRunAction(action, params) {
 
     default:
       return { ok: false, message: 'أمر غير معروف.' };
+  }
+  } catch (e) {
+    // أيّ خطأ غير متوقّع يعود كنتيجة واضحة مع حالة محدَّثة (لا تجمّد للواجهة)
+    return { ok: false, message: 'حدث خطأ أثناء التنفيذ: ' + e, state: dialogGetState() };
   }
 }

@@ -122,17 +122,21 @@
       <div id="triggerBadge" class="trigger-badge off">…</div>
     </header>
 
-    <!-- قسم محرّك السنوات -->
+    <!-- مركز التحكّم الفعلي الحصري: السنة + العملة + زرّ التفعيل -->
     <section class="card">
-      <h2>محرّك السنوات</h2>
+      <h2>التحكّم المركزي (السنة والعملة)</h2>
       <div class="row" style="margin-bottom:10px;">
-        <label for="yearSelect">السنة النشطة</label>
+        <label for="yearSelect">السنة</label>
         <select id="yearSelect"></select>
+        <label for="currencySelect">العملة</label>
+        <select id="currencySelect"></select>
       </div>
       <div class="row">
-        <button class="primary" onclick="run('switchYear', true)">تفعيل السنة</button>
-        <button class="warn" onclick="run('archive', true)">أرشفة هذه السنة</button>
+        <button class="primary" onclick="applyControls()">⚡ تفعيل التغييرات</button>
       </div>
+      <p style="font-size:11px; color:var(--muted); margin:8px 0 0;">
+        هذا هو المكان الوحيد لتغيير السنة والعملة؛ بقيّة الأوراق عرض فقط ومحميّة.
+      </p>
     </section>
 
     <!-- قسم البيانات والصيانة -->
@@ -216,17 +220,30 @@
       for (var i = 0; i < btns.length; i++) btns[i].disabled = busy;
     }
 
-    /** تحديث شارة حالة المشغّل الدوري ومحدّد السنة من حالة الخادم. */
+    /** تحديث شارة حالة المشغّل الدوري وبطاقة السنة/العملة (عرض فقط) من حالة الخادم. */
     function applyState(state) {
-      // محدّد السنة: نملؤه بالأرقام اللاتينيّة ونحدّد السنة النشطة
-      var sel = $('yearSelect');
-      sel.innerHTML = '';
-      (state.years || []).forEach(function (y) {
-        var opt = document.createElement('option');
-        opt.value = y; opt.textContent = toLatinDigits(y);
-        if (y === state.activeYear) opt.selected = true;
-        sel.appendChild(opt);
-      });
+      // تعبئة محدّد السنة (أرقام لاتينيّة) مع تحديد السنة النشطة
+      var ys = $('yearSelect');
+      if (ys) {
+        ys.innerHTML = '';
+        (state.years || []).forEach(function (y) {
+          var o = document.createElement('option');
+          o.value = y; o.textContent = toLatinDigits(y);
+          if (y === state.activeYear) o.selected = true;
+          ys.appendChild(o);
+        });
+      }
+      // تعبئة محدّد العملة مع تحديد العملة الحاليّة
+      var cs = $('currencySelect');
+      if (cs) {
+        cs.innerHTML = '';
+        (state.currencies || ['USD']).forEach(function (c) {
+          var o = document.createElement('option');
+          o.value = c; o.textContent = c;
+          if (c === state.currency) o.selected = true;
+          cs.appendChild(o);
+        });
+      }
       // شارة المشغّل الدوري
       var badge = $('triggerBadge');
       if (state.triggersActive) {
@@ -292,15 +309,32 @@
         .dialogRunAction('restore', { key: sel.value });
     }
 
+    /** تطبيق السنة والعملة معاً من مركز التحكّم (مع مؤشّر تحميل أثناء الترحيل). */
+    function applyControls() {
+      var year = parseInt(toLatinDigits($('yearSelect').value), 10);
+      var currency = $('currencySelect').value;
+      setBusy(true); setStatus('جارٍ ترحيل البيانات وتفعيل التغييرات…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) {
+            setStatus(res.message || 'تمّ التفعيل.', false);
+            if (res.state) applyState(res.state);
+          } else { setStatus((res && res.message) ? res.message : 'تعذّر التفعيل.', false); }
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus('حدث خطأ: ' + (err && err.message ? err.message : err), false);
+        })
+        .dialogRunAction('applyControls', { year: year, currency: currency });
+    }
+
     /**
      * تنفيذ أمر على الخادم عبر google.script.run.
      * @param {string} action اسم الأمر.
-     * @param {boolean} needsYear هل يحتاج الأمر للسنة المختارة.
      */
-    function run(action, needsYear) {
+    function run(action) {
       setBusy(true); setStatus('جارٍ التنفيذ…', true);
-      // نقرأ السنة المختارة ونفرض عليها الأرقام اللاتينيّة قبل الإرسال
-      var params = needsYear ? { year: parseInt(toLatinDigits($('yearSelect').value), 10) } : {};
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
@@ -315,7 +349,7 @@
           setBusy(false);
           setStatus('حدث خطأ: ' + (err && err.message ? err.message : err), false);
         })
-        .dialogRunAction(action, params);
+        .dialogRunAction(action, {});
     }
 
     /** تحميل الحالة الأوّليّة عند فتح اللوحة. */
