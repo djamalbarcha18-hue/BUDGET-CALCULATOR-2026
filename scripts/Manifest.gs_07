@@ -39,6 +39,9 @@ const PROJECT_MANIFEST = {
     { file: 'Forecast.gs_11',  role: 'التوقّعات المالية' },
     { file: 'UserGuide.gs_12', role: 'دليل الاستخدام المدمج' },
     { file: 'Recovery.gs_13',  role: 'نظام الطوارئ والنسخ' },
+    { file: 'Charts.gs_14',    role: 'مصادر الرسوم البيانيّة' },
+    { file: 'DebtTracker.gs_15', role: 'مفكرة السلف والديون' },
+    { file: 'AI_Engine.gs_16', role: 'المساعد المالي الذكي (Gemini)' },
   ],
 
   // أعلام تفعيل الميزات (تُقرأ عبر isFeatureEnabled قبل تشغيل أيّ وحدة اختياريّة)
@@ -49,6 +52,7 @@ const PROJECT_MANIFEST = {
     forecast:      true,
     userGuide:     true,
     recovery:      true,
+    assistant:     true, // المساعد المالي الذكي (Gemini) — تحميل كسول عند الطلب
   },
 };
 

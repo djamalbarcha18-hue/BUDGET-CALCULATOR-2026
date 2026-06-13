@@ -1,0 +1,688 @@
+/**
+ * ============================================================================
+ *  SmartBudget Pro 2026  ·  نظام مالي ذكي متكامل
+ *  محرّك المساعد الذكي (Gemini)  ·  AI_Engine.gs_16
+ * ----------------------------------------------------------------------------
+ *  الغرض من هذا الملف:
+ *    - وحدة مستقلّة تماماً للمساعد المالي الذكي المعتمد على Gemini API.
+ *    - لا تتداخل مع المحرّك المالي (الوحدات 00-15): تقرأ القيم الجاهزة من ورقة
+ *      المحرّك الخلفي فقط ولا تعدّل أيّ بيانات إدخال أو معادلات.
+ *
+ *  معمارية "التحميل الكسول" (Lazy Loading):
+ *    - لا يُنفَّذ أيّ كود ولا يُستهلك أيّ مورد API عند فتح المصنّف أو بناء اللوحة.
+ *    - فتح المساعد (showAssistant) يُحمّل واجهة HTML فقط — دون أيّ نداء شبكة.
+ *    - كل نداء إلى Gemini يحدث حصراً بضغطة زرّ صريحة من المستخدم داخل الواجهة
+ *      عبر google.script.run، فلا يتأثّر زمن تحميل اللوحة الرئيسيّة إطلاقاً.
+ *
+ *  الأمان:
+ *    - مفتاح Gemini يُقرأ حصراً من PropertiesService.getScriptProperties()
+ *      (المفتاح GEMINI_API_KEY)، ولا يُسجَّل أبداً ولا يُعرض في الواجهة.
+ *    - اسم النموذج قابل للتعديل عبر الخاصيّة GEMINI_MODEL (افتراضاً flash).
+ * ============================================================================
+ */
+
+/* ===========================================================================
+ *  (0) الإعدادات والنصوص العربيّة للمساعد (معزولة داخل الوحدة)
+ * ===========================================================================*/
+
+/** إعدادات محرّك المساعد الذكي (نقطة حقيقة واحدة). */
+const AI_CONFIG = {
+  // مفاتيح Script Properties
+  keyProp:   'GEMINI_API_KEY',
+  modelProp: 'GEMINI_MODEL',
+  // النموذج الافتراضي (قابل للتجاوز عبر GEMINI_MODEL)
+  defaultModel: 'gemini-2.5-flash',
+  // نقطة نهاية REST لواجهة Gemini (نطاق script.external_request موجود أصلاً)
+  endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+  temperature:     0.4,
+  maxOutputTokens: 2048,
+  // مدّة تخزين نتيجة التحليل في ذاكرة المستند (6 ساعات) لتقليل تكرار الاستهلاك
+  cacheTtlSeconds: 21600,
+  // أقصى عدد رسائل سابقة تُرسَل كسياق للمحادثة (تخفيف التوكِنات)
+  maxHistory: 8,
+  // الفترات الزمنيّة المدعومة في التحليل
+  periodList: [
+    { key: 'monthly',    label: 'شهري' },
+    { key: 'quarterly',  label: 'ربع سنوي' },
+    { key: 'semiAnnual', label: 'سداسي' },
+    { key: 'annual',     label: 'سنوي' },
+  ],
+};
+
+/** كل نصوص واجهة/رسائل المساعد الذكي (عربيّة، معزولة لإبقاء Texts.gs مجمَّداً). */
+const TXT_AI = {
+  title:    '🤖 المساعد المالي الذكي',
+  menuItem: '🤖 المساعد المالي الذكي (Gemini)',
+  subtitle: 'تحليلات وتوقّعات ورؤى مدعومة بالذكاء الاصطناعي',
+  // رسائل الأخطاء (واضحة وعربيّة — لا تتجمّد الواجهة أبداً)
+  errDisabled: 'ميزة المساعد الذكي معطّلة حاليّاً من إعدادات المشروع (Feature Flag).',
+  errNoKey:    'لم يُضبط مفتاح Gemini بعد. أضِف GEMINI_API_KEY في خصائص السكربت (Project Settings → Script Properties) ثمّ أعد المحاولة.',
+  errNoEngine: 'تعذّر العثور على المحرّك الخلفي. شغّل "تركيب / إعادة بناء المصنّف" أو "إصلاح اللوحة" أوّلاً.',
+  errHttp:     'تعذّر الاتصال بخدمة Gemini (HTTP {code}). تحقّق من صحّة المفتاح والحصّة ثمّ أعد المحاولة.',
+  errEmpty:    'لم تُرجِع خدمة Gemini أيّ محتوى. حاول مرّة أخرى بعد قليل.',
+  errNetwork:  'حدث خطأ شبكي أثناء الاتصال بخدمة Gemini.',
+  errEmptyMsg: 'الرجاء كتابة سؤال أوّلاً.',
+  // التنبيهات الاستباقيّة
+  alertOverspend: '🔴 تجاوز في الإنفاق خلال {month}: المصروف الفعلي تخطّى الدخل.',
+  alertLowSaving: '🟡 معدّل الادخار للفترة منخفض ({rate}).',
+  alertTopDrain:  '📊 أعلى فئة استنزاف: {cat} بمبلغ {amt}.',
+  alertGoalRisk:  '⏳ الهدف "{goal}" قيد الادخار وتقدّمه أقلّ من النصف.',
+  alertDebt:      '💳 لديك التزامات نشطة عليك بمبلغ متبقٍّ {amt}.',
+  alertNone:      '✅ لا توجد تنبيهات حرجة حاليّاً، وضعك المالي مستقرّ.',
+  // تصدير PDF
+  pdfName: 'تقرير المساعد المالي الذكي',
+  pdfDone: 'أُنشئ تقرير PDF وحُفظ في مجلّد التقارير على Google Drive:\n{url}',
+  pdfFail: 'تعذّر توليد تقرير PDF. تأكّد من منح صلاحيّة Drive ثمّ أعد المحاولة.',
+};
+
+/** قوالب الموجّهات (Prompts) المُرسَلة إلى Gemini. */
+const AI_PROMPTS = {
+  // تعليمات النظام للتحليل المنظَّم (يُلزم النموذج بمخرجات JSON دقيقة)
+  analyzeSystem:
+    'أنت مستشار مالي شخصي خبير يكتب بالعربية الفصحى المبسّطة وبصيغة احترافية ومحفّزة. ' +
+    'تتلقّى بيانات مالية رقميّة بصيغة JSON وتُنتج تحليلاً عميقاً. ' +
+    'استعمل الأرقام اللاتينيّة (1، 2، 3) دائماً. لا تختلق أرقاماً غير موجودة في البيانات. ' +
+    'أعِد ردّك حصراً ككائن JSON صالح (دون أيّ نصّ خارجه ودون أسوار شيفرة) وفق المخطّط التالي:\n' +
+    '{\n' +
+    '  "summary": "سرد تنفيذي موجز للأداء المالي للفترة",\n' +
+    '  "highlights": ["أبرز 2-4 ملاحظات رقميّة"],\n' +
+    '  "spendingPatterns": ["أنماط الإنفاق المكتشفة وأي طفرات شاذّة"],\n' +
+    '  "comparisons": ["مقارنات الأداء مع الفترة السابقة أو المتوسّط"],\n' +
+    '  "forecast": "توقّع موجز للاتجاه القادم بناءً على الأرقام",\n' +
+    '  "goalsInsight": "رأي مختصر في جدوى تحقيق الأهداف",\n' +
+    '  "recommendations": ["3-5 توصيات عمليّة قابلة للتنفيذ"]\n' +
+    '}',
+  // تعليمات نظام المحادثة الحرّة
+  chatSystem:
+    'أنت مساعد مالي ذكي ضمن تطبيق ميزانية عربي. أجب بإيجاز ودقّة بالعربية الفصحى ' +
+    'وبأرقام لاتينيّة، مستنداً حصراً إلى البيانات المالية المرفقة. إن سُئلت عمّا لا ' +
+    'تدعمه البيانات فاذكر ذلك بوضوح بدل التخمين.',
+
+  /**
+   * بناء نصّ المستخدم لطلب التحليل (سياق رقمي مُصغّر + تعليمات الفترة).
+   * @param {Object} ctx سياق مبني عبر buildAiContext_.
+   * @return {string} نصّ الموجّه.
+   */
+  analyzeUser: function (ctx) {
+    return 'حلّل الوضع المالي للفترة (' + ctx.periodLabel + ') لسنة ' + ctx.year +
+      '. هذه البيانات الرقميّة:\n' + JSON.stringify(ctx) +
+      '\nأعِد التحليل ككائن JSON وفق المخطّط المطلوب فقط.';
+  },
+
+  /**
+   * كتلة سياق نصيّة مختصرة تُلحق بتعليمات نظام المحادثة.
+   * @param {Object} ctx سياق مبني عبر buildAiContext_ (قد يكون null).
+   * @return {string} كتلة السياق.
+   */
+  contextBlock: function (ctx) {
+    if (!ctx) return 'لا تتوفّر بيانات مالية حاليّاً.';
+    return 'البيانات المالية المرجعيّة (JSON):\n' + JSON.stringify(ctx);
+  },
+};
+
+/* ===========================================================================
+ *  (1) نقطة الدخول للواجهة (Lazy Loading: HTML فقط، بلا أيّ نداء API)
+ * ===========================================================================*/
+
+/**
+ * فتح واجهة المساعد الذكي كنافذة منبثقة (Modal). لا يجري أيّ اتصال بـ Gemini
+ * هنا — تُحمَّل صفحة HTML فقط، ولا يبدأ أيّ استهلاك للموارد إلا بضغط المستخدم.
+ */
+function showAssistant() {
+  const ui = SpreadsheetApp.getUi();
+  if (!isFeatureEnabled('assistant')) {
+    ui.alert(TXT_AI.title, TXT_AI.errDisabled, ui.ButtonSet.OK);
+    return;
+  }
+  const html = HtmlService.createHtmlOutputFromFile('Assistant')
+    .setWidth(760).setHeight(680).setTitle(TXT_AI.title);
+  ui.showModalDialog(html, TXT_AI.title);
+}
+
+/**
+ * الحالة الأوّليّة الخفيفة للواجهة (تُستدعى عند الفتح). لا نداء API: تُعيد فقط
+ * إعدادات العرض وما إذا كان المفتاح مضبوطاً، فيبقى زمن الفتح فوريّاً.
+ * @return {Object} حالة جاهزة لاستهلاكها في Assistant.html.
+ */
+function aiAssistantState() {
+  return {
+    ok:            true,
+    enabled:       isFeatureEnabled('assistant'),
+    keyConfigured: !!getGeminiKey_(),
+    model:         getGeminiModel_(),
+    activeYear:    safeAi_(function () { return getActiveYear(); }, DEFAULT_YEAR),
+    version:       APP_VERSION,
+    periods:       AI_CONFIG.periodList,
+    noKeyHint:     TXT_AI.errNoKey,
+  };
+}
+
+/* ===========================================================================
+ *  (2) التحاليل الذكيّة (شهري / ربعي / سداسي / سنوي)
+ * ===========================================================================*/
+
+/**
+ * إجراء تحليل ذكي لفترة محدّدة. يُستدعى فقط عند ضغط زرّ "تحليل ذكي".
+ * يعتمد التخزين المؤقّت (CacheService) لتفادي تكرار استهلاك Gemini للفترة نفسها.
+ * @param {string} periodKey مفتاح الفترة (monthly|quarterly|semiAnnual|annual).
+ * @return {Object} {ok, period, periodLabel, data, context} أو {ok:false, message}.
+ */
+function aiAnalyze(periodKey) {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled };
+  periodKey = periodKey || 'monthly';
+  const year = safeAi_(function () { return getActiveYear(); }, DEFAULT_YEAR);
+
+  const cache = CacheService.getDocumentCache();
+  const cacheKey = 'ai_an_' + periodKey + '_' + year;
+  if (cache) {
+    const hit = cache.get(cacheKey);
+    if (hit) { const obj = JSON.parse(hit); obj.cached = true; return obj; }
+  }
+
+  const ctx = buildAiContext_(periodKey);
+  if (!ctx) return { ok: false, message: TXT_AI.errNoEngine };
+
+  const r = callGemini_(AI_PROMPTS.analyzeSystem, AI_PROMPTS.analyzeUser(ctx), /*expectJson=*/true);
+  if (!r.ok) return { ok: false, message: r.message };
+
+  const result = {
+    ok: true,
+    period: periodKey,
+    periodLabel: ctx.periodLabel,
+    data: parseAnalysisJson_(r.text),
+    context: lightContextForUi_(ctx),
+  };
+  if (cache) { try { cache.put(cacheKey, JSON.stringify(result), AI_CONFIG.cacheTtlSeconds); } catch (e) {} }
+  return result;
+}
+
+/**
+ * محادثة حرّة مع المساعد مرتبطة بسياق بيانات المستخدم. تُستدعى عند إرسال رسالة.
+ * @param {string} message رسالة المستخدم.
+ * @param {string} historyJson سجلّ المحادثة JSON (مصفوفة {role,text}).
+ * @param {string} periodKey الفترة لبناء السياق (افتراضاً سنوي).
+ * @return {Object} {ok, reply} أو {ok:false, message}.
+ */
+function aiChat(message, historyJson, periodKey) {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled };
+  if (!message || !String(message).trim()) return { ok: false, message: TXT_AI.errEmptyMsg };
+
+  const ctx = buildAiContext_(periodKey || 'annual');
+  const systemText = AI_PROMPTS.chatSystem + '\n\n' + AI_PROMPTS.contextBlock(ctx);
+
+  let history = [];
+  try { history = historyJson ? JSON.parse(historyJson) : []; } catch (e) { history = []; }
+  const contents = [];
+  history.slice(-AI_CONFIG.maxHistory).forEach(function (h) {
+    contents.push({
+      role: (h && h.role === 'assistant') ? 'model' : 'user',
+      parts: [{ text: String((h && h.text) || '') }],
+    });
+  });
+  contents.push({ role: 'user', parts: [{ text: String(message) }] });
+
+  const r = callGeminiContents_(systemText, contents, /*expectJson=*/false);
+  if (!r.ok) return { ok: false, message: r.message };
+  return { ok: true, reply: r.text };
+}
+
+/* ===========================================================================
+ *  (3) التنبيهات الاستباقيّة (خفيفة — فحص قواعد محلّي بلا API)
+ * ===========================================================================*/
+
+/**
+ * فحص استباقي خفيف للوضع المالي يُجرى مرّة واحدة فقط عند طلب المستخدم (زرّ
+ * تحديث). يعتمد قواعد محلّيّة سريعة على القيم الجاهزة في المحرّك (دون أيّ نداء
+ * API)، فلا يضيف أيّ مشغّلات ولا يؤثّر على الأداء.
+ * @return {Object} {ok, alerts:[{level, icon, text}]}.
+ */
+function aiProactiveAlerts() {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled, alerts: [] };
+  const ctx = buildAiContext_('annual');
+  if (!ctx) return { ok: false, message: TXT_AI.errNoEngine, alerts: [] };
+
+  const alerts = [];
+  // (أ) أشهر تجاوز فيها الإنفاق الدخل
+  ctx.fullYear.forEach(function (m) {
+    if (m.income > 0 && m.expense > m.income) {
+      alerts.push({ level: 'high', icon: '🔴', text: TXT_AI.alertOverspend.replace('{month}', m.month) });
+    }
+  });
+  // (ب) معدّل ادخار منخفض للفترة الجارية
+  if (ctx.current.income > 0 && ctx.current.savingsRate < NOTIFY_CONFIG.lowSavingsRate) {
+    alerts.push({ level: 'mid', icon: '🟡',
+      text: TXT_AI.alertLowSaving.replace('{rate}', aiPct_(ctx.current.savingsRate)) });
+  }
+  // (ج) أعلى فئة استنزاف
+  if (ctx.expenseCats.length) {
+    const top = ctx.expenseCats.slice().sort(function (a, b) { return b.total - a.total; })[0];
+    if (top && top.total > 0) {
+      alerts.push({ level: 'mid', icon: '📊',
+        text: TXT_AI.alertTopDrain.replace('{cat}', top.name).replace('{amt}', aiNum_(top.total)) });
+    }
+  }
+  // (د) أهداف قيد الادخار وتقدّمها أقلّ من النصف
+  ctx.goals.forEach(function (g) {
+    if (g.status && g.status.indexOf('قيد') >= 0 && g.pct < 0.5) {
+      alerts.push({ level: 'mid', icon: '⏳', text: TXT_AI.alertGoalRisk.replace('{goal}', g.name) });
+    }
+  });
+  // (هـ) التزامات نشطة عليك
+  if (ctx.debts && ctx.debts.owedByMe > 0) {
+    alerts.push({ level: 'high', icon: '💳', text: TXT_AI.alertDebt.replace('{amt}', aiNum_(ctx.debts.owedByMe)) });
+  }
+
+  if (!alerts.length) alerts.push({ level: 'ok', icon: '✅', text: TXT_AI.alertNone });
+  return { ok: true, alerts: alerts };
+}
+
+/* ===========================================================================
+ *  (4) تصدير تقرير PDF عربي (محادثة + تنبؤات + صور الرسوم البيانيّة)
+ * ===========================================================================*/
+
+/**
+ * توليد تقرير PDF احترافي عربي (RTL) يضمّ التحليل والمحادثة وصور رسوم اللوحة،
+ * وحفظه في مجلّد التقارير على Drive (يُعاد استخدام بنية Export.gs).
+ * @param {string} payloadJson حمولة JSON من الواجهة {periodLabel, analysis, conversation}.
+ * @return {Object} {ok, url, message}.
+ */
+function aiExportReportPdf(payloadJson) {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled };
+  let payload = {};
+  try { payload = payloadJson ? JSON.parse(payloadJson) : {}; } catch (e) { payload = {}; }
+  try {
+    const html = buildAiReportHtml_(payload);
+    const blob = Utilities.newBlob(html, 'text/html', 'ai_report.html').getAs('application/pdf');
+    const ss = SpreadsheetApp.getActive();
+    const stamp = toLatinDigits(Utilities.formatDate(
+      new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm'));
+    blob.setName(toLatinDigits(TXT_AI.pdfName) + ' (' + stamp + ').pdf');
+    const file = getOrCreateExportFolder().createFile(blob);
+    return { ok: true, url: file.getUrl(), message: TXT_AI.pdfDone.replace('{url}', file.getUrl()) };
+  } catch (err) {
+    console.error('فشل تصدير تقرير المساعد: ' + err);
+    return { ok: false, message: TXT_AI.pdfFail + ' — ' + err };
+  }
+}
+
+/**
+ * بناء محتوى HTML للتقرير (RTL) متضمّناً التحليل والمحادثة وجدول السنة وصور الرسوم.
+ * @param {Object} payload الحمولة القادمة من الواجهة.
+ * @return {string} وثيقة HTML كاملة.
+ */
+function buildAiReportHtml_(payload) {
+  const an = payload.analysis || {};
+  const conv = payload.conversation || [];
+  const periodLabel = payload.periodLabel || 'تحليل مالي';
+  const year = safeAi_(function () { return getActiveYear(); }, DEFAULT_YEAR);
+  const stamp = toLatinDigits(Utilities.formatDate(
+    new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm'));
+
+  const listHtml = function (arr) {
+    if (!arr || !arr.length) return '<p class="muted">—</p>';
+    return '<ul>' + arr.map(function (x) { return '<li>' + aiEsc_(String(x)) + '</li>'; }).join('') + '</ul>';
+  };
+
+  // جدول السنة (12 شهراً) من المحرّك — نظرة شاملة في التقرير
+  let yearRows = '';
+  const ctx = buildAiContext_('annual');
+  if (ctx && ctx.fullYear) {
+    yearRows = ctx.fullYear.map(function (m) {
+      return '<tr><td>' + aiEsc_(m.month) + '</td><td>' + aiNum_(m.income) +
+        '</td><td>' + aiNum_(m.expense) + '</td><td>' + aiNum_(m.net) + '</td></tr>';
+    }).join('');
+  }
+
+  // صور رسوم اللوحة كـ data-URI (getCharts)
+  const charts = getDashboardChartImages_();
+  const chartsHtml = charts.map(function (b64) {
+    return '<img class="chart" src="data:image/png;base64,' + b64 + '" />';
+  }).join('');
+
+  // المحادثة
+  const convHtml = conv.length
+    ? conv.map(function (m) {
+        const who = (m.role === 'assistant') ? 'المساعد' : 'أنت';
+        const cls = (m.role === 'assistant') ? 'bot' : 'me';
+        return '<div class="msg ' + cls + '"><b>' + who + ':</b> ' + aiEsc_(String(m.text || '')) + '</div>';
+      }).join('')
+    : '<p class="muted">لا توجد محادثة.</p>';
+
+  return '' +
+    '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>' +
+    'body{font-family:"Tajawal","Cairo","Amiri",Arial,sans-serif;direction:rtl;color:#111;margin:24px;}' +
+    'h1{color:#0F172A;font-size:22px;margin:0 0 4px;}h2{color:#1F2937;font-size:16px;border-bottom:2px solid #06B6D4;padding-bottom:4px;margin-top:22px;}' +
+    '.muted{color:#888;}ul{margin:6px 18px;}li{margin:3px 0;}' +
+    '.head{border-bottom:3px solid #0F172A;padding-bottom:10px;margin-bottom:10px;}' +
+    '.meta{color:#555;font-size:12px;}' +
+    'table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;}' +
+    'th,td{border:1px solid #ccc;padding:5px 7px;text-align:center;}th{background:#0F172A;color:#fff;}' +
+    '.msg{margin:5px 0;padding:7px 10px;border-radius:8px;font-size:13px;}' +
+    '.msg.me{background:#E0F2FE;}.msg.bot{background:#F1F5F9;}' +
+    '.chart{width:100%;max-width:640px;margin:10px 0;border:1px solid #ddd;border-radius:8px;}' +
+    '.foot{margin-top:26px;border-top:1px solid #ccc;padding-top:8px;color:#777;font-size:11px;text-align:center;}' +
+    '</style></head><body>' +
+    '<div class="head"><h1>' + aiEsc_(TXT_AI.pdfName) + '</h1>' +
+    '<div class="meta">الفترة: ' + aiEsc_(periodLabel) + ' · السنة: ' + toLatinDigits(year) +
+    ' · تاريخ الإنشاء: ' + stamp + '</div></div>' +
+    '<h2>الملخّص التنفيذي</h2><p>' + aiEsc_(an.summary || '—') + '</p>' +
+    '<h2>أبرز الملاحظات</h2>' + listHtml(an.highlights) +
+    '<h2>أنماط الإنفاق</h2>' + listHtml(an.spendingPatterns) +
+    '<h2>مقارنات الأداء</h2>' + listHtml(an.comparisons) +
+    '<h2>التوقّعات</h2><p>' + aiEsc_(an.forecast || '—') + '</p>' +
+    '<h2>رؤية الأهداف</h2><p>' + aiEsc_(an.goalsInsight || '—') + '</p>' +
+    '<h2>التوصيات</h2>' + listHtml(an.recommendations) +
+    (yearRows ? ('<h2>الأداء الشهري للسنة</h2><table><tr><th>الشهر</th><th>الدخل</th><th>المصروف</th><th>الصافي</th></tr>' + yearRows + '</table>') : '') +
+    (chartsHtml ? ('<h2>الرسوم البيانيّة</h2>' + chartsHtml) : '') +
+    '<h2>سجلّ المحادثة</h2>' + convHtml +
+    '<div class="foot">' + aiEsc_(versionSignature()) + ' · مدعوم بالذكاء الاصطناعي Gemini</div>' +
+    '</body></html>';
+}
+
+/**
+ * استخراج صور رسوم اللوحة الرئيسيّة كنصوص Base64 (PNG) لتضمينها في التقرير.
+ * محصَّن بالكامل: أيّ رسم يتعذّر تحويله يُتجاوَز دون إسقاط العمليّة.
+ * @return {Array<string>} مصفوفة Base64.
+ */
+function getDashboardChartImages_() {
+  const imgs = [];
+  try {
+    const dash = SpreadsheetApp.getActive().getSheetByName(SHEET_NAMES.dashboard);
+    if (!dash) return imgs;
+    dash.getCharts().forEach(function (ch) {
+      try { imgs.push(Utilities.base64Encode(ch.getAs('image/png').getBytes())); } catch (e) {}
+    });
+  } catch (e) {}
+  return imgs;
+}
+
+/* ===========================================================================
+ *  (5) طبقة الاتصال بـ Gemini (مع معالجة أخطاء صريحة)
+ * ===========================================================================*/
+
+/** قراءة مفتاح Gemini حصراً من خصائص السكربت (لا يُسجَّل ولا يُعرض). */
+function getGeminiKey_() {
+  return PropertiesService.getScriptProperties().getProperty(AI_CONFIG.keyProp) || '';
+}
+
+/** قراءة اسم النموذج من خصائص السكربت أو القيمة الافتراضيّة. */
+function getGeminiModel_() {
+  return PropertiesService.getScriptProperties().getProperty(AI_CONFIG.modelProp) || AI_CONFIG.defaultModel;
+}
+
+/**
+ * نداء Gemini برسالة مستخدم مفردة (غلاف مبسّط فوق callGeminiContents_).
+ * @param {string} systemText تعليمات النظام.
+ * @param {string} userText نصّ المستخدم.
+ * @param {boolean} expectJson هل نطلب مخرجات JSON صارمة.
+ * @return {Object} {ok, text} أو {ok:false, message}.
+ */
+function callGemini_(systemText, userText, expectJson) {
+  return callGeminiContents_(systemText, [{ role: 'user', parts: [{ text: userText }] }], expectJson);
+}
+
+/**
+ * النداء الأساسي لـ Gemini generateContent مع سجلّ محتويات كامل (للمحادثة).
+ * يعالج كل الأخطاء بوضوح (مفتاح/HTTP/شبكة) دون رمي استثناءات للواجهة.
+ * @param {string} systemText تعليمات النظام.
+ * @param {Array} contents مصفوفة محتويات Gemini ({role, parts}).
+ * @param {boolean} expectJson طلب نوع استجابة application/json.
+ * @return {Object} {ok, text} أو {ok:false, message}.
+ */
+function callGeminiContents_(systemText, contents, expectJson) {
+  const key = getGeminiKey_();
+  if (!key) return { ok: false, message: TXT_AI.errNoKey };
+
+  const url = AI_CONFIG.endpoint.replace('{model}', encodeURIComponent(getGeminiModel_())) +
+    '?key=' + encodeURIComponent(key);
+  const body = {
+    system_instruction: { parts: [{ text: systemText }] },
+    contents: contents,
+    generationConfig: {
+      temperature: AI_CONFIG.temperature,
+      maxOutputTokens: AI_CONFIG.maxOutputTokens,
+    },
+  };
+  if (expectJson) body.generationConfig.responseMimeType = 'application/json';
+
+  try {
+    const resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(body),
+      muteHttpExceptions: true, // نعالج أخطاء HTTP بوضوح بدل التجميد الصامت
+    });
+    const code = resp.getResponseCode();
+    if (code !== 200) {
+      // لا نُسجّل جسم الخطأ تفادياً لأيّ تسريب، نكتفي برمز HTTP
+      return { ok: false, message: TXT_AI.errHttp.replace('{code}', toLatinDigits(code)) };
+    }
+    const text = extractGeminiText_(JSON.parse(resp.getContentText()));
+    if (!text) return { ok: false, message: TXT_AI.errEmpty };
+    return { ok: true, text: text };
+  } catch (err) {
+    return { ok: false, message: TXT_AI.errNetwork + ' — ' + err };
+  }
+}
+
+/**
+ * استخراج النصّ من استجابة Gemini (يدمج كل أجزاء أوّل مرشّح).
+ * @param {Object} data استجابة Gemini المحلَّلة.
+ * @return {string} النصّ المستخرَج (أو سلسلة فارغة).
+ */
+function extractGeminiText_(data) {
+  try {
+    return (data.candidates[0].content.parts || [])
+      .map(function (p) { return p.text || ''; }).join('').trim();
+  } catch (e) { return ''; }
+}
+
+/* ===========================================================================
+ *  (6) أدوات السياق والمساعدات الخاصّة (Private Helpers)
+ * ===========================================================================*/
+
+/**
+ * بناء سياق رقمي مُصغّر للفترة المطلوبة من المحرّك الخلفي والأوراق المرتبطة.
+ * يقرأ القيم الجاهزة دفعةً واحدة (getValues) دون أيّ كتابة — عزل تامّ عن المحرّك.
+ * @param {string} periodKey مفتاح الفترة.
+ * @return {Object|null} كائن السياق أو null إن غاب المحرّك.
+ */
+function buildAiContext_(periodKey) {
+  const ss = SpreadsheetApp.getActive();
+  const year = safeAi_(function () { return getActiveYear(); }, DEFAULT_YEAR);
+  const engine = ss.getSheetByName(SHEET_NAMES.engine);
+  if (!engine) return null;
+
+  // الشبكة الشهريّة A2:D13 = [الشهر، الدخل، المصروف، الصافي]
+  const grid = engine.getRange('A2:D13').getValues();
+  const months = grid.map(function (r) {
+    return {
+      month:   String(r[0]),
+      income:  Number(r[1]) || 0,
+      expense: Number(r[2]) || 0,
+      net:     Number(r[3]) || 0,
+    };
+  });
+
+  // درجة الصحّة المالية O2 وتصنيفها O3
+  let health = { score: 0, label: '' };
+  try {
+    const o = engine.getRange('O2:O3').getValues();
+    health = { score: Number(o[0][0]) || 0, label: String(o[1][0] || '') };
+  } catch (e) {}
+
+  // فئات الدخل I2:J9 وفئات المصاريف L2:M13 (للأنماط)
+  const incomeCats = aiReadCats_(engine, 'I2:J9');
+  const expenseCats = aiReadCats_(engine, 'L2:M13');
+
+  // الأهداف (الاسم/التكلفة/المدّخر/النسبة/الحالة)
+  let goals = [];
+  try {
+    const g = ss.getSheetByName(SHEET_NAMES.goals);
+    if (g) {
+      goals = g.getRange('A7:H26').getValues()
+        .filter(function (r) { return r[0]; })
+        .map(function (r) {
+          return {
+            name: String(r[0]), cost: Number(r[1]) || 0, saved: Number(r[2]) || 0,
+            pct: Number(r[3]) || 0, status: String(r[7] || ''),
+          };
+        });
+    }
+  } catch (e) {}
+
+  // ملخّص الديون عبر الدالّة الموجودة (للقراءة فقط)
+  let debts = { owedToMe: 0, owedByMe: 0, net: 0 };
+  try { debts = debtSummary() || debts; } catch (e) {}
+
+  // تقسيم الفترة وحساب الإجماليّات الجارية والسابقة
+  const slice = periodMonthsRange_(periodKey);
+  const cur = months.slice(slice.start, slice.end);
+  const prev = (slice.prevStart != null) ? months.slice(slice.prevStart, slice.prevEnd) : [];
+  const current = aiSumPeriod_(cur);
+  const previous = aiSumPeriod_(prev);
+
+  return {
+    year: year,
+    periodKey: periodKey,
+    periodLabel: slice.label,
+    currentMonths: cur,
+    current: current,
+    previous: previous,
+    fullYear: months,
+    incomeCats: incomeCats,
+    expenseCats: expenseCats,
+    goals: goals,
+    debts: debts,
+    health: health,
+  };
+}
+
+/**
+ * قراءة جدول فئة/مبلغ من نطاق في المحرّك (محصَّن).
+ * @param {Sheet} engine ورقة المحرّك.
+ * @param {string} a1 النطاق (عمودان: الاسم، المبلغ).
+ * @return {Array<{name:string,total:number}>}
+ */
+function aiReadCats_(engine, a1) {
+  try {
+    return engine.getRange(a1).getValues()
+      .filter(function (r) { return r[0]; })
+      .map(function (r) { return { name: String(r[0]), total: Number(r[1]) || 0 }; });
+  } catch (e) { return []; }
+}
+
+/**
+ * جمع إجماليّات فترة من مصفوفة أشهر وحساب معدّل الادخار.
+ * @param {Array} arr مصفوفة أشهر {income, expense, net}.
+ * @return {{income:number, expense:number, net:number, savingsRate:number}}
+ */
+function aiSumPeriod_(arr) {
+  const t = (arr || []).reduce(function (a, m) {
+    a.income += m.income; a.expense += m.expense; a.net += m.net; return a;
+  }, { income: 0, expense: 0, net: 0 });
+  t.savingsRate = t.income ? (t.income - t.expense) / t.income : 0;
+  return t;
+}
+
+/**
+ * تحديد نطاق أشهر الفترة (والفترة السابقة للمقارنة) حسب الشهر الجاري.
+ * @param {string} periodKey مفتاح الفترة.
+ * @return {{start:number, end:number, prevStart:?number, prevEnd:?number, label:string}}
+ */
+function periodMonthsRange_(periodKey) {
+  const idx = (new Date()).getMonth(); // 0-11
+  switch (periodKey) {
+    case 'monthly':
+      return {
+        start: idx, end: idx + 1,
+        prevStart: idx > 0 ? idx - 1 : null, prevEnd: idx,
+        label: 'شهري (' + MONTHS[idx] + ')',
+      };
+    case 'quarterly': {
+      const qs = Math.floor(idx / 3) * 3;
+      return {
+        start: qs, end: qs + 3,
+        prevStart: qs >= 3 ? qs - 3 : null, prevEnd: qs,
+        label: 'ربع سنوي (الربع ' + toLatinDigits((qs / 3) + 1) + ')',
+      };
+    }
+    case 'semiAnnual': {
+      const hs = idx < 6 ? 0 : 6;
+      return {
+        start: hs, end: hs + 6,
+        prevStart: hs === 6 ? 0 : null, prevEnd: hs,
+        label: 'سداسي (' + (hs === 0 ? 'النصف الأوّل' : 'النصف الثاني') + ')',
+      };
+    }
+    case 'annual':
+    default:
+      return { start: 0, end: 12, prevStart: null, prevEnd: null, label: 'سنوي' };
+  }
+}
+
+/**
+ * تحليل نصّ JSON القادم من Gemini بتسامح (يزيل أسوار الشيفرة إن وُجدت).
+ * @param {string} text نصّ الاستجابة.
+ * @return {Object} كائن التحليل (أو {summary:text} عند فشل التحليل).
+ */
+function parseAnalysisJson_(text) {
+  let t = String(text || '').trim();
+  // إزالة أسوار ```json ... ``` إن أحاطت بالنصّ
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  try {
+    return JSON.parse(t);
+  } catch (e) {
+    // استخراج أوّل كتلة { ... } كمحاولة أخيرة
+    const m = t.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
+    return { summary: t };
+  }
+}
+
+/**
+ * نسخة مختصرة من السياق تُرسَل للواجهة لرسم مؤشّرات/شرائط بسيطة (بلا تفاصيل ثقيلة).
+ * @param {Object} ctx السياق الكامل.
+ * @return {Object} ملخّص خفيف.
+ */
+function lightContextForUi_(ctx) {
+  return {
+    year: ctx.year,
+    periodLabel: ctx.periodLabel,
+    current: ctx.current,
+    previous: ctx.previous,
+    health: ctx.health,
+    fullYear: ctx.fullYear.map(function (m) { return { month: m.month, net: m.net }; }),
+    topExpenses: ctx.expenseCats.slice().sort(function (a, b) { return b.total - a.total; }).slice(0, 5),
+  };
+}
+
+/** تنسيق رقم بفواصل آلاف وأرقام لاتينيّة (محصَّن). */
+function aiNum_(n) {
+  const v = Number(n) || 0;
+  try { return toLatinDigits(Math.round(v).toLocaleString('en-US')); }
+  catch (e) { return toLatinDigits(String(Math.round(v))); }
+}
+
+/** تنسيق نسبة مئويّة بأرقام لاتينيّة. */
+function aiPct_(r) {
+  return toLatinDigits(((Number(r) || 0) * 100).toFixed(1)) + '%';
+}
+
+/** هروب HTML بسيط لحقن النصوص بأمان في التقرير. */
+function aiEsc_(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * غلاف تنفيذ آمن: يُرجع قيمة بديلة عند أيّ استثناء (لمنع تجميد الواجهة).
+ * @param {Function} fn الدالّة.
+ * @param {*} fallback القيمة البديلة.
+ * @return {*}
+ */
+function safeAi_(fn, fallback) {
+  try { const v = fn(); return (v === undefined || v === null) ? fallback : v; }
+  catch (e) { return fallback; }
+}

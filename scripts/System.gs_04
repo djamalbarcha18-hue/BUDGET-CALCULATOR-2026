@@ -27,6 +27,7 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu(TXT_MENU.root)
     .addItem(TXT_MENU.openDialog, 'showTopDialog')
+    .addItem(TXT_AI.menuItem, 'showAssistant') // المساعد الذكي (تحميل كسول: HTML فقط عند الضغط)
     .addSeparator()
     .addItem(TXT_MENU.install, 'installBudgetCalculator2026')
     .addItem(TXT_MENU.onboarding, 'showOnboardingSidebar')
