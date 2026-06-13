@@ -214,11 +214,21 @@ function defineNamedRanges(ss) {
 }
 
 /**
- * تطبيق قواعد التحقّق من البيانات على أعمدة الفئات وطرق الدفع في أشهر سنة.
+ * تطبيق قواعد التحقّق على أشهر سنة كاملة (غلاف يستدعي النسخة المعتمدة على الأسماء).
  * @param {Spreadsheet} ss المصنّف.
  * @param {number} year السنة المستهدفة.
  */
 function applyMonthlyValidations(ss, year) {
+  applyMonthlyValidationsFor(ss, monthSheetNames(year));
+}
+
+/**
+ * تطبيق قواعد التحقّق من البيانات على قائمة أوراق شهريّة محدّدة بالاسم.
+ * يسمح بتطبيق التحقّق على الأوراق المبنيّة حديثاً فقط (تحسين أداء التبديل).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {Array<string>} names أسماء الأوراق الشهريّة المستهدفة.
+ */
+function applyMonthlyValidationsFor(ss, names) {
   // نبني قواعد التحقّق مرّة واحدة ثمّ نعيد استخدامها لكل ورقة (DRY)
   const incomeCatDv = SpreadsheetApp.newDataValidation()
     .requireValueInRange(ss.getRangeByName('rng_IncomeCategories'), true)
@@ -230,7 +240,7 @@ function applyMonthlyValidations(ss, year) {
     .requireValueInRange(ss.getRangeByName('rng_PaymentMethods'), true)
     .setAllowInvalid(false).build();
 
-  monthSheetNames(year).forEach(name => {
+  names.forEach(name => {
     const s = ss.getSheetByName(name);
     if (!s) return;
     // منع أيّ قائمة منسدلة للسنة أو العملة داخل لوحة مؤشّرات الشهر:
@@ -304,16 +314,24 @@ function applyProtection(ss, year) {
   // عبر applyDebtTrackerProtection_، فلا نكرّرها هنا (تفادي تعارض الحمايات).
 
   // الأوراق الشهريّة للسنة النشطة: حماية لوحة المؤشّرات والأعمدة المحسوبة
-  monthSheetNames(year).forEach(name => {
-    const s = ss.getSheetByName(name);
-    if (!s) return;
-    ['A1:G6',
-     `F${LAYOUT.incomeFirstRow}:F${LAYOUT.incomeLastRow}`,
-     `H${LAYOUT.expenseFirstRow}:H${LAYOUT.expenseLastRow}`,
-     `A${LAYOUT.incomeTotalRow}:G${LAYOUT.incomeTotalRow}`,
-     `A${LAYOUT.expenseTotalRow}:H${LAYOUT.expenseTotalRow}`].forEach(r =>
-      s.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
-  });
+  monthSheetNames(year).forEach(name => protectMonthlySheet_(ss, name));
+}
+
+/**
+ * حماية ورقة شهر واحدة (لوحة المؤشّرات + الأعمدة المحسوبة + الإجماليّات).
+ * مفصولة لإعادة استخدامها عند بناء سنة جديدة أوّل مرّة (DRY).
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {string} name اسم الورقة الشهريّة.
+ */
+function protectMonthlySheet_(ss, name) {
+  const s = ss.getSheetByName(name);
+  if (!s) return;
+  ['A1:G6',
+   `F${LAYOUT.incomeFirstRow}:F${LAYOUT.incomeLastRow}`,
+   `H${LAYOUT.expenseFirstRow}:H${LAYOUT.expenseLastRow}`,
+   `A${LAYOUT.incomeTotalRow}:G${LAYOUT.incomeTotalRow}`,
+   `A${LAYOUT.expenseTotalRow}:H${LAYOUT.expenseTotalRow}`].forEach(r =>
+    s.getRange(r).protect().setDescription(TXT_WARN.calcCell).setWarningOnly(true));
 }
 
 /**
@@ -345,16 +363,37 @@ function buildYearMonthlySheets(ss, year) {
 }
 
 /**
+ * ضمان وجود أوراق السنة الشهريّة ببناء الناقص منها فقط (مرّة واحدة لكل سنة).
+ * تحسين أداء جوهري: لا تُعاد بناء أوراق سنة مبنيّة مسبقاً عند التبديل إليها.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {number} year السنة.
+ * @return {Array<string>} أسماء الأوراق التي بُنيت حديثاً (فارغة إن كانت كلّها موجودة).
+ */
+function ensureYearMonthlySheets(ss, year) {
+  const built = [];
+  for (let i = 0; i < MONTHS.length; i++) {
+    const name = monthSheetName(i, year);
+    const s = ss.getSheetByName(name);
+    // نعتبر الورقة "مبنيّة" إذا كان عنوانها (A1) غير فارغ؛ وإلا نبنيها مرّة واحدة
+    if (!s || s.getRange('A1').getValue() === '') {
+      buildMonth(ss, i, year);
+      built.push(name);
+    }
+  }
+  return built;
+}
+
+/**
  * أرشفة سنة: إخفاء أوراقها الشهريّة وتلوين تبويباتها بالرمادي.
  * البيانات تبقى محفوظة بالكامل ويمكن استعادتها بتفعيل السنة لاحقاً.
  * @param {Spreadsheet} ss المصنّف.
  * @param {number} year السنة المراد أرشفتها.
  */
 function archiveYear(ss, year) {
-  // نُخفي أوراق السنة ونميّز تبويباتها بصرياً كأرشيف
+  // نُخفي أوراق السنة ونميّز تبويباتها بصرياً كأرشيف (مع تفادي العمل المكرّر)
   monthSheetNames(year).forEach(name => {
     const s = ss.getSheetByName(name);
-    if (s) {
+    if (s && !s.isSheetHidden()) {
       s.setTabColor(T.fgMuted); // رمادي = مؤرشف
       s.hideSheet();
     }
@@ -376,34 +415,46 @@ function archiveAllExcept(ss, activeYear) {
 }
 
 /**
- * تفعيل سنة كـ"السنة النشطة": بناء أوراقها إن غابت، إظهارها، أرشفة الباقي،
- * إعادة ربط اللوحة الرئيسيّة والمحرّك على أشهرها، ثمّ حفظ السنة وإعادة الترتيب.
- * هذه هي نقطة الدخول الرئيسيّة لمحرّك السنوات الديناميكي.
+ * تفعيل سنة كـ"السنة النشطة" بنمط (إظهار/إخفاء) عالي الأداء:
+ *   - تُبنى أوراق السنة مرّة واحدة فقط عند أوّل تفعيل لها (الناقص فقط).
+ *   - التبديل اللاحق = إظهار أوراق السنة + إخفاء الباقي + إعادة ربط ديناميكي
+ *     للمحرّك واللوحة على أشهر السنة — دون أيّ إعادة بناء للأوراق أو رسومها.
+ * هذا يقلّص زمن التبديل من دقائق إلى ثوانٍ (لا إعادة إنشاء 12 ورقة + مخططاتها).
  * @param {Spreadsheet} ss المصنّف.
- * @param {number} year السنة المراد تفعيلها.
+ * @param {number} year المراد تفعيلها.
  */
 function activateYear(ss, year) {
-  // (1) بناء أوراق السنة المطلوبة إن لم تكن موجودة، وإظهارها
-  buildYearMonthlySheets(ss, year);
+  // (1) بناء أوراق السنة الناقصة فقط (مرّة واحدة لكل سنة) — جوهر تحسين الأداء
+  const built = ensureYearMonthlySheets(ss, year);
+
+  // (2) إظهار أوراق السنة المطلوبة (دون لمس محتواها) وإزالة لون الأرشفة
   monthSheetNames(year).forEach(name => {
     const s = ss.getSheetByName(name);
-    if (s) { s.showSheet(); s.setTabColor(null); }
+    if (s) {
+      if (s.isSheetHidden()) s.showSheet();
+      s.setTabColor(null);
+    }
   });
 
-  // (2) أرشفة بقيّة السنوات تلقائياً
+  // (3) أرشفة (إخفاء) بقيّة السنوات المبنيّة تلقائياً
   archiveAllExcept(ss, year);
 
-  // (3) حفظ السنة النشطة في الخصائص وفي ورقة الإعدادات
+  // (4) حفظ السنة النشطة في الخصائص وورقة الإعدادات
   setActiveYear(year);
   const settings = ss.getSheetByName(SHEET_NAMES.settings);
   if (settings) settings.getRange('F3').setValue(year);
 
-  // (4) إعادة بناء المحرّك واللوحة على أشهر السنة النشطة (Charts Locking يبقى ثابتاً)
-  recalcGoalSavings(ss); // تحديث مدّخرات الأهداف لأشهر السنة النشطة
+  // (5) التحقّق والحماية يُطبّقان على الأوراق المبنيّة حديثاً فقط (لا تكرار عند التبديل)
+  if (built.length) {
+    applyMonthlyValidationsFor(ss, built);
+    built.forEach(name => protectMonthlySheet_(ss, name));
+  }
+
+  // (6) إعادة الربط الديناميكي: المحرّك واللوحة يُعاد توجيههما لأشهر السنة النشطة
+  recalcGoalSavings(ss);
   buildDashboardEngine(ss, year);
   buildDashboard(ss, year);
 
-  // (5) إعادة تطبيق التحقّق والحماية والترتيب على السنة الجديدة
-  applyMonthlyValidations(ss, year);
+  // (7) إعادة ترتيب التبويبات
   reorderTabs(ss, year);
 }

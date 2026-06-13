@@ -102,12 +102,16 @@ function buildMonth(ss, monthIndex, year) {
   s.getRange(`F${L.expenseFirstRow}`).setFormula(
     `=ARRAYFORMULA(IF((D${L.expenseFirstRow}:D${L.expenseLastRow}="")+(E${L.expenseFirstRow}:E${L.expenseLastRow}="")>0, "", ` +
     `D${L.expenseFirstRow}:D${L.expenseLastRow} - E${L.expenseFirstRow}:E${L.expenseLastRow}))`);
-  // عمود محرّك التنبيهات لكل صفّ (IF لكل صفّ لإبقاء السلسلة نظيفة)
+  // عمود محرّك التنبيهات (دفعة واحدة عبر setFormulas — Batch Operations لتسريع الأداء)
+  // نبني مصفوفة 30×1 من الصيغ ثمّ نكتبها بنداء API واحد بدل 30 نداء فرديّاً
+  const alertFormulas = [];
   for (let r = L.expenseFirstRow; r <= L.expenseLastRow; r++) {
-    s.getRange('H' + r).setFormula(
+    alertFormulas.push([
       `=IF(OR(D${r}="", E${r}=""), "", IF(E${r} > D${r}, "${TXT_ALERTS.overBudget}", ` +
-      `IF(E${r} >= 0.9 * D${r}, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`);
+      `IF(E${r} >= 0.9 * D${r}, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`,
+    ]);
   }
+  s.getRange(`H${L.expenseFirstRow}:H${L.expenseLastRow}`).setFormulas(alertFormulas);
   // صفّ إجمالي المصاريف
   s.getRange(`A${L.expenseTotalRow}`).setValue(TXT_LABELS.total).setFontWeight('bold');
   s.getRange(`D${L.expenseTotalRow}`).setFormula(`=SUM(D${L.expenseFirstRow}:D${L.expenseLastRow})`);
