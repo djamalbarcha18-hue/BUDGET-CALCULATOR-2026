@@ -48,29 +48,29 @@ function buildMonthCharts(s) {
  */
 function buildChartSourceTables_(s) {
   const L = LAYOUT;
-  // --- جدول الدونات: فئات المصاريف ومجاميعها ---
-  s.getRange('T1').setValue('الفئة');
-  s.getRange('U1').setValue('المبلغ');
-  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
+  // --- جدول الدونات: فئات المصاريف ومجاميعها — كتابة مجمّعة ---
+  s.getRange('T1:U1').setValues([['الفئة', 'المبلغ']]);
+  const donut = EXPENSE_CATEGORIES.map((cat, i) => {
     const r = 2 + i;
-    s.getRange('T' + r).setValue(EXPENSE_CATEGORIES[i]); // اسم الفئة حرفياً (لا اعتماد على نطاق مُسمّى)
-    // مجموع الفئة من عمود الفعلي للمصاريف عبر SUMIF محصَّن
-    s.getRange('U' + r).setFormula(
+    return [
+      cat, // اسم الفئة حرفياً (لا اعتماد على نطاق مُسمّى)
+      // مجموع الفئة من عمود الفعلي للمصاريف عبر SUMIF محصَّن
       `=IFERROR(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, T${r}, ` +
-      `E${L.expenseFirstRow}:E${L.expenseLastRow}), 0)`);
-  }
+      `E${L.expenseFirstRow}:E${L.expenseLastRow}), 0)`,
+    ];
+  });
+  s.getRange(2, CHART_LAYOUT.donutTableCol, donut.length, 2).setValues(donut); // T2:U13
   // تنسيق المبالغ بأرقام لاتينيّة
   enforceLatinNumberFormat(s.getRange('U2:U' + (1 + EXPENSE_CATEGORIES.length)));
 
-  // --- جدول الأعمدة المقارن: ثلاث سلاسل (دخل/مصاريف/ادخار) ---
-  s.getRange('T15').setValue('');           // خليّة الزاوية
-  s.getRange('U15').setValue('الدخل');
-  s.getRange('V15').setValue('المصاريف');
-  s.getRange('W15').setValue('الادخار');
-  s.getRange('T16').setValue('الإجمالي');
-  s.getRange('U16').setFormula('=IFERROR(B4, 0)'); // إجمالي الدخل الفعلي
-  s.getRange('V16').setFormula('=IFERROR(D4, 0)'); // إجمالي المصاريف الفعلي
-  s.getRange('W16').setFormula('=IFERROR(B5, 0)'); // صافي الادخار
+  // --- جدول الأعمدة المقارن: ثلاث سلاسل (دخل/مصاريف/ادخار) — كتابة مجمّعة ---
+  s.getRange('T15:W15').setValues([['', 'الدخل', 'المصاريف', 'الادخار']]);
+  s.getRange('T16:W16').setValues([[
+    'الإجمالي',
+    '=IFERROR(B4, 0)', // إجمالي الدخل الفعلي
+    '=IFERROR(D4, 0)', // إجمالي المصاريف الفعلي
+    '=IFERROR(B5, 0)', // صافي الادخار
+  ]]);
   enforceLatinNumberFormat(s.getRange('U16:W16'));
 }
 

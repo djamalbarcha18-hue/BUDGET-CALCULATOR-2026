@@ -30,64 +30,71 @@ function buildDashboardEngine(ss, year) {
   s.clear();
   const names = monthSheetNames(year); // أسماء أوراق السنة النشطة
 
-  // A:D — شبكة المقارنة الشهريّة (الدخل/المصروف/الصافي لكل شهر)
+  // A:D — شبكة المقارنة الشهريّة (الدخل/المصروف/الصافي لكل شهر) — كتابة مجمّعة
   writeHeaderRow(s, 'A1:D1', ['الشهر', 'الدخل الفعلي', 'المصروف الفعلي', 'صافي الربح']);
+  const grid = [];
   for (let i = 0; i < 12; i++) {
-    const name = names[i];
-    const row = i + 2;
-    s.getRange('A' + row).setValue(MONTHS[i]);
-    s.getRange('B' + row).setFormula(`=IFERROR(SUM(${q(name)}!E${LAYOUT.incomeFirstRow}:E${LAYOUT.incomeLastRow}), 0)`);
-    s.getRange('C' + row).setFormula(`=IFERROR(SUM(${q(name)}!E${LAYOUT.expenseFirstRow}:E${LAYOUT.expenseLastRow}), 0)`);
-    s.getRange('D' + row).setFormula(`=B${row}-C${row}`);
+    const name = names[i], row = i + 2;
+    grid.push([
+      MONTHS[i],
+      `=IFERROR(SUM(${q(name)}!E${LAYOUT.incomeFirstRow}:E${LAYOUT.incomeLastRow}), 0)`,
+      `=IFERROR(SUM(${q(name)}!E${LAYOUT.expenseFirstRow}:E${LAYOUT.expenseLastRow}), 0)`,
+      `=B${row}-C${row}`,
+    ]);
   }
+  s.getRange('A2:D13').setValues(grid); // 48 خليّة باستدعاء واحد بدل 48 نداءً
 
   // O5 — الفائض المتراكم السنوي (يغذّي بطاقة الأصول)
   s.getRange('O5').setFormula('=IFERROR(SUM(D2:D13), 0)');
 
-  // F:G — بيانات مخطّط الشلال (Waterfall)، محسوبة داخلياً بالكامل لتفادي المراجع الشبح
+  // F:G — بيانات مخطّط الشلال (Waterfall)، محسوبة داخلياً بالكامل — كتابة مجمّعة
   writeHeaderRow(s, 'F1:G1', ['العنصر', 'المبلغ']);
-  s.getRange('F2').setValue('إجمالي الدخل');
-  s.getRange('G2').setFormula('=IFERROR(H2, 0)');
-  s.getRange('F3').setValue('السكن');
-  s.getRange('G3').setFormula(buildCategorySumFormula(year, 'السكن', true, true));
-  s.getRange('F4').setValue('الطعام');
-  s.getRange('G4').setFormula(buildCategorySumFormula(year, 'الطعام', true, true));
-  s.getRange('F5').setValue('المواصلات');
-  s.getRange('G5').setFormula(buildCategorySumFormula(year, 'النقل', true, true));
-  s.getRange('F6').setValue('باقي المصاريف');
-  s.getRange('G6').setFormula('=IFERROR(-1 * (H3 + G3 + G4 + G5), 0)');
-  s.getRange('F7').setValue('صافي الربح');
-  s.getRange('G7').setFormula('=IFERROR(SUM(G2:G6), 0)');
+  s.getRange('F2:G7').setValues([
+    ['إجمالي الدخل',  '=IFERROR(H2, 0)'],
+    ['السكن',         buildCategorySumFormula(year, 'السكن', true, true)],
+    ['الطعام',        buildCategorySumFormula(year, 'الطعام', true, true)],
+    ['المواصلات',     buildCategorySumFormula(year, 'النقل', true, true)],
+    ['باقي المصاريف', '=IFERROR(-1 * (H3 + G3 + G4 + G5), 0)'],
+    ['صافي الربح',    '=IFERROR(SUM(G2:G6), 0)'],
+  ]);
 
-  // H:I — قيم الاتجاه (الحالي/السابق) لبطاقات المؤشّرات، كلّها محصَّنة
-  s.getRange('H2').setFormula('=IFERROR(SUM(B2:B13), 0)');  // الدخل الحالي
-  s.getRange('I2').setFormula('=IFERROR(SUM(B2:B12), 0)');  // الدخل السابق (11 شهراً)
-  s.getRange('H3').setFormula('=IFERROR(SUM(C2:C13), 0)');  // المصروف الحالي
-  s.getRange('I3').setFormula('=IFERROR(SUM(C2:C12), 0)');  // المصروف السابق
-  s.getRange('H4').setFormula('=IFERROR(H2-H3, 0)');        // الصافي الحالي
-  s.getRange('I4').setFormula('=IFERROR(I2-I3, 0)');        // الصافي السابق
-  // الأصول = المدخر في الأهداف + الفائض المتراكم
-  s.getRange('H5').setFormula(`=IFERROR(${q(SHEET_NAMES.goals)}!D2 + O5, 0)`);
-  s.getRange('I5').setFormula(`=IFERROR(${q(SHEET_NAMES.goals)}!D2 + SUM(D2:D12), 0)`);
-  // الالتزامات = إجمالي ما عليّ المتبقّي من مفكرة الديون (D2) + الأقساط الشهريّة × 12
-  s.getRange('H6').setFormula(`=IFERROR(${q(SHEET_NAMES.debts)}!D2 + ${q(SHEET_NAMES.goals)}!B3 * 12, 0)`);
-  s.getRange('I6').setFormula(`=IFERROR(${q(SHEET_NAMES.debts)}!D2 + ${q(SHEET_NAMES.goals)}!B3 * 11, 0)`);
-  s.getRange('H7').setFormula('=IFERROR((H2-H3)/H2, 0)');   // معدل الادخار الحالي
-  s.getRange('I7').setFormula('=IFERROR((I2-I3)/I2, 0)');   // معدل الادخار السابق
+  // H — قيم الاتجاه الحاليّة (تجميع 12/13 صفّاً) لبطاقات المؤشّرات، كلّها محصَّنة — كتابة مجمّعة
+  const G = q(SHEET_NAMES.goals), D = q(SHEET_NAMES.debts);
+  s.getRange('H2:H7').setFormulas([
+    ['=IFERROR(SUM(B2:B13), 0)'],            // الدخل الحالي
+    ['=IFERROR(SUM(C2:C13), 0)'],            // المصروف الحالي
+    ['=IFERROR(H2-H3, 0)'],                  // الصافي الحالي
+    [`=IFERROR(${G}!D2 + O5, 0)`],           // الأصول الحاليّة
+    [`=IFERROR(${D}!D2 + ${G}!B3 * 12, 0)`], // الالتزامات الحاليّة
+    ['=IFERROR((H2-H3)/H2, 0)'],             // معدّل الادخار الحالي
+  ]);
 
-  // I:J — دونات مصادر الدخل (تجميع كل فئة دخل عبر أشهر السنة)
+  // Z — أعمدة مساعدة لقيم "الاتجاه السابق" معزولة بعيداً عن منطقة العرض ودونات الدخل.
+  // كانت هذه القيم سابقاً في العمود I، لكنّ كتابة فئات الدخل في I2:I9 (للدونات)
+  // كانت تمسحها فتختفي أسهم الاتجاه (تظهر "—"). بنقلها إلى العمود Z (خارج أيّ نطاق
+  // مقروء: الدونات I:J، السجلّ Q:W) تبقى محفوظة وتُحدَّث باستقلال في كل إعادة بناء.
+  // ملاحظة: الصيغ الداخليّة (الصافي/المعدّل) تشير الآن إلى Z2/Z3 بدل I2/I3.
+  s.getRange('Z1').setValue('قيم الاتجاه السابق (عمود مساعد — لا يُعرض)');
+  s.getRange('Z2:Z7').setFormulas([
+    ['=IFERROR(SUM(B2:B12), 0)'],            // الدخل السابق (11 شهراً)
+    ['=IFERROR(SUM(C2:C12), 0)'],            // المصروف السابق
+    ['=IFERROR(Z2-Z3, 0)'],                  // الصافي السابق
+    [`=IFERROR(${G}!D2 + SUM(D2:D12), 0)`],  // الأصول السابقة
+    [`=IFERROR(${D}!D2 + ${G}!B3 * 11, 0)`], // الالتزامات السابقة
+    ['=IFERROR((Z2-Z3)/Z2, 0)'],             // معدّل الادخار السابق
+  ]);
+
+  // I:J — دونات مصادر الدخل (تجميع كل فئة دخل عبر أشهر السنة) — كتابة مجمّعة
   writeHeaderRow(s, 'I1:J1', ['فئة الدخل', 'الإجمالي']);
-  for (let i = 0; i < INCOME_CATEGORIES.length; i++) {
-    s.getRange(2 + i, 9).setValue(INCOME_CATEGORIES[i]);
-    s.getRange(2 + i, 10).setFormula(buildCategorySumFormula(year, '', false, false, `I${2 + i}`));
-  }
+  const incCat = INCOME_CATEGORIES.map((cat, i) =>
+    [cat, buildCategorySumFormula(year, '', false, false, `I${2 + i}`)]);
+  s.getRange(2, 9, incCat.length, 2).setValues(incCat);
 
-  // L:M — دونات فئات المصاريف
+  // L:M — دونات فئات المصاريف — كتابة مجمّعة
   writeHeaderRow(s, 'L1:M1', ['فئة المصاريف', 'الإجمالي']);
-  for (let i = 0; i < EXPENSE_CATEGORIES.length; i++) {
-    s.getRange(2 + i, 12).setValue(EXPENSE_CATEGORIES[i]);
-    s.getRange(2 + i, 13).setFormula(buildCategorySumFormula(year, '', true, false, `L${2 + i}`));
-  }
+  const expCat = EXPENSE_CATEGORIES.map((cat, i) =>
+    [cat, buildCategorySumFormula(year, '', true, false, `L${2 + i}`)]);
+  s.getRange(2, 12, expCat.length, 2).setValues(expCat);
 
   // O2/O3 — درجة الصحّة المالية المركَّبة (40 ادخار + 30 انضباط + 30 أهداف)
   const expectedExpenseSum = yearMonthRanges(year, `D${LAYOUT.expenseFirstRow}:D${LAYOUT.expenseLastRow}`).join(', ');
@@ -100,34 +107,35 @@ function buildDashboardEngine(ss, year) {
     `O2>=60, "${TXT_DASH.healthLabels.fair}", TRUE, "${TXT_DASH.healthLabels.poor}")`);
 
   // Q:W — مصفوفة موحَّدة لكل معاملات السنة (تغذّي سجلّ أحدث 5 معاملات عبر QUERY)
+  // كتابة مجمّعة (Batch): نبني مصفوفة متناثرة فيها صيغة ARRAYFORMULA عند رأس كل
+  // كتلة شهريّة فقط (وبقيّة صفوف الكتلة فارغة ليملأها الانسكاب)، ثمّ نكتب الكل
+  // باستدعاء setValues واحد بدل 168 نداء setFormula منفصلاً (تخفيف كبير للذاكرة).
   writeHeaderRow(s, 'Q1:W1', TXT_HEADERS.ledger);
-  let row = 2;
-  // كتل الدخل: 12 شهراً × 19 صفّاً
-  for (let i = 0; i < 12; i++) {
-    const name = names[i], m = MONTHS[i];
-    const fi = LAYOUT.incomeFirstRow, li = LAYOUT.incomeLastRow;
-    s.getRange('Q' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fi}:A${li}="", "", "${m}"))`);
-    s.getRange('R' + row).setFormula(`=ARRAYFORMULA(${q(name)}!A${fi}:A${li})`);
-    s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fi}:A${li}="", "", "دخل"))`);
-    s.getRange('T' + row).setFormula(`=ARRAYFORMULA(${q(name)}!B${fi}:B${li})`);
-    s.getRange('U' + row).setFormula(`=ARRAYFORMULA(${q(name)}!C${fi}:C${li})`);
-    s.getRange('V' + row).setFormula(`=ARRAYFORMULA(${q(name)}!E${fi}:E${li})`);
-    s.getRange('W' + row).setFormula(`=ARRAYFORMULA(${q(name)}!G${fi}:G${li})`);
-    row += (li - fi + 1);
-  }
-  // كتل المصاريف: 12 شهراً × 30 صفّاً
-  for (let i = 0; i < 12; i++) {
-    const name = names[i], m = MONTHS[i];
-    const fe = LAYOUT.expenseFirstRow, le = LAYOUT.expenseLastRow;
-    s.getRange('Q' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fe}:A${le}="", "", "${m}"))`);
-    s.getRange('R' + row).setFormula(`=ARRAYFORMULA(${q(name)}!A${fe}:A${le})`);
-    s.getRange('S' + row).setFormula(`=ARRAYFORMULA(IF(${q(name)}!A${fe}:A${le}="", "", "مصروف"))`);
-    s.getRange('T' + row).setFormula(`=ARRAYFORMULA(${q(name)}!B${fe}:B${le})`);
-    s.getRange('U' + row).setFormula(`=ARRAYFORMULA(${q(name)}!C${fe}:C${le})`);
-    s.getRange('V' + row).setFormula(`=ARRAYFORMULA(${q(name)}!E${fe}:E${le})`);
-    s.getRange('W' + row).setFormula(`=ARRAYFORMULA(${q(name)}!G${fe}:G${le})`);
-    row += (le - fe + 1);
-  }
+  const fi = LAYOUT.incomeFirstRow,  li = LAYOUT.incomeLastRow;
+  const fe = LAYOUT.expenseFirstRow, le = LAYOUT.expenseLastRow;
+  const incomeRows  = li - fi + 1;  // ارتفاع كتلة الدخل
+  const expenseRows = le - fe + 1;  // ارتفاع كتلة المصاريف
+  const totalRows = 12 * incomeRows + 12 * expenseRows;
+  const ledger = [];
+  for (let i = 0; i < totalRows; i++) ledger.push(['', '', '', '', '', '', '']);
+  // تعبئة رأس كتلة شهر واحد (الأعمدة Q→W) بصيغ ARRAYFORMULA المنسكبة
+  const fillBlock = (offset, name, m, first, last, typeLabel) => {
+    ledger[offset] = [
+      `=ARRAYFORMULA(IF(${q(name)}!A${first}:A${last}="", "", "${m}"))`,
+      `=ARRAYFORMULA(${q(name)}!A${first}:A${last})`,
+      `=ARRAYFORMULA(IF(${q(name)}!A${first}:A${last}="", "", "${typeLabel}"))`,
+      `=ARRAYFORMULA(${q(name)}!B${first}:B${last})`,
+      `=ARRAYFORMULA(${q(name)}!C${first}:C${last})`,
+      `=ARRAYFORMULA(${q(name)}!E${first}:E${last})`,
+      `=ARRAYFORMULA(${q(name)}!G${first}:G${last})`,
+    ];
+  };
+  let off = 0;
+  // كتل الدخل: 12 شهراً
+  for (let i = 0; i < 12; i++) { fillBlock(off, names[i], MONTHS[i], fi, li, 'دخل'); off += incomeRows; }
+  // كتل المصاريف: 12 شهراً
+  for (let i = 0; i < 12; i++) { fillBlock(off, names[i], MONTHS[i], fe, le, 'مصروف'); off += expenseRows; }
+  s.getRange(2, 17, totalRows, 7).setValues(ledger); // العمود 17 = Q
 }
 
 /* ===========================================================================
@@ -150,7 +158,6 @@ function buildDashboard(ss, year) {
   s.clearConditionalFormatRules();
   s.getCharts().forEach(c => s.removeChart(c)); // إزالة مخططات سابقة (إعادة بناء آمنة)
   s.setHiddenGridlines(true); // مظهر احترافي: إخفاء خطوط الشبكة
-  s.setHiddenGridlines(true);
   s.getRange(1, 1, 60, 12)
     .setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text).setFontFamily(FONT_FAMILY);
 
@@ -166,12 +173,12 @@ function buildDashboard(ss, year) {
   // ---- (3) الصف الأول: بطاقات المؤشّرات (تشمل السلف والديون) ----
   const D = q(SHEET_NAMES.debts);
   const cards = [
-    { anchor: 'A6:B10',  value: `=IFERROR(${E}!H2, 0)`, def: TXT_DASH.cardIncome,  trend: ['H2', 'I2'], pct: false, accent: CHART_COLORS.income },
-    { anchor: 'C6:D10',  value: `=IFERROR(${E}!H3, 0)`, def: TXT_DASH.cardExpense, trend: ['H3', 'I3'], pct: false, accent: CHART_COLORS.expense },
-    { anchor: 'E6:F10',  value: `=IFERROR(${E}!H4, 0)`, def: TXT_DASH.cardNet,     trend: ['H4', 'I4'], pct: false, accent: CHART_COLORS.saving },
+    { anchor: 'A6:B10',  value: `=IFERROR(${E}!H2, 0)`, def: TXT_DASH.cardIncome,  trend: ['H2', 'Z2'], pct: false, accent: CHART_COLORS.income },
+    { anchor: 'C6:D10',  value: `=IFERROR(${E}!H3, 0)`, def: TXT_DASH.cardExpense, trend: ['H3', 'Z3'], pct: false, accent: CHART_COLORS.expense },
+    { anchor: 'E6:F10',  value: `=IFERROR(${E}!H4, 0)`, def: TXT_DASH.cardNet,     trend: ['H4', 'Z4'], pct: false, accent: CHART_COLORS.saving },
     { anchor: 'G6:H10',  value: `=IFERROR(${D}!B2, 0)`, def: TXT_DASH.cardOwedToMe, trend: null,        pct: false, accent: CHART_COLORS.income },
     { anchor: 'I6:J10',  value: `=IFERROR(${D}!D2, 0)`, def: TXT_DASH.cardOwedByMe, trend: null,        pct: false, accent: CHART_COLORS.expense },
-    { anchor: 'K6:L10',  value: `=IFERROR(${E}!H7, 0)`, def: TXT_DASH.cardSavings, trend: ['H7', 'I7'], pct: true,  accent: CHART_COLORS.saving },
+    { anchor: 'K6:L10',  value: `=IFERROR(${E}!H7, 0)`, def: TXT_DASH.cardSavings, trend: ['H7', 'Z7'], pct: true,  accent: CHART_COLORS.saving },
   ];
   const rules = [];
   cards.forEach(c => buildKpiCard(s, c, rules));
@@ -204,11 +211,13 @@ function buildDashboardGoalsWidget_(s) {
     `=IFERROR(QUERY(${G}!A7:I26, "select Col1, Col4 where Col8 = '${TXT_GOAL_STATUS.saving}' and Col1 is not null order by Col4 desc limit 3", 0), "")`);
   s.getRange('A54:C56').setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text);
   s.getRange('B54:B56').setNumberFormat(FMT_PERCENT);
-  // شريط تقدّم مبسّط (SPARKLINE) لكل صفّ يقرأ النسبة من العمود B
+  // شريط تقدّم مبسّط (SPARKLINE) لكل صفّ يقرأ النسبة من العمود B — كتابة مجمّعة
+  const sparkRows = [];
   for (let r = 54; r <= 56; r++) {
-    s.getRange('C' + r).setFormula(
-      `=IF(B${r}="", "", SPARKLINE(B${r}, {"charttype","bar"; "max",1; "color1","${CHART_COLORS.income}"; "empty","zero"}))`);
+    sparkRows.push([
+      `=IF(B${r}="", "", SPARKLINE(B${r}, {"charttype","bar"; "max",1; "color1","${CHART_COLORS.income}"; "empty","zero"}))`]);
   }
+  s.getRange('C54:C56').setFormulas(sparkRows);
 }
 
 /**
@@ -399,7 +408,7 @@ function buildKpiCard(s, c, rules) {
  * بناء صيغة الاتجاه المحصَّنة (▲/▼ + نسبة التغيّر) لبطاقة مؤشّر.
  * تُعالج القيم النصّيّة والقسمة على صفر فتُرجع شرطة "—" بدل الأخطاء.
  * @param {string} curCell خليّة القيمة الحاليّة في المحرّك (مثال 'H2').
- * @param {string} priCell خليّة القيمة السابقة في المحرّك (مثال 'I2').
+ * @param {string} priCell خليّة القيمة السابقة في العمود المساعد (مثال 'Z2').
  * @return {string} الصيغة الجاهزة.
  */
 function buildTrendFormula(curCell, priCell) {

@@ -62,19 +62,23 @@ function buildForecast(ss, year) {
   s.getRange('E2').setValue(TXT_FORECAST.kpiSavingRate).setFontWeight('bold');
   s.getRange('F2').setFormula('=IFERROR((B2-B3)/B2, 0)').setNumberFormat(FMT_PERCENT);
 
-  // ---- جدول الإسقاط الشهري (الصف 5 ترويسة، 6..17 الأشهر) ----
+  // ---- جدول الإسقاط الشهري (الصف 5 ترويسة، 6..17 الأشهر) — كتابة مجمّعة ----
   writeHeaderRow(s, 'A5:E5', TXT_FORECAST.headers);
-  // نكتب الأشهر الاثني عشر كاملةً بحلقة (لا اختصارات)، بصيغ تراكميّة
+  // نبني الأشهر الاثني عشر كاملةً (لا اختصارات) بصيغ تراكميّة في الذاكرة، ثمّ نكتبها
+  // باستدعاء setValues واحد (60 خليّة) بدل 60 نداء API منفصلاً.
+  const proj = [];
   for (let i = 0; i < MONTHS.length; i++) {
-    const r = 6 + i;                 // صفّ الشهر في الجدول
-    s.getRange('A' + r).setValue(MONTHS[i]);
-    s.getRange('B' + r).setFormula('=$B$2');         // الدخل المتوقّع = المتوسّط
-    s.getRange('C' + r).setFormula('=$B$3');         // المصروف المتوقّع = المتوسّط
-    s.getRange('D' + r).setFormula(`=B${r}-C${r}`);  // الصافي المتوقّع
-    // الرصيد التراكمي: الشهر الأوّل = صافيه، وما بعده = السابق + الصافي
-    if (i === 0) s.getRange('E' + r).setFormula(`=D${r}`);
-    else         s.getRange('E' + r).setFormula(`=E${r - 1}+D${r}`);
+    const r = 6 + i; // صفّ الشهر في الجدول
+    proj.push([
+      MONTHS[i],
+      '=$B$2',                                  // الدخل المتوقّع = المتوسّط
+      '=$B$3',                                  // المصروف المتوقّع = المتوسّط
+      `=B${r}-C${r}`,                           // الصافي المتوقّع
+      // الرصيد التراكمي: الشهر الأوّل = صافيه، وما بعده = السابق + الصافي
+      i === 0 ? `=D${r}` : `=E${r - 1}+D${r}`,
+    ]);
   }
+  s.getRange('A6:E17').setValues(proj);
 
   // تنسيق الأعمدة الماليّة بأرقام لاتينيّة
   applyCurrencyFormat(s.getRange('B2:D3'));

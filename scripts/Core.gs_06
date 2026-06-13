@@ -42,45 +42,36 @@ function buildMonth(ss, monthIndex, year) {
   // صفّ العنوان (يحوي اسم الشهر والسنة)
   mergeAndStyle(s, 'A1:G1', monthTitle(monthIndex, year), { bold: true, size: 14, align: 'center' });
 
-  // ---- لوحة المؤشّرات العلويّة (الصفوف 2-5) ----
-  // العمود A/C/E تسميات، والعمود B/D/F قيم محسوبة (مصدر حقيقة الشهر)
-  s.getRange('A2').setValue(TXT_LABELS.mainCurrency);
-  s.getRange('B2').setFormula('=IFERROR(rng_MainCurrency, "USD")');
-  s.getRange('C2').setValue(TXT_LABELS.month);
-  s.getRange('D2').setValue(MONTHS[monthIndex] + ' ' + year);
-  s.getRange('E2').setValue(TXT_LABELS.smartAlert);
-  // مؤشّر الشهر العام: يقارن المصروف الفعلي بالمتوقّع
-  s.getRange('F2').setFormula(
-    `=IF(OR(D3="", D4="", D3=0), "", IF(D4 > D3, "${TXT_ALERTS.overBudget}", ` +
-    `IF(D4 >= 0.9 * D3, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`);
-
-  s.getRange('A3').setValue(TXT_LABELS.totalExpectedIncome);
-  s.getRange('B3').setFormula(`=SUM(D${L.incomeFirstRow}:D${L.incomeLastRow})`);
-  s.getRange('C3').setValue(TXT_LABELS.totalExpectedExpense);
-  s.getRange('D3').setFormula(`=SUM(D${L.expenseFirstRow}:D${L.expenseLastRow})`);
-  s.getRange('E3').setValue(TXT_LABELS.savingsRate);
-  s.getRange('F3').setFormula('=IFERROR((B4-D4)/B4, 0)').setNumberFormat(FMT_PERCENT);
-
-  s.getRange('A4').setValue(TXT_LABELS.totalActualIncome);
-  s.getRange('B4').setFormula(`=SUM(E${L.incomeFirstRow}:E${L.incomeLastRow})`);
-  s.getRange('C4').setValue(TXT_LABELS.totalActualExpense);
-  s.getRange('D4').setFormula(`=SUM(E${L.expenseFirstRow}:E${L.expenseLastRow})`);
-  s.getRange('E4').setValue(TXT_LABELS.spendingRate);
-  s.getRange('F4').setFormula('=IFERROR(D4/B4, 0)').setNumberFormat(FMT_PERCENT);
-
-  s.getRange('A5').setValue(TXT_LABELS.netSurplus);
-  s.getRange('B5').setFormula('=B4-D4');
-  s.getRange('C5').setValue(TXT_LABELS.topDrainCategory);
-  // أعلى فئة استنزاف عبر XLOOKUP على مجاميع الفئات
-  s.getRange('D5').setFormula(
-    `=IFERROR(XLOOKUP(MAX(ARRAYFORMULA(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, ` +
-    `rng_ExpenseCategories, E${L.expenseFirstRow}:E${L.expenseLastRow}))), ` +
-    `ARRAYFORMULA(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, rng_ExpenseCategories, ` +
-    `E${L.expenseFirstRow}:E${L.expenseLastRow})), rng_ExpenseCategories), "")`);
-  s.getRange('E5').setValue(TXT_LABELS.topDrainAmount);
-  s.getRange('F5').setFormula(
-    `=IFERROR(MAX(ARRAYFORMULA(SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, ` +
-    `rng_ExpenseCategories, E${L.expenseFirstRow}:E${L.expenseLastRow}))), 0)`);
+  // ---- لوحة المؤشّرات العلويّة (الصفوف 2-5) — كتابة مجمّعة (Batch Write) ----
+  // الأعمدة A/C/E تسميات، وB/D/F قيم/صيغ محسوبة (مصدر حقيقة الشهر).
+  // تحسين الأداء: setValues يفسّر أيّ نصّ يبدأ بـ "=" كصيغة، فنكتب كامل الكتلة
+  // A2:F5 (أربعة صفوف × ستّة أعمدة = 24 خليّة) باستدعاء API واحد بدل 24 نداءً،
+  // ممّا يقلّل استهلاك حصص الـ API والذاكرة في كل عمليّة بناء شهر.
+  const inSum  = c => `=SUM(${c}${L.incomeFirstRow}:${c}${L.incomeLastRow})`;
+  const exSum  = c => `=SUM(${c}${L.expenseFirstRow}:${c}${L.expenseLastRow})`;
+  // مجموع كل فئة مصروف عبر الورقة (يُعاد استخدامه في صيغتَي أعلى فئة استنزاف)
+  const drain  = `SUMIF(B${L.expenseFirstRow}:B${L.expenseLastRow}, rng_ExpenseCategories, E${L.expenseFirstRow}:E${L.expenseLastRow})`;
+  s.getRange('A2:F5').setValues([
+    [TXT_LABELS.mainCurrency, '=IFERROR(rng_MainCurrency, "USD")',
+      TXT_LABELS.month, MONTHS[monthIndex] + ' ' + year, TXT_LABELS.smartAlert,
+      // مؤشّر الشهر العام: يقارن المصروف الفعلي بالمتوقّع
+      `=IF(OR(D3="", D4="", D3=0), "", IF(D4 > D3, "${TXT_ALERTS.overBudget}", ` +
+      `IF(D4 >= 0.9 * D3, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`],
+    [TXT_LABELS.totalExpectedIncome, inSum('D'),
+      TXT_LABELS.totalExpectedExpense, exSum('D'),
+      TXT_LABELS.savingsRate, '=IFERROR((B4-D4)/B4, 0)'],
+    [TXT_LABELS.totalActualIncome, inSum('E'),
+      TXT_LABELS.totalActualExpense, exSum('E'),
+      TXT_LABELS.spendingRate, '=IFERROR(D4/B4, 0)'],
+    [TXT_LABELS.netSurplus, '=B4-D4',
+      // أعلى فئة استنزاف عبر XLOOKUP على مجاميع الفئات
+      TXT_LABELS.topDrainCategory,
+      `=IFERROR(XLOOKUP(MAX(ARRAYFORMULA(${drain})), ARRAYFORMULA(${drain}), rng_ExpenseCategories), "")`,
+      TXT_LABELS.topDrainAmount,
+      `=IFERROR(MAX(ARRAYFORMULA(${drain})), 0)`],
+  ]);
+  // تنسيق النسب المئويّة لخليّتَي نسبة الادخار/الإنفاق دفعةً واحدة
+  s.getRange('F3:F4').setNumberFormat(FMT_PERCENT);
 
   // ---- كتلة الدخل ----
   writeHeaderRow(s, `A${L.incomeHeaderRow}:G${L.incomeHeaderRow}`, TXT_HEADERS.income);
@@ -88,11 +79,12 @@ function buildMonth(ss, monthIndex, year) {
   s.getRange(`F${L.incomeFirstRow}`).setFormula(
     `=ARRAYFORMULA(IF((D${L.incomeFirstRow}:D${L.incomeLastRow}="")+(E${L.incomeFirstRow}:E${L.incomeLastRow}="")>0, "", ` +
     `E${L.incomeFirstRow}:E${L.incomeLastRow} - D${L.incomeFirstRow}:D${L.incomeLastRow}))`);
-  // صفّ إجمالي الدخل
+  // صفّ إجمالي الدخل — التسمية ثمّ الصيغ المجمّعة (D:F باستدعاء واحد)
   s.getRange(`A${L.incomeTotalRow}`).setValue(TXT_LABELS.total).setFontWeight('bold');
-  s.getRange(`D${L.incomeTotalRow}`).setFormula(`=SUM(D${L.incomeFirstRow}:D${L.incomeLastRow})`);
-  s.getRange(`E${L.incomeTotalRow}`).setFormula(`=SUM(E${L.incomeFirstRow}:E${L.incomeLastRow})`);
-  s.getRange(`F${L.incomeTotalRow}`).setFormula(`=E${L.incomeTotalRow}-D${L.incomeTotalRow}`);
+  s.getRange(`D${L.incomeTotalRow}:F${L.incomeTotalRow}`).setFormulas([[
+    `=SUM(D${L.incomeFirstRow}:D${L.incomeLastRow})`,
+    `=SUM(E${L.incomeFirstRow}:E${L.incomeLastRow})`,
+    `=E${L.incomeTotalRow}-D${L.incomeTotalRow}`]]);
   // تنسيق تواريخ عمود الدخل لاتينيّاً
   applyDateFormat(s.getRange(`A${L.incomeFirstRow}:A${L.incomeLastRow}`));
 
@@ -102,17 +94,21 @@ function buildMonth(ss, monthIndex, year) {
   s.getRange(`F${L.expenseFirstRow}`).setFormula(
     `=ARRAYFORMULA(IF((D${L.expenseFirstRow}:D${L.expenseLastRow}="")+(E${L.expenseFirstRow}:E${L.expenseLastRow}="")>0, "", ` +
     `D${L.expenseFirstRow}:D${L.expenseLastRow} - E${L.expenseFirstRow}:E${L.expenseLastRow}))`);
-  // عمود محرّك التنبيهات لكل صفّ (IF لكل صفّ لإبقاء السلسلة نظيفة)
+  // عمود محرّك التنبيهات لكل صفّ — كتابة مجمّعة (Batch) بدل 30 نداء API منفصلاً.
+  // نبني مصفوفة الصيغ في الذاكرة ثمّ نكتبها على كامل العمود باستدعاء واحد.
+  const alertFormulas = [];
   for (let r = L.expenseFirstRow; r <= L.expenseLastRow; r++) {
-    s.getRange('H' + r).setFormula(
+    alertFormulas.push([
       `=IF(OR(D${r}="", E${r}=""), "", IF(E${r} > D${r}, "${TXT_ALERTS.overBudget}", ` +
-      `IF(E${r} >= 0.9 * D${r}, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`);
+      `IF(E${r} >= 0.9 * D${r}, "${TXT_ALERTS.nearLimit}", "${TXT_ALERTS.excellent}")))`]);
   }
-  // صفّ إجمالي المصاريف
+  s.getRange(`H${L.expenseFirstRow}:H${L.expenseLastRow}`).setFormulas(alertFormulas);
+  // صفّ إجمالي المصاريف — التسمية ثمّ الصيغ المجمّعة (D:F باستدعاء واحد)
   s.getRange(`A${L.expenseTotalRow}`).setValue(TXT_LABELS.total).setFontWeight('bold');
-  s.getRange(`D${L.expenseTotalRow}`).setFormula(`=SUM(D${L.expenseFirstRow}:D${L.expenseLastRow})`);
-  s.getRange(`E${L.expenseTotalRow}`).setFormula(`=SUM(E${L.expenseFirstRow}:E${L.expenseLastRow})`);
-  s.getRange(`F${L.expenseTotalRow}`).setFormula(`=D${L.expenseTotalRow}-E${L.expenseTotalRow}`);
+  s.getRange(`D${L.expenseTotalRow}:F${L.expenseTotalRow}`).setFormulas([[
+    `=SUM(D${L.expenseFirstRow}:D${L.expenseLastRow})`,
+    `=SUM(E${L.expenseFirstRow}:E${L.expenseLastRow})`,
+    `=D${L.expenseTotalRow}-E${L.expenseTotalRow}`]]);
   applyDateFormat(s.getRange(`A${L.expenseFirstRow}:A${L.expenseLastRow}`));
 
   // التنسيق الشرطي على عمود التنبيهات (ألوان الحالات)
@@ -187,21 +183,27 @@ function buildGoals(ss) {
   banding.setFirstRowColor('#FFFFFF').setSecondRowColor('#EAF1FB')
     .setHeaderRowColor(null).setFooterRowColor(null);
 
-  // الأعمدة المحسوبة لكل صفّ من 7 حتى 26 (نخفي القيم في الصفوف الفارغة)
+  // الأعمدة المحسوبة لكل صفّ من 7 حتى 26 — كتابة مجمّعة (Batch) بدل ~100 نداء API.
+  // نبني صيغ العمود D (نسبة الإنجاز) وكتلة الأعمدة F:I في الذاكرة، ثمّ نكتب
+  // كلّاً منهما باستدعاء واحد (نتجاوز العمود E لأنّه إدخال الموعد المستهدف).
+  const pctCol = [];   // D: نسبة الإنجاز
+  const fghiCols = []; // F:I: الأشهر المتبقية، القسط، الحالة، التوصية
   for (let r = 7; r <= 26; r++) {
-    // D: نسبة الإنجاز (تُخفى إن كان اسم الهدف فارغاً)
-    s.getRange('D' + r).setFormula(`=IF(A${r}="", "", IFERROR(C${r}/B${r}, 0))`).setNumberFormat(FMT_PERCENT);
-    // F: الأشهر المتبقية حتى الموعد المستهدف (تُخفى للصفوف الفارغة)
-    s.getRange('F' + r).setFormula(`=IF(A${r}="", "", IFERROR(MAX(0, DATEDIF(TODAY(), E${r}, "M")), 0))`);
-    // G: القسط الشهري المطلوب (يُخفى للصفوف الفارغة)
-    s.getRange('G' + r).setFormula(`=IF(A${r}="", "", IF(C${r}>=B${r}, 0, IFERROR((B${r}-C${r})/F${r}, 0)))`);
-    // H: حالة الهدف (مكتمل/قيد الادخار/لم يبدأ)
-    s.getRange('H' + r).setFormula(
+    pctCol.push([`=IF(A${r}="", "", IFERROR(C${r}/B${r}, 0))`]);
+    fghiCols.push([
+      // F: الأشهر المتبقية حتى الموعد المستهدف
+      `=IF(A${r}="", "", IFERROR(MAX(0, DATEDIF(TODAY(), E${r}, "M")), 0))`,
+      // G: القسط الشهري المطلوب
+      `=IF(A${r}="", "", IF(C${r}>=B${r}, 0, IFERROR((B${r}-C${r})/F${r}, 0)))`,
+      // H: حالة الهدف (مكتمل/قيد الادخار/لم يبدأ)
       `=IF(A${r}="", "", IFS(IFERROR(C${r}/B${r}, 0) >= 1, "${TXT_GOAL_STATUS.done}", ` +
-      `IFERROR(C${r}/B${r}, 0) >= 0.01, "${TXT_GOAL_STATUS.saving}", TRUE, "${TXT_GOAL_STATUS.notStarted}"))`);
-    // I: التوصية الذكيّة (تدمج العملة عبر TEXT والتنسيق النشط)
-    s.getRange('I' + r).setFormula(buildGoalRecommendationFormula(r));
+      `IFERROR(C${r}/B${r}, 0) >= 0.01, "${TXT_GOAL_STATUS.saving}", TRUE, "${TXT_GOAL_STATUS.notStarted}"))`,
+      // I: التوصية الذكيّة (تدمج العملة عبر TEXT والتنسيق النشط)
+      buildGoalRecommendationFormula(r),
+    ]);
   }
+  s.getRange('D7:D26').setFormulas(pctCol).setNumberFormat(FMT_PERCENT);
+  s.getRange('F7:I26').setFormulas(fghiCols);
 
   // التنسيق الشرطي على عمود الحالة H7:H26
   applyGoalStatusConditionalFormat(s, 'H7:H26');

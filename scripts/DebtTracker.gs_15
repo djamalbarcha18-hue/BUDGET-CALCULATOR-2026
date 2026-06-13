@@ -68,15 +68,19 @@ function buildDebtTracker(ss) {
   s.getRange(`${DEBT_COLS.remaining}${L.debtsHeaderRow}:${DEBT_COLS.status}${L.debtsHeaderRow}`)
     .setFontColor(CHART_COLORS.saving);
 
-  // ---- المعادلات لكل صفّ (المتبقّي + الحالة) ----
+  // ---- المعادلات لكل صفّ (المتبقّي + الحالة) — كتابة مجمّعة (Batch) ----
+  // العمودان G/H متجاوران، فنبني الصيغ في الذاكرة ونكتبها باستدعاء واحد بدل 80 نداءً.
+  const debtFormulas = [];
   for (let r = L.debtsFirstRow; r <= L.debtsLastRow; r++) {
-    // G: المبلغ المتبقّي = الأصلي - المسدّد (لا يقلّ عن صفر)
-    s.getRange(DEBT_COLS.remaining + r).setFormula(
-      `=IF(${DEBT_COLS.original}${r}="", "", MAX(0, IFERROR(${DEBT_COLS.original}${r}-${DEBT_COLS.paid}${r}, ${DEBT_COLS.original}${r})))`);
-    // H: الحالة — "مكتمل" إذا المتبقّي صفر، و"نشط" إذا بقي مبلغ
-    s.getRange(DEBT_COLS.status + r).setFormula(
-      `=IF(${DEBT_COLS.original}${r}="", "", IF(${DEBT_COLS.remaining}${r}<=0, "${DEBT_STATUS.done}", "${DEBT_STATUS.active}"))`);
+    debtFormulas.push([
+      // G: المبلغ المتبقّي = الأصلي - المسدّد (لا يقلّ عن صفر)
+      `=IF(${DEBT_COLS.original}${r}="", "", MAX(0, IFERROR(${DEBT_COLS.original}${r}-${DEBT_COLS.paid}${r}, ${DEBT_COLS.original}${r})))`,
+      // H: الحالة — "مكتمل" إذا المتبقّي صفر، و"نشط" إذا بقي مبلغ
+      `=IF(${DEBT_COLS.original}${r}="", "", IF(${DEBT_COLS.remaining}${r}<=0, "${DEBT_STATUS.done}", "${DEBT_STATUS.active}"))`,
+    ]);
   }
+  s.getRange(`${DEBT_COLS.remaining}${L.debtsFirstRow}:${DEBT_COLS.status}${L.debtsLastRow}`)
+    .setFormulas(debtFormulas);
 
   // ---- التنسيقات اللاتينيّة (تواريخ + مبالغ) ----
   applyDateFormat(s.getRange(`${DEBT_COLS.date}${L.debtsFirstRow}:${DEBT_COLS.date}${L.debtsLastRow}`));
