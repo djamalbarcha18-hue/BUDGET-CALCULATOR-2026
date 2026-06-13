@@ -154,14 +154,15 @@ function buildSettingsSheet(ss, year) {
 function refreshExchangeRates(ss) {
   const s = ss.getSheetByName(SHEET_NAMES.settings);
   if (!s) return;
-  // نكتب صيغة حيّة لكل عملة (USDXXX = كم وحدة من XXX يساوي دولاراً واحداً)
-  for (let i = 0; i < CURRENCIES.length; i++) {
-    const r = 7 + i;
-    const code = CURRENCIES[i][0];
-    if (code === 'USD') { s.getRange('C' + r).setValue(1); continue; }
-    s.getRange('C' + r).setFormula(
-      `=IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"), ${CURRENCIES[i][2]})`);
-  }
+  // نكتب صيغة حيّة لكل عملة (USDXXX = كم وحدة من XXX يساوي دولاراً واحداً) — كتابة مجمّعة.
+  // نبني عمود الأسعار بالكامل في الذاكرة ثمّ نكتبه على C7:C20 باستدعاء واحد بدل 14 نداءً.
+  const rateFormulas = CURRENCIES.map(cur => {
+    const code = cur[0];
+    return code === 'USD'
+      ? [1] // الدولار = 1 (مرجع الأساس)
+      : [`=IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"), ${cur[2]})`];
+  });
+  s.getRange(7, 3, CURRENCIES.length, 1).setValues(rateFormulas);
   // فرض صيغة الأرقام اللاتينيّة على عمود الأسعار
   enforceLatinNumberFormat(s.getRange(7, 3, CURRENCIES.length, 1), '#,##0.0000');
 }
