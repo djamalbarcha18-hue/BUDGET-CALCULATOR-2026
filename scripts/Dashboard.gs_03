@@ -58,15 +58,30 @@ function buildDashboardEngine(ss, year) {
     ['صافي الربح',    '=IFERROR(SUM(G2:G6), 0)'],
   ]);
 
-  // H:I — قيم الاتجاه (الحالي/السابق) لبطاقات المؤشّرات، كلّها محصَّنة — كتابة مجمّعة
+  // H — قيم الاتجاه الحاليّة (تجميع 12/13 صفّاً) لبطاقات المؤشّرات، كلّها محصَّنة — كتابة مجمّعة
   const G = q(SHEET_NAMES.goals), D = q(SHEET_NAMES.debts);
-  s.getRange('H2:I7').setFormulas([
-    ['=IFERROR(SUM(B2:B13), 0)', '=IFERROR(SUM(B2:B12), 0)'],          // الدخل الحالي/السابق
-    ['=IFERROR(SUM(C2:C13), 0)', '=IFERROR(SUM(C2:C12), 0)'],          // المصروف الحالي/السابق
-    ['=IFERROR(H2-H3, 0)',       '=IFERROR(I2-I3, 0)'],                // الصافي الحالي/السابق
-    [`=IFERROR(${G}!D2 + O5, 0)`, `=IFERROR(${G}!D2 + SUM(D2:D12), 0)`], // الأصول
-    [`=IFERROR(${D}!D2 + ${G}!B3 * 12, 0)`, `=IFERROR(${D}!D2 + ${G}!B3 * 11, 0)`], // الالتزامات
-    ['=IFERROR((H2-H3)/H2, 0)',  '=IFERROR((I2-I3)/I2, 0)'],           // معدّل الادخار
+  s.getRange('H2:H7').setFormulas([
+    ['=IFERROR(SUM(B2:B13), 0)'],            // الدخل الحالي
+    ['=IFERROR(SUM(C2:C13), 0)'],            // المصروف الحالي
+    ['=IFERROR(H2-H3, 0)'],                  // الصافي الحالي
+    [`=IFERROR(${G}!D2 + O5, 0)`],           // الأصول الحاليّة
+    [`=IFERROR(${D}!D2 + ${G}!B3 * 12, 0)`], // الالتزامات الحاليّة
+    ['=IFERROR((H2-H3)/H2, 0)'],             // معدّل الادخار الحالي
+  ]);
+
+  // Z — أعمدة مساعدة لقيم "الاتجاه السابق" معزولة بعيداً عن منطقة العرض ودونات الدخل.
+  // كانت هذه القيم سابقاً في العمود I، لكنّ كتابة فئات الدخل في I2:I9 (للدونات)
+  // كانت تمسحها فتختفي أسهم الاتجاه (تظهر "—"). بنقلها إلى العمود Z (خارج أيّ نطاق
+  // مقروء: الدونات I:J، السجلّ Q:W) تبقى محفوظة وتُحدَّث باستقلال في كل إعادة بناء.
+  // ملاحظة: الصيغ الداخليّة (الصافي/المعدّل) تشير الآن إلى Z2/Z3 بدل I2/I3.
+  s.getRange('Z1').setValue('قيم الاتجاه السابق (عمود مساعد — لا يُعرض)');
+  s.getRange('Z2:Z7').setFormulas([
+    ['=IFERROR(SUM(B2:B12), 0)'],            // الدخل السابق (11 شهراً)
+    ['=IFERROR(SUM(C2:C12), 0)'],            // المصروف السابق
+    ['=IFERROR(Z2-Z3, 0)'],                  // الصافي السابق
+    [`=IFERROR(${G}!D2 + SUM(D2:D12), 0)`],  // الأصول السابقة
+    [`=IFERROR(${D}!D2 + ${G}!B3 * 11, 0)`], // الالتزامات السابقة
+    ['=IFERROR((Z2-Z3)/Z2, 0)'],             // معدّل الادخار السابق
   ]);
 
   // I:J — دونات مصادر الدخل (تجميع كل فئة دخل عبر أشهر السنة) — كتابة مجمّعة
@@ -158,12 +173,12 @@ function buildDashboard(ss, year) {
   // ---- (3) الصف الأول: بطاقات المؤشّرات (تشمل السلف والديون) ----
   const D = q(SHEET_NAMES.debts);
   const cards = [
-    { anchor: 'A6:B10',  value: `=IFERROR(${E}!H2, 0)`, def: TXT_DASH.cardIncome,  trend: ['H2', 'I2'], pct: false, accent: CHART_COLORS.income },
-    { anchor: 'C6:D10',  value: `=IFERROR(${E}!H3, 0)`, def: TXT_DASH.cardExpense, trend: ['H3', 'I3'], pct: false, accent: CHART_COLORS.expense },
-    { anchor: 'E6:F10',  value: `=IFERROR(${E}!H4, 0)`, def: TXT_DASH.cardNet,     trend: ['H4', 'I4'], pct: false, accent: CHART_COLORS.saving },
+    { anchor: 'A6:B10',  value: `=IFERROR(${E}!H2, 0)`, def: TXT_DASH.cardIncome,  trend: ['H2', 'Z2'], pct: false, accent: CHART_COLORS.income },
+    { anchor: 'C6:D10',  value: `=IFERROR(${E}!H3, 0)`, def: TXT_DASH.cardExpense, trend: ['H3', 'Z3'], pct: false, accent: CHART_COLORS.expense },
+    { anchor: 'E6:F10',  value: `=IFERROR(${E}!H4, 0)`, def: TXT_DASH.cardNet,     trend: ['H4', 'Z4'], pct: false, accent: CHART_COLORS.saving },
     { anchor: 'G6:H10',  value: `=IFERROR(${D}!B2, 0)`, def: TXT_DASH.cardOwedToMe, trend: null,        pct: false, accent: CHART_COLORS.income },
     { anchor: 'I6:J10',  value: `=IFERROR(${D}!D2, 0)`, def: TXT_DASH.cardOwedByMe, trend: null,        pct: false, accent: CHART_COLORS.expense },
-    { anchor: 'K6:L10',  value: `=IFERROR(${E}!H7, 0)`, def: TXT_DASH.cardSavings, trend: ['H7', 'I7'], pct: true,  accent: CHART_COLORS.saving },
+    { anchor: 'K6:L10',  value: `=IFERROR(${E}!H7, 0)`, def: TXT_DASH.cardSavings, trend: ['H7', 'Z7'], pct: true,  accent: CHART_COLORS.saving },
   ];
   const rules = [];
   cards.forEach(c => buildKpiCard(s, c, rules));
@@ -393,7 +408,7 @@ function buildKpiCard(s, c, rules) {
  * بناء صيغة الاتجاه المحصَّنة (▲/▼ + نسبة التغيّر) لبطاقة مؤشّر.
  * تُعالج القيم النصّيّة والقسمة على صفر فتُرجع شرطة "—" بدل الأخطاء.
  * @param {string} curCell خليّة القيمة الحاليّة في المحرّك (مثال 'H2').
- * @param {string} priCell خليّة القيمة السابقة في المحرّك (مثال 'I2').
+ * @param {string} priCell خليّة القيمة السابقة في العمود المساعد (مثال 'Z2').
  * @return {string} الصيغة الجاهزة.
  */
 function buildTrendFormula(curCell, priCell) {
