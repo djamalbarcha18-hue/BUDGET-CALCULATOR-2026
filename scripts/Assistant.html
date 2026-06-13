@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+   SmartBudget Pro 2026 · واجهة المساعد المالي الذكي · Assistant.html
+  ----------------------------------------------------------------------------
+   واجهة محادثة عربيّة (RTL) بتصميم Fintech Dark Mode، تُعرَض كنافذة منبثقة
+   (Modal) عبر showAssistant() فقط عند التفعيل (Lazy Loading). لا تُجري أيّ نداء
+   شبكة عند الفتح؛ كل نداءات Gemini تحدث حصراً بضغط زرّ صريح عبر google.script.run.
+   نظام التصميم موحَّد مع بقيّة واجهات HTML (#121212 / #1E1E1E).
+  ============================================================================
+-->
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #121212; --bg-card: #1E1E1E; --bg-elev: #2A2A2A;
+      --fg: #FFFFFF; --muted: #B0B0B0;
+      --income: #00B050; --expense: #FF0000; --saving: #00B0F0; --amber: #F59E0B;
+      --grid: #2E2E2E; --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: var(--bg-page); color: var(--fg);
+      font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;
+    }
+    .app { display: flex; flex-direction: column; height: 100vh; padding: 12px 14px; }
+    header { text-align: center; margin-bottom: 8px; }
+    header h1 { font-size: 17px; margin: 0; font-weight: 700; }
+    header p { font-size: 11px; color: var(--muted); margin: 2px 0 0; }
+
+    .banner {
+      display: none; margin: 8px 0; padding: 9px 12px; border-radius: 10px;
+      background: #2a2113; border: 1px solid var(--amber); color: #ffe9b8; font-size: 12px;
+    }
+    .banner.show { display: block; }
+
+    .toolbar { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    select, input, textarea {
+      background: var(--bg-elev); color: var(--fg); border: 1px solid var(--grid);
+      border-radius: 9px; padding: 8px 10px; font-size: 13px; font-family: inherit;
+    }
+    select:focus, input:focus, textarea:focus { outline: none; border-color: var(--saving); }
+    button {
+      background: var(--bg-elev); color: var(--fg); border: 1px solid var(--grid);
+      border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: transform .05s ease, background .15s ease;
+    }
+    button:hover { background: #343434; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.primary { background: var(--saving); border-color: var(--saving); color: #04222b; }
+    button.good { border-color: var(--income); color: var(--income); }
+
+    .scroll { flex: 1 1 auto; overflow-y: auto; padding-left: 4px; }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--grid);
+      border-radius: var(--radius); padding: 12px; margin-bottom: 10px;
+    }
+    .card h2 { font-size: 12px; color: var(--saving); margin: 0 0 8px; font-weight: 700; }
+    .card h3 { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    .card ul { margin: 4px 16px; padding: 0; }
+    .card li { font-size: 13px; margin: 3px 0; line-height: 1.6; }
+    .card p { font-size: 13px; line-height: 1.7; margin: 4px 0; }
+
+    .notif { font-size: 12px; padding: 7px 10px; border-radius: 9px; margin-bottom: 5px;
+      border: 1px solid var(--grid); background: var(--bg-elev); }
+    .notif.high { border-color: var(--expense); }
+    .notif.mid { border-color: var(--amber); }
+    .notif.ok { border-color: var(--income); color: var(--income); }
+
+    .msg { font-size: 13px; line-height: 1.7; padding: 9px 12px; border-radius: 12px; margin: 6px 0; max-width: 92%; white-space: pre-wrap; }
+    .msg.me { background: #0b3a4a; margin-inline-start: auto; border: 1px solid #0e4a5e; }
+    .msg.bot { background: var(--bg-card); border: 1px solid var(--grid); }
+    .msg .who { font-size: 10px; color: var(--muted); display: block; margin-bottom: 3px; }
+
+    .composer { display: flex; gap: 7px; align-items: flex-end; padding-top: 8px; border-top: 1px solid var(--grid); }
+    .composer textarea { flex: 1 1 auto; resize: none; height: 42px; direction: rtl; }
+
+    .statusbar { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .spinner { width: 13px; height: 13px; border: 2px solid var(--grid); border-top-color: var(--saving);
+      border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+    .spinner.show { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>🤖 المساعد المالي الذكي</h1>
+      <p>تحليلات وتوقّعات ورؤى مدعومة بالذكاء الاصطناعي · Gemini</p>
+    </header>
+
+    <div id="keyBanner" class="banner"></div>
+
+    <div class="toolbar">
+      <label for="period" class="muted">الفترة</label>
+      <select id="period"></select>
+      <button class="primary" id="btnAnalyze" onclick="analyze()">✨ تحليل ذكي</button>
+      <button class="good" id="btnAlerts" onclick="loadAlerts()">🔔 تحديث التنبيهات</button>
+      <button id="btnPdf" onclick="exportPdf()">📄 تصدير PDF</button>
+    </div>
+
+    <div class="scroll" id="scroll">
+      <div class="card" id="welcomeCard">
+        <h2>أهلاً بك</h2>
+        <p>اختر الفترة ثمّ اضغط <b>تحليل ذكي</b> للحصول على تحليل مالي معمّق، أو اكتب سؤالك مباشرةً في الأسفل.</p>
+      </div>
+      <div class="card" id="analysisCard" style="display:none;"></div>
+      <div class="card" id="alertsCard" style="display:none;">
+        <h2>🔔 التنبيهات الاستباقيّة</h2>
+        <div id="alertsList"></div>
+      </div>
+      <div id="chat"></div>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" placeholder="اكتب سؤالك المالي هنا… (Enter للإرسال)"></textarea>
+      <button class="primary" id="btnSend" onclick="send()">إرسال</button>
+    </div>
+
+    <div class="statusbar">
+      <span id="spinner" class="spinner"></span>
+      <span id="status">جارٍ التحميل…</span>
+    </div>
+  </div>
+
+  <script>
+    var $ = function (id) { return document.getElementById(id); };
+    var STATE = { period: 'monthly', conversation: [], lastAnalysis: null, periodLabel: '' };
+
+    /** فرض الأرقام اللاتينيّة (1، 2، 3) في كل العرض. */
+    function toLatin(v) {
+      return String(v)
+        .replace(/[\u0660-\u0669]/g, function (d) { return d.charCodeAt(0) - 0x0660; })
+        .replace(/[\u06F0-\u06F9]/g, function (d) { return d.charCodeAt(0) - 0x06F0; });
+    }
+    function setStatus(t, working) { $('status').textContent = toLatin(t); $('spinner').classList.toggle('show', !!working); }
+    function setBusy(b) {
+      var ids = ['btnAnalyze', 'btnAlerts', 'btnPdf', 'btnSend', 'period', 'input'];
+      ids.forEach(function (i) { if ($(i)) $(i).disabled = b; });
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function scrollDown() { var s = $('scroll'); s.scrollTop = s.scrollHeight; }
+
+    /** تحميل الحالة الأوّليّة (بلا نداء API لخدمة Gemini). */
+    (function init() {
+      setStatus('جارٍ التحميل…', true); setBusy(true);
+      google.script.run
+        .withSuccessHandler(function (st) {
+          var sel = $('period');
+          (st.periods || []).forEach(function (p) {
+            var o = document.createElement('option');
+            o.value = p.key; o.textContent = p.label; sel.appendChild(o);
+          });
+          if (!st.keyConfigured) {
+            var b = $('keyBanner');
+            b.textContent = '⚠️ ' + toLatin(st.noKeyHint || 'لم يُضبط مفتاح Gemini.');
+            b.classList.add('show');
+          }
+          setBusy(false);
+          setStatus('جاهز · النموذج: ' + (st.model || '—') + ' · السنة: ' + toLatin(st.activeYear), false);
+        })
+        .withFailureHandler(function (err) { setBusy(false); setStatus('تعذّر تحميل الحالة.', false); })
+        .aiAssistantState();
+    })();
+
+    /** طلب تحليل ذكي للفترة المختارة. */
+    function analyze() {
+      STATE.period = $('period').value || 'monthly';
+      setBusy(true); setStatus('جارٍ توليد التحليل الذكي…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) {
+            STATE.lastAnalysis = res.data || {};
+            STATE.periodLabel = res.periodLabel || '';
+            renderAnalysis(res.data, res.periodLabel, res.cached);
+            setStatus('اكتمل التحليل' + (res.cached ? ' (من الذاكرة المؤقّتة)' : '') + '.', false);
+          } else { setStatus((res && res.message) ? res.message : 'تعذّر التحليل.', false); }
+        })
+        .withFailureHandler(function (err) { setBusy(false); setStatus('خطأ: ' + (err && err.message ? err.message : err), false); })
+        .aiAnalyze(STATE.period);
+    }
+
+    /** رسم بطاقة التحليل المنظَّم (JSON). */
+    function renderAnalysis(d, label, cached) {
+      d = d || {};
+      $('welcomeCard').style.display = 'none';
+      var c = $('analysisCard');
+      var list = function (title, arr) {
+        if (!arr || !arr.length) return '';
+        return '<h3>' + title + '</h3><ul>' + arr.map(function (x) { return '<li>' + toLatin(esc(x)) + '</li>'; }).join('') + '</ul>';
+      };
+      var html = '<h2>📊 تحليل ' + esc(label || '') + (cached ? ' · مخزّن' : '') + '</h2>';
+      if (d.summary) html += '<p>' + toLatin(esc(d.summary)) + '</p>';
+      html += list('أبرز الملاحظات', d.highlights);
+      html += list('أنماط الإنفاق', d.spendingPatterns);
+      html += list('مقارنات الأداء', d.comparisons);
+      if (d.forecast) html += '<h3>التوقّعات</h3><p>' + toLatin(esc(d.forecast)) + '</p>';
+      if (d.goalsInsight) html += '<h3>رؤية الأهداف</h3><p>' + toLatin(esc(d.goalsInsight)) + '</p>';
+      html += list('التوصيات', d.recommendations);
+      c.innerHTML = html; c.style.display = 'block';
+      scrollDown();
+    }
+
+    /** تحديث التنبيهات الاستباقيّة (فحص واحد عند الطلب). */
+    function loadAlerts() {
+      setBusy(true); setStatus('جارٍ فحص التنبيهات…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          var card = $('alertsCard'), list = $('alertsList');
+          list.innerHTML = '';
+          if (res && res.ok) {
+            (res.alerts || []).forEach(function (a) {
+              var div = document.createElement('div');
+              div.className = 'notif ' + (a.level || 'ok');
+              div.textContent = a.icon + ' ' + toLatin(a.text);
+              list.appendChild(div);
+            });
+            card.style.display = 'block';
+            setStatus('اكتمل فحص التنبيهات.', false);
+          } else { setStatus((res && res.message) ? res.message : 'تعذّر فحص التنبيهات.', false); }
+        })
+        .withFailureHandler(function (err) { setBusy(false); setStatus('خطأ: ' + (err && err.message ? err.message : err), false); })
+        .aiProactiveAlerts();
+    }
+
+    /** إضافة فقاعة محادثة وتخزينها في السجلّ. */
+    function pushMsg(role, text) {
+      STATE.conversation.push({ role: role, text: text });
+      var div = document.createElement('div');
+      div.className = 'msg ' + (role === 'assistant' ? 'bot' : 'me');
+      div.innerHTML = '<span class="who">' + (role === 'assistant' ? 'المساعد' : 'أنت') + '</span>' + toLatin(esc(text));
+      $('chat').appendChild(div); scrollDown();
+    }
+
+    /** إرسال رسالة محادثة للمساعد. */
+    function send() {
+      var inp = $('input'); var msg = (inp.value || '').trim();
+      if (!msg) { setStatus('اكتب سؤالاً أوّلاً.', false); return; }
+      pushMsg('user', msg); inp.value = '';
+      setBusy(true); setStatus('المساعد يكتب…', true);
+      var history = JSON.stringify(STATE.conversation.slice(0, -1));
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) { pushMsg('assistant', res.reply); setStatus('جاهز.', false); }
+          else { setStatus((res && res.message) ? res.message : 'تعذّر الردّ.', false); }
+        })
+        .withFailureHandler(function (err) { setBusy(false); setStatus('خطأ: ' + (err && err.message ? err.message : err), false); })
+        .aiChat(msg, history, $('period').value || 'annual');
+    }
+
+    /** تصدير التقرير (تحليل + محادثة + رسوم) إلى PDF. */
+    function exportPdf() {
+      setBusy(true); setStatus('جارٍ توليد تقرير PDF…', true);
+      var payload = JSON.stringify({
+        periodLabel: STATE.periodLabel,
+        analysis: STATE.lastAnalysis,
+        conversation: STATE.conversation,
+      });
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          setStatus((res && res.message) ? res.message : (res && res.ok ? 'تم التصدير.' : 'تعذّر التصدير.'), false);
+        })
+        .withFailureHandler(function (err) { setBusy(false); setStatus('خطأ: ' + (err && err.message ? err.message : err), false); })
+        .aiExportReportPdf(payload);
+    }
+
+    // إرسال بمفتاح Enter (مع Shift+Enter لسطر جديد)
+    $('input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!$('btnSend').disabled) send(); }
+    });
+  </script>
+</body>
+</html>

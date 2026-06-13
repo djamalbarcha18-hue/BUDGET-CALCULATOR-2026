@@ -42,6 +42,7 @@ declare -A MAP=(
   ["Recovery.gs_13"]="13_Recovery.gs"
   ["Charts.gs_14"]="14_Charts.gs"
   ["DebtTracker.gs_15"]="15_DebtTracker.gs"
+  ["AI_Engine.gs_16"]="16_AI_Engine.gs"
 )
 
 echo "🔁 تحويل ملفّات .gs_NN إلى أسماء صالحة لـ clasp…"
@@ -54,6 +55,7 @@ echo "🎛️ نسخ ملفّات واجهة HTML…"
 cp "$SRC/TopDialog.html"          "$DIST/TopDialog.html"
 cp "$SRC/OnboardingSidebar.html"  "$DIST/OnboardingSidebar.html"
 cp "$SRC/UserGuideSidebar.html"   "$DIST/UserGuideSidebar.html"
+cp "$SRC/Assistant.html"          "$DIST/Assistant.html"
 
 echo "✅ تم البناء في: $DIST"
 echo "   شغّل الآن:  clasp push   (من جذر المستودع)"
