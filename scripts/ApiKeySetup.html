@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+   SmartBudget Pro 2026 · معالج إدخال مفتاح Gemini · ApiKeySetup.html
+  ----------------------------------------------------------------------------
+   نافذة (Modal) أنيقة بالعربية (RTL) تُلغي الحاجة لدخول المستخدم اليدوي إلى
+   Script Properties: يلصق المستخدم مفتاحه، فنتحقّق من صلاحيّته بنداء خفيف
+   (Validate on Save) ثمّ نحفظه عبر PropertiesService. نموذج v1: BYOK.
+   تتضمّن رابطاً مباشراً لـ Google AI Studio ونصّاً يطمئن لوجود طبقة مجانيّة.
+  ============================================================================
+-->
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #121212; --bg-card: #1E1E1E; --bg-elev: #2A2A2A;
+      --fg: #FFFFFF; --muted: #B0B0B0;
+      --income: #00B050; --saving: #00B0F0; --amber: #F59E0B; --expense: #FF4D4D;
+      --grid: #2E2E2E; --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: var(--bg-page); color: var(--fg);
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;
+    }
+    .wrap { padding: 16px 18px; }
+    h1 { font-size: 18px; margin: 0 0 2px; font-weight: 700; }
+    .sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+
+    .free {
+      background: #10261a; border: 1px solid var(--income); color: #c7f9dd;
+      border-radius: 10px; padding: 10px 12px; font-size: 12.5px; line-height: 1.7; margin-bottom: 14px;
+    }
+    .free b { color: var(--income); }
+
+    .steps { background: var(--bg-card); border: 1px solid var(--grid); border-radius: var(--radius);
+      padding: 12px 14px; margin-bottom: 14px; }
+    .steps ol { margin: 0; padding-inline-start: 20px; }
+    .steps li { font-size: 13px; margin: 6px 0; line-height: 1.7; }
+    .btn-link {
+      display: inline-block; margin-top: 6px; background: var(--saving); color: #04222b;
+      text-decoration: none; font-weight: 700; font-size: 13px; padding: 9px 14px; border-radius: 10px;
+    }
+    .btn-link:hover { filter: brightness(1.08); }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+    .field { display: flex; gap: 6px; }
+    input[type=text], input[type=password] {
+      flex: 1 1 auto; background: var(--bg-elev); color: var(--fg); border: 1px solid var(--grid);
+      border-radius: 9px; padding: 10px 12px; font-size: 13px; font-family: inherit; direction: ltr; text-align: left;
+    }
+    input:focus { outline: none; border-color: var(--saving); }
+    .toggle { background: var(--bg-elev); border: 1px solid var(--grid); color: var(--muted);
+      border-radius: 9px; padding: 0 12px; cursor: pointer; font-size: 12px; }
+
+    .advanced { margin-top: 10px; }
+    .advanced summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+    button {
+      font-family: inherit; font-weight: 700; font-size: 13px; border-radius: 10px; padding: 11px 16px;
+      cursor: pointer; border: 1px solid var(--grid); background: var(--bg-elev); color: var(--fg);
+      transition: transform .05s ease, filter .15s ease;
+    }
+    button.primary { background: var(--saving); border-color: var(--saving); color: #04222b; }
+    button.ghost { background: transparent; }
+    button:hover { filter: brightness(1.08); }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .status { margin-top: 14px; font-size: 13px; line-height: 1.7; min-height: 20px; display: flex; align-items: center; gap: 8px; }
+    .status.ok { color: var(--income); }
+    .status.err { color: var(--expense); }
+    .status.work { color: var(--amber); }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--grid); border-top-color: var(--amber);
+      border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+    .spinner.show { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .saved { margin-top: 12px; font-size: 12px; color: var(--muted); }
+    .saved code { background: var(--bg-elev); padding: 2px 7px; border-radius: 6px; direction: ltr; display: inline-block; }
+    .saved a { color: var(--expense); cursor: pointer; text-decoration: underline; margin-inline-start: 8px; }
+    .priv { margin-top: 14px; font-size: 11px; color: var(--muted); line-height: 1.7; border-top: 1px solid var(--grid); padding-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🔑 إعداد المساعد المالي الذكي</h1>
+    <p class="sub">خطوة واحدة لمرّة واحدة لتفعيل الذكاء الاصطناعي (Gemini).</p>
+
+    <div class="free">
+      ✅ <b>مجّاني تماماً للاستخدام العادي.</b> توفّر Google طبقة مجانيّة سخيّة لمفاتيح Gemini،
+      وتبقى تكلفة الاستخدام (إن وُجدت) على حسابك الخاص — نحن لا نطّلع على مفتاحك أبداً، ويُحفظ
+      داخل نسختك من القالب فقط.
+    </div>
+
+    <div class="steps">
+      <ol>
+        <li>افتح <b>Google AI Studio</b> عبر الزرّ أدناه (سجّل الدخول بحساب Google).</li>
+        <li>اضغط <b>Create API key</b> وانسخ المفتاح الناتج بالكامل.</li>
+        <li>الصق المفتاح في الحقل أسفله ثمّ اضغط <b>تحقّق واحفظ</b>.</li>
+      </ol>
+      <a id="studioLink" class="btn-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
+        🌐 احصل على مفتاح مجاني من Google AI Studio
+      </a>
+    </div>
+
+    <label for="key">مفتاح Gemini API</label>
+    <div class="field">
+      <input id="key" type="password" placeholder="AIza..." autocomplete="off" spellcheck="false">
+      <button class="toggle" id="toggle" type="button" onclick="toggleKey()">إظهار</button>
+    </div>
+
+    <details class="advanced">
+      <summary>إعدادات متقدّمة (اختياري)</summary>
+      <label for="model">اسم النموذج</label>
+      <input id="model" type="text" placeholder="gemini-2.5-flash" autocomplete="off" spellcheck="false">
+    </details>
+
+    <div class="actions">
+      <button class="primary" id="btnSave" onclick="save()">تحقّق واحفظ</button>
+      <button class="ghost" id="btnOpen" onclick="openAssistant()" style="display:none;">افتح المساعد ▶</button>
+    </div>
+
+    <div class="status" id="status">
+      <span class="spinner" id="spinner"></span>
+      <span id="statusText"></span>
+    </div>
+
+    <div class="saved" id="savedBox" style="display:none;">
+      المفتاح المحفوظ حاليّاً: <code id="maskedKey"></code>
+      <a id="clearLink" onclick="clearKey()">حذف المفتاح</a>
+    </div>
+
+    <p class="priv">🔒 يُخزَّن المفتاح عبر <b>PropertiesService</b> داخل مشروعك الخاص فقط، ولا يُرسَل
+      لأيّ طرف غير خدمة Google Gemini الرسميّة. يمكنك حذفه في أيّ وقت.</p>
+  </div>
+
+  <script>
+    var $ = function (id) { return document.getElementById(id); };
+
+    function toLatin(v) {
+      return String(v)
+        .replace(/[\u0660-\u0669]/g, function (d) { return d.charCodeAt(0) - 0x0660; })
+        .replace(/[\u06F0-\u06F9]/g, function (d) { return d.charCodeAt(0) - 0x06F0; });
+    }
+    function setStatus(text, kind, working) {
+      var s = $('status'); s.className = 'status' + (kind ? ' ' + kind : '');
+      $('statusText').textContent = toLatin(text || '');
+      $('spinner').classList.toggle('show', !!working);
+    }
+    function setBusy(b) {
+      ['btnSave', 'key', 'model', 'toggle', 'clearLink'].forEach(function (i) {
+        if ($(i)) $(i).disabled = b;
+      });
+    }
+    function toggleKey() {
+      var f = $('key');
+      var show = f.type === 'password';
+      f.type = show ? 'text' : 'password';
+      $('toggle').textContent = show ? 'إخفاء' : 'إظهار';
+    }
+
+    // تحميل الحالة الحاليّة (المفتاح المقنّع إن وُجد + رابط Studio + النموذج)
+    (function init() {
+      google.script.run
+        .withSuccessHandler(function (st) {
+          if (st && st.studioUrl) $('studioLink').href = st.studioUrl;
+          if (st && st.model) $('model').placeholder = st.model;
+          if (st && st.configured) {
+            $('savedBox').style.display = 'block';
+            $('maskedKey').textContent = st.masked || '••••';
+            $('btnOpen').style.display = 'inline-block';
+            setStatus('يوجد مفتاح محفوظ بالفعل. يمكنك تحديثه أو فتح المساعد مباشرةً.', 'ok', false);
+          }
+        })
+        .withFailureHandler(function () {})
+        .aiGetKeyStatus();
+    })();
+
+    // التحقّق والحفظ
+    function save() {
+      var key = ($('key').value || '').trim();
+      var model = ($('model').value || '').trim();
+      if (!key) { setStatus('الرجاء لصق مفتاح Gemini أوّلاً.', 'err', false); return; }
+      setBusy(true);
+      setStatus('جارٍ التحقّق من صلاحيّة المفتاح…', 'work', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res && res.ok) {
+            setStatus(res.message || 'تمّ الحفظ بنجاح!', 'ok', false);
+            $('btnOpen').style.display = 'inline-block';
+            // تحديث صندوق الحالة
+            google.script.run.withSuccessHandler(function (st) {
+              if (st && st.configured) {
+                $('savedBox').style.display = 'block';
+                $('maskedKey').textContent = st.masked || '••••';
+              }
+            }).aiGetKeyStatus();
+          } else {
+            setStatus((res && res.message) ? res.message : 'تعذّر التحقّق من المفتاح.', 'err', false);
+          }
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus('خطأ: ' + (err && err.message ? err.message : err), 'err', false);
+        })
+        .aiSaveApiKey(key, model);
+    }
+
+    // حذف المفتاح المحفوظ
+    function clearKey() {
+      setBusy(true); setStatus('جارٍ الحذف…', 'work', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          $('savedBox').style.display = 'none';
+          $('btnOpen').style.display = 'none';
+          $('key').value = '';
+          setStatus((res && res.message) ? res.message : 'تمّ الحذف.', 'ok', false);
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus('خطأ: ' + (err && err.message ? err.message : err), 'err', false);
+        })
+        .aiClearApiKey();
+    }
+
+    // فتح واجهة المساعد (تستبدل هذه النافذة بنافذة المساعد)
+    function openAssistant() {
+      google.script.run.showAssistant();
+    }
+
+    // حفظ بمفتاح Enter داخل حقل المفتاح
+    $('key').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); if (!$('btnSave').disabled) save(); }
+    });
+  </script>
+</body>
+</html>

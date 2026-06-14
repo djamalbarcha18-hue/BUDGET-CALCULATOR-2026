@@ -164,8 +164,12 @@
           });
           if (!st.keyConfigured) {
             var b = $('keyBanner');
-            b.textContent = '⚠️ ' + toLatin(st.noKeyHint || 'لم يُضبط مفتاح Gemini.');
+            b.innerHTML = '⚠️ <b>لم يُفعّل المساعد بعد.</b> فعّله في خطوة واحدة سهلة. ' +
+              '<button id="btnSetup" style="margin-inline-start:8px;padding:5px 10px;border-radius:8px;' +
+              'background:#00B0F0;border:none;color:#04222b;font-weight:700;cursor:pointer;font-family:inherit;">🔑 إعداد المفتاح الآن</button>';
             b.classList.add('show');
+            var bs = document.getElementById('btnSetup');
+            if (bs) bs.onclick = openSetup;
           }
           setBusy(false);
           setStatus('جاهز · النموذج: ' + (st.model || '—') + ' · السنة: ' + toLatin(st.activeYear), false);
@@ -173,6 +177,9 @@
         .withFailureHandler(function (err) { setBusy(false); setStatus('تعذّر تحميل الحالة.', false); })
         .aiAssistantState();
     })();
+
+    /** فتح معالج إعداد المفتاح (يستبدل نافذة المساعد بنافذة الإعداد). */
+    function openSetup() { google.script.run.showApiKeySetup(); }
 
     /** طلب تحليل ذكي للفترة المختارة. */
     function analyze() {
