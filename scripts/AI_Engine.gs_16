@@ -32,8 +32,12 @@ const AI_CONFIG = {
   modelProp: 'GEMINI_MODEL',
   // النموذج الافتراضي (قابل للتجاوز عبر GEMINI_MODEL)
   defaultModel: 'gemini-2.5-flash',
+  // صفحة الحصول على مفتاح Gemini مجاناً (Google AI Studio)
+  studioUrl: 'https://aistudio.google.com/apikey',
   // نقطة نهاية REST لواجهة Gemini (نطاق script.external_request موجود أصلاً)
   endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+  // نقطة نهاية سرد النماذج — تُستعمل للتحقّق من صلاحيّة المفتاح دون استهلاك توكِنات
+  listEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
   temperature:     0.4,
   maxOutputTokens: 2048,
   // مدّة تخزين نتيجة التحليل في ذاكرة المستند (6 ساعات) لتقليل تكرار الاستهلاك
@@ -53,6 +57,7 @@ const AI_CONFIG = {
 const TXT_AI = {
   title:    '🤖 المساعد المالي الذكي',
   menuItem: '🤖 المساعد المالي الذكي (Gemini)',
+  menuSetup: '🔑 إعداد المساعد الذكي (مفتاح Gemini)',
   subtitle: 'تحليلات وتوقّعات ورؤى مدعومة بالذكاء الاصطناعي',
   // رسائل الأخطاء (واضحة وعربيّة — لا تتجمّد الواجهة أبداً)
   errDisabled: 'ميزة المساعد الذكي معطّلة حاليّاً من إعدادات المشروع (Feature Flag).',
@@ -62,6 +67,14 @@ const TXT_AI = {
   errEmpty:    'لم تُرجِع خدمة Gemini أيّ محتوى. حاول مرّة أخرى بعد قليل.',
   errNetwork:  'حدث خطأ شبكي أثناء الاتصال بخدمة Gemini.',
   errEmptyMsg: 'الرجاء كتابة سؤال أوّلاً.',
+  // معالج إدخال المفتاح (In-App Setup Wizard)
+  setupTitle:      '🔑 إعداد المساعد المالي الذكي',
+  setupErrEmpty:   'الرجاء لصق مفتاح Gemini أوّلاً.',
+  setupErrInvalid: 'المفتاح غير صالح أو مرفوض. تأكّد من نسخه كاملاً من Google AI Studio ثمّ أعد المحاولة.',
+  setupErrQuota:   'تم رفض الطلب بسبب تجاوز الحصّة (HTTP 429). انتظر قليلاً ثمّ أعد المحاولة.',
+  setupValidating: 'جارٍ التحقّق من صلاحيّة المفتاح…',
+  setupSaved:      'تمّ التحقّق من المفتاح وحفظه بنجاح! يمكنك الآن استخدام المساعد الذكي.',
+  setupCleared:    'تمّ حذف المفتاح المحفوظ.',
   // التنبيهات الاستباقيّة
   alertOverspend: '🔴 تجاوز في الإنفاق خلال {month}: المصروف الفعلي تخطّى الدخل.',
   alertLowSaving: '🟡 معدّل الادخار للفترة منخفض ({rate}).',
@@ -155,6 +168,111 @@ function aiAssistantState() {
     periods:       AI_CONFIG.periodList,
     noKeyHint:     TXT_AI.errNoKey,
   };
+}
+
+/* ===========================================================================
+ *  (1-b) معالج إدخال المفتاح داخل التطبيق (In-App Setup Wizard)
+ * ---------------------------------------------------------------------------
+ *  يلغي الحاجة لدخول المستخدم اليدوي إلى Script Properties. يفتح نافذة أنيقة
+ *  يلصق فيها مفتاحه، فنتحقّق من صلاحيّته بنداء خفيف (دون استهلاك توكِنات) ثمّ
+ *  نحفظه. نموذج v1: المفتاح والتكلفة على المستخدم (BYOK) بصفر تكلفة تشغيليّة.
+ * ===========================================================================*/
+
+/**
+ * فتح نافذة معالج إدخال مفتاح Gemini (HTML Dialog). تُستدعى من القائمة أو من
+ * زرّ "إعداد المفتاح" داخل واجهة المساعد عند غياب المفتاح.
+ */
+function showApiKeySetup() {
+  const ui = SpreadsheetApp.getUi();
+  if (!isFeatureEnabled('assistant')) {
+    ui.alert(TXT_AI.title, TXT_AI.errDisabled, ui.ButtonSet.OK);
+    return;
+  }
+  const html = HtmlService.createHtmlOutputFromFile('ApiKeySetup')
+    .setWidth(540).setHeight(600).setTitle(TXT_AI.setupTitle);
+  ui.showModalDialog(html, TXT_AI.setupTitle);
+}
+
+/**
+ * حالة المفتاح الحاليّة للواجهة (مقنّعة لأمان العرض). لا تكشف المفتاح كاملاً.
+ * @return {Object} {ok, configured, masked, model, defaultModel, studioUrl}.
+ */
+function aiGetKeyStatus() {
+  const key = getGeminiKey_();
+  return {
+    ok: true,
+    configured:   !!key,
+    masked:       key ? aiMaskKey_(key) : '',
+    model:        getGeminiModel_(),
+    defaultModel: AI_CONFIG.defaultModel,
+    studioUrl:    AI_CONFIG.studioUrl,
+  };
+}
+
+/**
+ * التحقّق من المفتاح ثمّ حفظه في خصائص السكربت (Validate on Save).
+ * لا يُحفظ المفتاح إطلاقاً إن فشل التحقّق، فلا تتراكم مفاتيح غير صالحة.
+ * @param {string} apiKey مفتاح Gemini.
+ * @param {string} model اسم النموذج (اختياري — افتراضاً gemini-2.5-flash).
+ * @return {Object} {ok, message, model?}.
+ */
+function aiSaveApiKey(apiKey, model) {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled };
+  apiKey = String(apiKey || '').trim();
+  if (!apiKey) return { ok: false, message: TXT_AI.setupErrEmpty };
+
+  const mdl = (String(model || '').trim()) || AI_CONFIG.defaultModel;
+  // نداء تحقّق خفيف (سرد النماذج) — يثبت صلاحيّة المفتاح دون استهلاك توكِنات توليد
+  const ping = aiValidateKey_(apiKey);
+  if (!ping.ok) return ping;
+
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(AI_CONFIG.keyProp, apiKey);
+  props.setProperty(AI_CONFIG.modelProp, mdl);
+  return { ok: true, message: TXT_AI.setupSaved, model: mdl };
+}
+
+/**
+ * حذف المفتاح المحفوظ (مفيد لإعادة الضبط أو تبديل الحساب).
+ * @return {Object} {ok, message}.
+ */
+function aiClearApiKey() {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled };
+  PropertiesService.getScriptProperties().deleteProperty(AI_CONFIG.keyProp);
+  return { ok: true, message: TXT_AI.setupCleared };
+}
+
+/**
+ * التحقّق من صلاحيّة مفتاح عبر نقطة سرد النماذج (GET) — خفيف جداً وبلا استهلاك
+ * توكِنات توليد. يميّز بين المفتاح غير الصالح والحصّة وأخطاء HTTP الأخرى.
+ * @param {string} key المفتاح المراد فحصه.
+ * @return {Object} {ok} أو {ok:false, message, code}.
+ */
+function aiValidateKey_(key) {
+  const url = AI_CONFIG.listEndpoint + '?key=' + encodeURIComponent(key);
+  try {
+    const resp = UrlFetchApp.fetch(url, { method: 'get', muteHttpExceptions: true });
+    const code = resp.getResponseCode();
+    if (code === 200) return { ok: true };
+    if (code === 400 || code === 401 || code === 403) {
+      return { ok: false, message: TXT_AI.setupErrInvalid, code: code };
+    }
+    if (code === 429) return { ok: false, message: TXT_AI.setupErrQuota, code: code };
+    return { ok: false, message: TXT_AI.errHttp.replace('{code}', toLatinDigits(code)), code: code };
+  } catch (err) {
+    return { ok: false, message: TXT_AI.errNetwork + ' — ' + err };
+  }
+}
+
+/**
+ * تقنيع المفتاح للعرض الآمن (أوّل 4 وآخر 4 فقط).
+ * @param {string} k المفتاح.
+ * @return {string} نسخة مقنّعة.
+ */
+function aiMaskKey_(k) {
+  k = String(k || '');
+  if (k.length <= 8) return '••••••••';
+  return k.slice(0, 4) + '••••••••' + k.slice(-4);
 }
 
 /* ===========================================================================

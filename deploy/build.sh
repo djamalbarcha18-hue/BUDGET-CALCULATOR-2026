@@ -56,6 +56,7 @@ cp "$SRC/TopDialog.html"          "$DIST/TopDialog.html"
 cp "$SRC/OnboardingSidebar.html"  "$DIST/OnboardingSidebar.html"
 cp "$SRC/UserGuideSidebar.html"   "$DIST/UserGuideSidebar.html"
 cp "$SRC/Assistant.html"          "$DIST/Assistant.html"
+cp "$SRC/ApiKeySetup.html"        "$DIST/ApiKeySetup.html"
 
 echo "✅ تم البناء في: $DIST"
 echo "   شغّل الآن:  clasp push   (من جذر المستودع)"
