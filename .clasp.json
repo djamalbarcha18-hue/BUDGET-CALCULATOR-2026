@@ -20,8 +20,11 @@
     "13_Recovery.gs",
     "14_Charts.gs",
     "15_DebtTracker.gs",
+    "16_AI_Engine.gs",
     "TopDialog.html",
     "OnboardingSidebar.html",
-    "UserGuideSidebar.html"
+    "UserGuideSidebar.html",
+    "Assistant.html",
+    "ApiKeySetup.html"
   ]
 }
