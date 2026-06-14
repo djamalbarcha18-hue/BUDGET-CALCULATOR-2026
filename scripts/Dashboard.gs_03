@@ -447,8 +447,14 @@ function buildWelcome(ss, year) {
   for (let i = 1; i <= 40; i++) s.setRowHeight(i, 24);
   for (let i = 2; i <= 4; i++) s.setRowHeight(i, 60);
 
-  // الترويسة المزدوجة (Hero)
-  const hero = s.getRange('B2:O4');
+  // الترويسة المزدوجة (Hero): شعار رسمي (B2:D4) + عنوان ثنائي اللغة (E2:O4).
+  // كلاهما بخلفيّة البطاقة نفسها فيظهران كشريط ترويسة واحد متكامل وأنيق.
+  mergeAndStyle(s, 'B2:D4', '', { bg: T.bgCard, align: 'center', vAlign: 'middle' });
+  // الشعار الشفّاف عبر =IMAGE() الوضع (1): ملاءمة مع حفظ الأبعاد (لا تمدّد/بكسلة)
+  s.getRange('B2').setFormula('=IMAGE("' + LOGO_URL + '", 1)')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  // العنوان النصّي ثنائي اللغة (محفوظ كما هو) في المساحة المتبقّية E2:O4
+  const hero = s.getRange('E2:O4');
   hero.merge();
   hero.setValue(TXT_TITLES.heroAr + '\n' + TXT_TITLES.heroEn)
     .setBackground(T.bgCard).setFontColor(T.fgPrimary)
