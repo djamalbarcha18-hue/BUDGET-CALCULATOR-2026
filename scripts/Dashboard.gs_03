@@ -161,9 +161,14 @@ function buildDashboard(ss, year) {
   s.getRange(1, 1, 60, 12)
     .setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text).setFontFamily(FONT_FAMILY);
 
-  // ---- (2) الترويسة: مساحة شعار فارغة (A1:D4) + تحكّم مركزي مقابل ----
-  mergeAndStyle(s, 'A1:D4', '', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, align: 'center', vAlign: 'middle' });
-  s.getRange('A1').setNote('أدرج شعار المشروع هنا (Insert → Image → in cell)');
+  // ---- (2) الترويسة: شعار رسمي بخلفيّة موحَّدة (Seamless) + تحكّم مركزي مقابل ----
+  // توحيد لون خلفيّة مساحة الشعار مع درجة الشريط/الصفحة الداكنة (DASH_DARK.page)
+  // ليختفي أثر "الصندوق الفاتح" وتصبح الترويسة انسيابيّة تماماً.
+  mergeAndStyle(s, 'A1:D4', '', { bg: DASH_DARK.page, align: 'center', vAlign: 'middle' });
+  // إدراج الشعار الشفّاف ديناميكياً عبر =IMAGE() بالوضع (1) = ملاءمة الخليّة مع
+  // حفظ نسبة الأبعاد (دون تمدّد أو بكسلة لحواف الشعار)، متوسّطاً أفقياً وعمودياً.
+  s.getRange('A1').setFormula('=IMAGE("' + LOGO_URL + '", 1)')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
   mergeAndStyle(s, 'E1:L1', '',
     { bg: DASH_DARK.page, fg: DASH_DARK.text, size: 18, bold: true, align: 'center', fontFamily: FONT_FAMILY });
   // العنوان يقرأ السنة آلياً من الإعدادات (التقرير السنوي بلا أيّ اختيار)
