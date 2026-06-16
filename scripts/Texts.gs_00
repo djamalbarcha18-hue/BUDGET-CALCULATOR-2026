@@ -124,8 +124,11 @@ const TXT_MSG = {
                       'الخطوة الاختياريّة المتبقية: أدرج الرسوم البيانيّة الخمسة في اللوحة الرئيسيّة (Insert → Chart) ' +
                       'واربطها بالنطاقات المُسمَّاة rng_dash_* حتى تتحدّث تلقائياً.',
   yearPromptTitle:    'تغيير السنة النشطة',
-  yearPromptBody:     'أدخل السنة المطلوبة (بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '):',
-  yearInvalid:        'سنة غير صالحة. يجب أن تكون رقماً بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '.',
+  // getters: تُقرأ YEAR_MIN/YEAR_MAX وقت الاستخدام (runtime) لا وقت تحميل الملفّ،
+  // فيختفي اعتماد ترتيب تحميل الوحدات على Config ويُحَلّ ReferenceError نهائياً
+  // مهما كان ترتيب تحميل الملفّات (clasp أو لصق يدوي).
+  get yearPromptBody() { return 'أدخل السنة المطلوبة (بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '):'; },
+  get yearInvalid()    { return 'سنة غير صالحة. يجب أن تكون رقماً بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '.'; },
   yearSwitchedTitle:  'تم تغيير السنة النشطة',
   yearSwitchedBody:   'السنة النشطة الآن هي {year}. تمّت أرشفة بقيّة السنوات وإخفاؤها، وأُعيد ربط اللوحة الرئيسيّة.',
   archiveDoneTitle:   'تمّت الأرشفة',
@@ -146,7 +149,7 @@ const TXT_MSG = {
   repairDoneBody:     'أُعيدت كتابة صيغ المحرّك وبطاقات المؤشّرات بإصدار محصَّن، وأُعيد ربط النطاقات المُسمَّاة للرسوم.',
   notFoundTitle:      'أوراق مفقودة',
   triggerOnTitle:     'تم تفعيل النسخ التلقائي الدوري',
-  triggerOnBody:      'سيُنشئ النظام نسخة طوارئ تلقائيّة كل ' + SNAPSHOT_CONFIG.triggerEveryHours + ' ساعات دون أيّ تدخّل منك.',
+  get triggerOnBody() { return 'سيُنشئ النظام نسخة طوارئ تلقائيّة كل ' + SNAPSHOT_CONFIG.triggerEveryHours + ' ساعات دون أيّ تدخّل منك.'; },
   triggerOffTitle:    'تم إيقاف النسخ التلقائي الدوري',
   triggerOffBody:     'أُزيلت المشغّلات الدوريّة. تبقى النسخ اليدويّة والنسخ عند الفتح متاحة كالمعتاد.',
   purgeTitle:         'تم تنظيف التخزين القديم',
@@ -202,7 +205,7 @@ const TXT_WELCOME = {
            'محرّك سنوات ديناميكي (2025-2035) بأرشفة تلقائيّة، ونظام طوارئ لحماية البيانات.',
   signLine1: '💎 تم التطوير والهندسة بواسطة: Boulahdid Djamal Eddine - المهندس',
   signLine2: '📩 للتواصل والدعم الفني: boulahdiddjamaleddine',
-  footerVersion: 'الإصدار: ' + APP_VERSION + ' (Master Refactor) - 2026',
+  get footerVersion() { return 'الإصدار: ' + APP_VERSION + ' (Master Refactor) - 2026'; },
   footerDisclaimer: 'قالب احترافي مفتوح للتخصيص. أسعار الصرف مؤشّرات إرشاديّة - يجب على المستخدم تحديثها قبل أيّ استخدام محاسبي فعلي.',
   footerEn: 'Premium Arabic Fintech Template - All formulas built for Google Sheets compatibility (XLOOKUP, ARRAYFORMULA, IFS, QUERY, SPARKLINE).',
   cards: [
@@ -320,5 +323,5 @@ const TXT_GUIDE = {
     { h: 'نظام الطوارئ', b: 'أنشئ نسخاً احتياطيّة يدويّة أو فعّل النسخ الدوري، واسترجع أيّ نسخة بسهولة من اللوحة.' },
     { h: 'الأرقام اللاتينيّة', b: 'الواجهة عربيّة بالكامل لكنّ الأرقام والتواريخ تبقى لاتينيّة (1, 2, 3) لحماية المعادلات.' },
   ],
-  footer: 'الإصدار ' + APP_VERSION + ' · تم التطوير بواسطة Boulahdid Djamal Eddine',
+  get footer() { return 'الإصدار ' + APP_VERSION + ' · تم التطوير بواسطة Boulahdid Djamal Eddine'; },
 };

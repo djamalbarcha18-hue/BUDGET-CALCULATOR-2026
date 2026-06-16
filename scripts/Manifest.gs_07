@@ -17,10 +17,12 @@
 const PROJECT_MANIFEST = {
   name:    'SmartBudget Pro 2026',
   nameAr:  'نظام مالي ذكي متكامل',
-  version: APP_VERSION,
+  // getters: تُقرأ ثوابت Config (APP_VERSION / YEAR_MIN / YEAR_MAX) وقت الوصول لا
+  // وقت التحميل، فلا يعتمد هذا الملفّ على ترتيب تحميله بالنسبة لـ Config.
+  get version()    { return APP_VERSION; },
   author:  'Boulahdid Djamal Eddine',
   contact: 'boulahdiddjamaleddine',
-  yearsRange: [YEAR_MIN, YEAR_MAX],
+  get yearsRange() { return [YEAR_MIN, YEAR_MAX]; },
 
   // خريطة الوحدات الأربع عشرة ومسؤوليّاتها (للتوثيق والصيانة الذاتيّة)
   modules: [
