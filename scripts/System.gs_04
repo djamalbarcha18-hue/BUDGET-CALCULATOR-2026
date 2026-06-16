@@ -62,6 +62,9 @@ function onOpen() {
     .addToUi();
 
   // نسخة طوارئ تلقائيّة (لا تُنشأ إلا بعد مرور الفاصل الزمني الأدنى)
+  // إخفاء وحماية الأوراق الخلفية (التي تبدأ بـ "_") تلقائياً عند كل فتح
+  autoHideBackendSheets_(SpreadsheetApp.getActive());
+
   maybeAutoSnapshot();
   // هجرة تحديث #41 الصامتة لمرة واحدة فقط (فحص خفيف جداً للمفتاح)
   runPR41MigrationOnce_(SpreadsheetApp.getActive());
@@ -92,6 +95,35 @@ function runPR41MigrationOnce_(ss) {
   } catch (err) {
     // لا نوقف فتح المصنّف عند أيّ خطأ في الهجرة (تُعاد المحاولة في الفتح التالي)
     console.error('فشل تنفيذ هجرة #41: ' + err);
+  }
+}
+
+/**
+ * بروتوكول الإخفاء التلقائي للأوراق الخلفية: يمرّ على كل أوراق المصنّف، وأيّ ورقة
+ * يبدأ اسمها بشرطة سفليّة "_" (محرّك اللوحة _DashboardEngine، نسخ الطوارئ
+ * _RecoverySnapshots…) يُخفيها ويحميها بحيث يبقى المالك وحده قادراً على تعديلها —
+ * فلا تُعرَض للمستخدم ولا يمكن العبث بها. محصَّن بالكامل بـ try/catch فلا يُسقط الفتح،
+ * وعمليّة الحماية تُنشأ مرّة واحدة فقط (idempotent) تفادياً للتكرار في كل فتح.
+ * @param {Spreadsheet} ss المصنّف النشط.
+ */
+function autoHideBackendSheets_(ss) {
+  try {
+    ss.getSheets().forEach(function (sh) {
+      if (String(sh.getName()).charAt(0) !== '_') return; // أوراق المستخدم تبقى ظاهرة
+      // (1) الإخفاء — فقط إن كانت ظاهرة (تفادي عمل زائد في كل فتح)
+      try { if (!sh.isSheetHidden()) sh.hideSheet(); } catch (e) {}
+      // (2) الحماية للمالك فقط — تُنشأ مرّة واحدة (idempotent)
+      try {
+        if (sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).length === 0) {
+          const p = sh.protect().setDescription('ورقة محرّك خلفي — محميّة تلقائياً');
+          p.removeEditors(p.getEditors());               // يبقى المالك وحده محرِّراً
+          if (p.canDomainEdit()) p.setDomainEdit(false);  // منع التعديل على مستوى النطاق
+        }
+      } catch (e) {}
+    });
+  } catch (e) {
+    // لا نُسقط فتح المصنّف أبداً
+    console.error('فشل إخفاء/حماية الأوراق الخلفية: ' + e);
   }
 }
 
@@ -236,6 +268,7 @@ function buildEntireWorkbook_(ss, year) {
   PropertiesService.getDocumentProperties().setProperty(PROP_KEYS.pr41Updated, 'true');
   safeHideSheet(ss, SHEET_NAMES.engine);
   safeHideSheet(ss, SHEET_NAMES.snapshots);
+  autoHideBackendSheets_(ss); // إخفاء + حماية كل الأوراق الخلفية (تبدأ بـ "_") بصلاحيّة المالك الكاملة
   createSnapshot(ss, 'نسخة ما بعد التركيب');
   installSnapshotTriggers();
 
