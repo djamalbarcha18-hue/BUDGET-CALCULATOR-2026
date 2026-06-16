@@ -187,6 +187,8 @@ function buildDashboard(ss, year) {
   ];
   const rules = [];
   cards.forEach(c => buildKpiCard(s, c, rules));
+  // المستوى الرابع: بطاقات التوزيع (الإجمالي كـKPI فرعي) + مؤشّر الصحّة الرقمي المتقدّم
+  buildDistributionCards_(s, ss, rules);
   s.setConditionalFormatRules(rules);
 
   // ---- (4) الصف الثاني والثالث: المخططات (أعمدة + دائريّان مجوّفان) ----
@@ -226,6 +228,62 @@ function buildDashboardGoalsWidget_(s) {
 }
 
 /**
+ * بناء بطاقات المستوى الرابع الثلاث المتساوية (دخل · مصاريف · صحّة):
+ *   - بطاقتا الدخل/المصاريف: الصفّ العلوي يعرض الإجمالي كمؤشّر فرعي (22pt أبيض)،
+ *     والمخطّط الدائري المجوّف يُدرَج تحته مباشرةً (لا خلايا متراكبة للإجمالي).
+ *   - بطاقة الصحّة المالية: مؤشّر رقمي متقدّم (بديل آمن لمخطّط Gauge) — رقم ضخم
+ *     ملوّن شرطياً (أخضر/أصفر/أحمر) + شريط تقدّم SPARKLINE أفقي ناعم من 100.
+ * @param {Sheet} s ورقة اللوحة.
+ * @param {Spreadsheet} ss المصنّف.
+ * @param {Array} rules مصفوفة قواعد التنسيق الشرطي (تُعدَّل في المكان).
+ */
+function buildDistributionCards_(s, ss, rules) {
+  const E = q(SHEET_NAMES.engine);
+
+  // خلفيّات البطاقات الثلاث المتساوية (دخل A:D · مصاريف E:H · صحّة I:L)
+  s.getRange('A28:D43').setBackground(DASH_DARK.card);
+  s.getRange('E28:H43').setBackground(DASH_DARK.card);
+  s.getRange('I28:L43').setBackground(DASH_DARK.card);
+
+  // الصفّ العلوي: تسمية ثانويّة هادئة لكل بطاقة
+  mergeAndStyle(s, 'A28:D28', 'إجمالي الدخل',       { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center' });
+  mergeAndStyle(s, 'E28:H28', 'إجمالي المصاريف',    { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center' });
+  mergeAndStyle(s, 'I28:L28', 'مؤشّر الصحّة المالية', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center' });
+
+  // الإجمالي كمؤشّر فرعي (22pt أبيض عريض) فوق كل دونات — يقرأ إجماليّات المحرّك
+  mergeAndStyle(s, 'A29:D30', '', { bg: DASH_DARK.card, fg: DASH_DARK.text, size: 22, bold: true, align: 'center', vAlign: 'middle' });
+  enforceLatinNumberFormat(s.getRange('A29').setFormula(`=IFERROR(${E}!H2, 0)`)); // إجمالي الدخل
+  mergeAndStyle(s, 'E29:H30', '', { bg: DASH_DARK.card, fg: DASH_DARK.text, size: 22, bold: true, align: 'center', vAlign: 'middle' });
+  enforceLatinNumberFormat(s.getRange('E29').setFormula(`=IFERROR(${E}!H3, 0)`)); // إجمالي المصاريف
+
+  // ---- بطاقة الصحّة المالية: مؤشّر رقمي متقدّم ----
+  // (1) الرقم الضخم (40pt) ملوّن شرطياً: أخضر ≥75 · أصفر 60-74 · أحمر <60
+  mergeAndStyle(s, 'I29:L31', '', { bg: DASH_DARK.card, fg: DASH_DARK.text, size: 40, bold: true, align: 'center', vAlign: 'middle' });
+  s.getRange('I29').setFormula(`=IFERROR(${E}!O2, 0)`).setNumberFormat('0');
+  const hRange = s.getRange('I29:L31');
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberGreaterThanOrEqualTo(75).setFontColor(CHART_COLORS.income)
+      .setBackground(DASH_DARK.card).setRanges([hRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberBetween(60, 74).setFontColor(CHART_COLORS.warning)
+      .setBackground(DASH_DARK.card).setRanges([hRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberLessThan(60).setFontColor(CHART_COLORS.expense)
+      .setBackground(DASH_DARK.card).setRanges([hRange]).build());
+
+  // (2) شريط تقدّم أفقي ناعم (SPARKLINE) يعبّر عن القيمة من 100، بلون شرطي مطابق
+  mergeAndStyle(s, 'I32:L32', '', { bg: DASH_DARK.card, align: 'center', vAlign: 'middle' });
+  s.getRange('I32').setFormula(
+    `=IFERROR(SPARKLINE(${E}!O2, {"charttype","bar"; "max",100; "color1",` +
+    `IF(${E}!O2>=75,"${CHART_COLORS.income}",IF(${E}!O2>=60,"${CHART_COLORS.warning}","${CHART_COLORS.expense}")); "empty","zero"}), "")`);
+
+  // (3) تصنيف الصحّة النصّي (ممتاز/جيّد/…)
+  mergeAndStyle(s, 'I33:L34', '', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center', vAlign: 'middle' });
+  s.getRange('I33').setFormula(`=IFERROR("الحالة: " & ${E}!O3, "")`);
+}
+
+/**
  * إدراج مخططات اللوحة بخلفيّة شفافة تندمج مع الوضع المظلم وبالهوية اللونيّة
  * الصارمة (الدخل أخضر، المصاريف أحمر، الادخار أزرق فاتح).
  *   - مخطّط أعمدة: المقارنة الشهريّة (دخل/مصاريف/ادخار) من شبكة المحرّك A1:D13.
@@ -260,13 +318,13 @@ function buildDashboardCharts_(s, ss) {
     .addRange(engine.getRange('I1:J9'))
     .setOption('pieHole', 0.5)
     .setOption('backgroundColor', 'transparent')
-    .setOption('title', 'توزيع مصادر الدخل')
+    .setOption('title', '')
     .setOption('titleTextStyle', lightTxt)
     .setOption('legend', { position: 'right', textStyle: lightTxt })
     .setOption('pieSliceText', 'percentage')
     .setOption('fontName', FONT_FAMILY)
-    .setOption('width', 370).setOption('height', 280)
-    .setPosition(29, 1, 0, 0)
+    .setOption('width', 360).setOption('height', 250)
+    .setPosition(31, 1, 0, 0)
     .build();
   s.insertChart(dIncome);
 
@@ -276,13 +334,13 @@ function buildDashboardCharts_(s, ss) {
     .setOption('pieHole', 0.5)
     .setOption('backgroundColor', 'transparent')
     .setOption('colors', EXPENSE_SLICE_COLORS)
-    .setOption('title', 'توزيع المصاريف حسب الفئة')
+    .setOption('title', '')
     .setOption('titleTextStyle', lightTxt)
     .setOption('legend', { position: 'right', textStyle: lightTxt })
     .setOption('pieSliceText', 'percentage')
     .setOption('fontName', FONT_FAMILY)
-    .setOption('width', 370).setOption('height', 280)
-    .setPosition(29, 7, 0, 0)
+    .setOption('width', 360).setOption('height', 250)
+    .setPosition(31, 5, 0, 0)
     .build();
   s.insertChart(dExpense);
 }
