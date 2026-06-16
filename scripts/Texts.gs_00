@@ -124,8 +124,11 @@ const TXT_MSG = {
                       'الخطوة الاختياريّة المتبقية: أدرج الرسوم البيانيّة الخمسة في اللوحة الرئيسيّة (Insert → Chart) ' +
                       'واربطها بالنطاقات المُسمَّاة rng_dash_* حتى تتحدّث تلقائياً.',
   yearPromptTitle:    'تغيير السنة النشطة',
-  yearPromptBody:     'أدخل السنة المطلوبة (بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '):',
-  yearInvalid:        'سنة غير صالحة. يجب أن تكون رقماً بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '.',
+  // getters: تُقرأ YEAR_MIN/YEAR_MAX وقت الاستخدام (runtime) لا وقت تحميل الملفّ،
+  // فيختفي اعتماد ترتيب تحميل الوحدات على Config ويُحَلّ ReferenceError نهائياً
+  // مهما كان ترتيب تحميل الملفّات (clasp أو لصق يدوي).
+  get yearPromptBody() { return 'أدخل السنة المطلوبة (بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '):'; },
+  get yearInvalid()    { return 'سنة غير صالحة. يجب أن تكون رقماً بين ' + YEAR_MIN + ' و ' + YEAR_MAX + '.'; },
   yearSwitchedTitle:  'تم تغيير السنة النشطة',
   yearSwitchedBody:   'السنة النشطة الآن هي {year}. تمّت أرشفة بقيّة السنوات وإخفاؤها، وأُعيد ربط اللوحة الرئيسيّة.',
   archiveDoneTitle:   'تمّت الأرشفة',
