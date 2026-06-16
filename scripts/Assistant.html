@@ -326,6 +326,19 @@
     }
 
     /** تصدير التقرير (تحليل + محادثة + رسوم) إلى PDF. */
+    /** تنزيل ملفّ من نصّ Base64 مباشرةً في المتصفّح (Blob + رابط مؤقّت). */
+    function downloadBase64_(b64, filename, mime) {
+      var chars = atob(b64);
+      var bytes = new Uint8Array(chars.length);
+      for (var i = 0; i < chars.length; i++) bytes[i] = chars.charCodeAt(i);
+      var blob = new Blob([bytes], { type: mime || 'application/pdf' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename || 'report.pdf';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    }
+
     function exportPdf() {
       setBusy(true); setStatus('جارٍ توليد تقرير PDF…', true);
       var payload = JSON.stringify({
@@ -335,10 +348,22 @@
       });
       google.script.run
         .withSuccessHandler(function (res) {
-          setBusy(false);
-          setStatus((res && res.message) ? res.message : (res && res.ok ? 'تم التصدير.' : 'تعذّر التصدير.'), false);
+          setBusy(false); // إيقاف مؤشّر التحميل دائماً
+          if (res && res.ok && res.base64) {
+            try {
+              downloadBase64_(res.base64, res.filename, res.mimeType);
+              setStatus(res.message || 'تمّ تنزيل التقرير.', false);
+            } catch (e) {
+              setStatus('تعذّر بدء التنزيل: ' + e, false);
+            }
+          } else {
+            setStatus((res && res.message) ? res.message : 'تعذّر التصدير.', false);
+          }
         })
-        .withFailureHandler(function (err) { setBusy(false); setStatus('خطأ: ' + (err && err.message ? err.message : err), false); })
+        .withFailureHandler(function (err) {
+          setBusy(false); // إيقاف مؤشّر التحميل عند الخطأ
+          setStatus('خطأ: ' + (err && err.message ? err.message : err), false);
+        })
         .aiExportReportPdf(payload);
     }
 

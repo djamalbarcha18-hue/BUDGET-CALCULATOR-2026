@@ -82,10 +82,10 @@ const TXT_AI = {
   alertGoalRisk:  '⏳ الهدف "{goal}" قيد الادخار وتقدّمه أقلّ من النصف.',
   alertDebt:      '💳 لديك التزامات نشطة عليك بمبلغ متبقٍّ {amt}.',
   alertNone:      '✅ لا توجد تنبيهات حرجة حاليّاً، وضعك المالي مستقرّ.',
-  // تصدير PDF
+  // تصدير PDF (تنزيل مباشر عبر Base64 — بلا اعتماد على Drive)
   pdfName: 'تقرير المساعد المالي الذكي',
-  pdfDone: 'أُنشئ تقرير PDF وحُفظ في مجلّد التقارير على Google Drive:\n{url}',
-  pdfFail: 'تعذّر توليد تقرير PDF. تأكّد من منح صلاحيّة Drive ثمّ أعد المحاولة.',
+  pdfReady: 'تمّ توليد التقرير وبدأ تنزيله تلقائياً.',
+  pdfFail: 'تعذّر توليد تقرير PDF. حاول مرّة أخرى.',
 };
 
 /** قوالب الموجّهات (Prompts) المُرسَلة إلى Gemini. */
@@ -427,9 +427,9 @@ function aiProactiveAlerts() {
 
 /**
  * توليد تقرير PDF احترافي عربي (RTL) يضمّ التحليل والمحادثة وصور رسوم اللوحة،
- * وحفظه في مجلّد التقارير على Drive (يُعاد استخدام بنية Export.gs).
+ * وإعادته كنصّ Base64 لتنزيله مباشرةً في المتصفّح (بلا حفظ في Drive ولا روابط).
  * @param {string} payloadJson حمولة JSON من الواجهة {periodLabel, analysis, conversation}.
- * @return {Object} {ok, url, message}.
+ * @return {Object} {ok, base64, filename, mimeType, message} أو {ok:false, message}.
  */
 function aiExportReportPdf(payloadJson) {
   if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled };
@@ -437,13 +437,19 @@ function aiExportReportPdf(payloadJson) {
   try { payload = payloadJson ? JSON.parse(payloadJson) : {}; } catch (e) { payload = {}; }
   try {
     const html = buildAiReportHtml_(payload);
-    const blob = Utilities.newBlob(html, 'text/html', 'ai_report.html').getAs('application/pdf');
+    // HTML → PDF blob ثمّ ترميزه Base64 لإرساله للواجهة وتنزيله مباشرةً
+    const pdf = Utilities.newBlob(html, 'text/html', 'ai_report.html').getAs('application/pdf');
     const ss = SpreadsheetApp.getActive();
     const stamp = toLatinDigits(Utilities.formatDate(
       new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm'));
-    blob.setName(toLatinDigits(TXT_AI.pdfName) + ' (' + stamp + ').pdf');
-    const file = getOrCreateExportFolder().createFile(blob);
-    return { ok: true, url: file.getUrl(), message: TXT_AI.pdfDone.replace('{url}', file.getUrl()) };
+    const filename = toLatinDigits(TXT_AI.pdfName) + ' (' + stamp + ').pdf';
+    return {
+      ok: true,
+      base64: Utilities.base64Encode(pdf.getBytes()),
+      filename: filename,
+      mimeType: 'application/pdf',
+      message: TXT_AI.pdfReady,
+    };
   } catch (err) {
     console.error('فشل تصدير تقرير المساعد: ' + err);
     return { ok: false, message: TXT_AI.pdfFail + ' — ' + err };
