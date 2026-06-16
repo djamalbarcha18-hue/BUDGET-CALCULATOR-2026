@@ -181,6 +181,26 @@
     /** فتح معالج إعداد المفتاح (يستبدل نافذة المساعد بنافذة الإعداد). */
     function openSetup() { google.script.run.showApiKeySetup(); }
 
+    /**
+     * تطبيع كائن التحليل قبل العرض: يضمن ألّا يتسرّب JSON خام للواجهة.
+     * يعالج حالة وصول البيانات كنصّ، أو تضمّن JSON داخل حقل summary.
+     */
+    function normalizeAnalysis_(d) {
+      if (!d) return {};
+      if (typeof d === 'string') {
+        try { var o = JSON.parse(d); if (o && typeof o === 'object') return o; }
+        catch (e) { return { summary: d }; }
+      }
+      // لو تسرّب JSON خام داخل summary (ترميز مزدوج) نعيد تحليله
+      if (d.summary && typeof d.summary === 'string') {
+        var s = d.summary.trim();
+        if (s.charAt(0) === '{' && s.indexOf('"summary"') >= 0) {
+          try { var inner = JSON.parse(s); if (inner && typeof inner === 'object') return inner; } catch (e) {}
+        }
+      }
+      return d;
+    }
+
     /** طلب تحليل ذكي للفترة المختارة. */
     function analyze() {
       STATE.period = $('period').value || 'monthly';
@@ -201,7 +221,7 @@
 
     /** رسم بطاقة التحليل المنظَّم (JSON). */
     function renderAnalysis(d, label, cached) {
-      d = d || {};
+      d = normalizeAnalysis_(d);
       $('welcomeCard').style.display = 'none';
       var c = $('analysisCard');
       var list = function (title, arr) {

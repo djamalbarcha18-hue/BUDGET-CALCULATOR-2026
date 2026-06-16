@@ -39,7 +39,7 @@ const AI_CONFIG = {
   // نقطة نهاية سرد النماذج — تُستعمل للتحقّق من صلاحيّة المفتاح دون استهلاك توكِنات
   listEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
   temperature:     0.4,
-  maxOutputTokens: 2048,
+  maxOutputTokens: 4096, // سعة أكبر تمنع بتر JSON للتحليل (2048 كان يبتر الفترات الكبيرة فيتسرّب JSON خام)
   // مدّة تخزين نتيجة التحليل في ذاكرة المستند (6 ساعات) لتقليل تكرار الاستهلاك
   cacheTtlSeconds: 21600,
   // أقصى عدد رسائل سابقة تُرسَل كسياق للمحادثة (تخفيف التوكِنات)
@@ -93,9 +93,11 @@ const AI_PROMPTS = {
   // تعليمات النظام للتحليل المنظَّم (يُلزم النموذج بمخرجات JSON دقيقة)
   analyzeSystem:
     'أنت مستشار مالي شخصي خبير يكتب بالعربية الفصحى المبسّطة وبصيغة احترافية ومحفّزة. ' +
-    'تتلقّى بيانات مالية رقميّة بصيغة JSON وتُنتج تحليلاً عميقاً. ' +
-    'استعمل الأرقام اللاتينيّة (1، 2، 3) دائماً. لا تختلق أرقاماً غير موجودة في البيانات. ' +
-    'أعِد ردّك حصراً ككائن JSON صالح (دون أيّ نصّ خارجه ودون أسوار شيفرة) وفق المخطّط التالي:\n' +
+    'تتلقّى بيانات مالية رقميّة بصيغة JSON وتُنتج تحليلاً عميقاً وتوصيات عمليّة. ' +
+    'استعمل الأرقام اللاتينيّة (1، 2، 3) دائماً، ولا تختلق أرقاماً غير موجودة في البيانات. ' +
+    'استخدم دائماً رمز العملة النشطة المرفق في البيانات (الحقل "currency") مع كل مبلغ مالي، ' +
+    'وتجنّب تماماً المصطلحات العامّة مثل "وحدة نقدية". ' +
+    'أعِد ردّك حصراً ككائن JSON صالح ومكتمل (دون أيّ نصّ خارجه ودون أسوار شيفرة) وفق المخطّط التالي:\n' +
     '{\n' +
     '  "summary": "سرد تنفيذي موجز للأداء المالي للفترة",\n' +
     '  "highlights": ["أبرز 2-4 ملاحظات رقميّة"],\n' +
@@ -105,21 +107,36 @@ const AI_PROMPTS = {
     '  "goalsInsight": "رأي مختصر في جدوى تحقيق الأهداف",\n' +
     '  "recommendations": ["3-5 توصيات عمليّة قابلة للتنفيذ"]\n' +
     '}',
-  // تعليمات نظام المحادثة الحرّة
-  chatSystem:
-    'أنت مساعد مالي ذكي ضمن تطبيق ميزانية عربي. أجب بإيجاز ودقّة بالعربية الفصحى ' +
-    'وبأرقام لاتينيّة، مستنداً حصراً إلى البيانات المالية المرفقة. إن سُئلت عمّا لا ' +
-    'تدعمه البيانات فاذكر ذلك بوضوح بدل التخمين.',
 
   /**
-   * بناء نصّ المستخدم لطلب التحليل (سياق رقمي مُصغّر + تعليمات الفترة).
+   * تعليمات نظام المحادثة الحرّة — مستشار مالي مرن لا يرفض المساعدة.
+   * يحقن السنة والعملة النشطتين ديناميكياً.
+   * @param {Object} ctx سياق مبني عبر buildAiContext_ (قد يكون null).
+   * @return {string} تعليمات النظام.
+   */
+  chatSystem: function (ctx) {
+    const cur = (ctx && ctx.currency) ? ctx.currency : 'USD';
+    const yr  = (ctx && ctx.year) ? ctx.year : '';
+    return 'أنت مستشار مالي شخصي مرن وودود ضمن تطبيق ميزانية عربي اسمه SmartBudget Pro. ' +
+      'قدّم نصائح وتوصيات مالية عمليّة ومنطقيّة بالعربية الفصحى وبأرقام لاتينيّة، بثقة ودون أن ترفض المساعدة أبداً. ' +
+      'عند توفّر بيانات المستخدم (أعلى فئات الإنفاق، معدّل الادخار، الأهداف، الديون) اجعل النصيحة مخصّصة ومبنيّة عليها ' +
+      '— مثلاً انصح بخفض أعلى فئة استنزاف أو رفع معدّل الادخار. وإن كان السؤال عامّاً ولا تغطّيه البيانات، ' +
+      'فقدّم نصيحة مالية عامّة مفيدة (مثل قاعدة 50/30/20 أو بناء صندوق طوارئ) بدل الاعتذار أو الرفض. ' +
+      'استخدم دائماً رمز العملة النشطة (' + cur + ') مع كل مبلغ مالي، وتجنّب مصطلح "وحدة نقدية". ' +
+      'السنة قيد التحليل هي ' + yr + '.';
+  },
+
+  /**
+   * بناء نصّ المستخدم لطلب التحليل (سياق رقمي مُصغّر + الفترة والسنة والعملة).
    * @param {Object} ctx سياق مبني عبر buildAiContext_.
    * @return {string} نصّ الموجّه.
    */
   analyzeUser: function (ctx) {
-    return 'حلّل الوضع المالي للفترة (' + ctx.periodLabel + ') لسنة ' + ctx.year +
-      '. هذه البيانات الرقميّة:\n' + JSON.stringify(ctx) +
-      '\nأعِد التحليل ككائن JSON وفق المخطّط المطلوب فقط.';
+    const cur = ctx.currency || 'USD';
+    return 'حلّل الوضع المالي للفترة (' + ctx.periodLabel + ') من سنة ' + ctx.year +
+      '، والعملة النشطة هي ' + cur + ' (استخدم رمزها مع كل مبلغ). هذه البيانات الرقميّة:\n' +
+      JSON.stringify(ctx) +
+      '\nأعِد التحليل ككائن JSON مكتمل وفق المخطّط المطلوب فقط.';
   },
 
   /**
@@ -128,8 +145,9 @@ const AI_PROMPTS = {
    * @return {string} كتلة السياق.
    */
   contextBlock: function (ctx) {
-    if (!ctx) return 'لا تتوفّر بيانات مالية حاليّاً.';
-    return 'البيانات المالية المرجعيّة (JSON):\n' + JSON.stringify(ctx);
+    if (!ctx) return 'لا تتوفّر بيانات مالية للمستخدم حاليّاً، فقدّم نصائح مالية عامّة مفيدة عند الحاجة.';
+    return 'السنة قيد التحليل: ' + ctx.year + ' · العملة النشطة: ' + (ctx.currency || 'USD') +
+      '.\nالبيانات المالية المرجعيّة (JSON):\n' + JSON.stringify(ctx);
   },
 };
 
@@ -291,7 +309,7 @@ function aiAnalyze(periodKey) {
   const year = safeAi_(function () { return getActiveYear(); }, DEFAULT_YEAR);
 
   const cache = CacheService.getDocumentCache();
-  const cacheKey = 'ai_an_' + periodKey + '_' + year;
+  const cacheKey = 'ai_an_v2_' + periodKey + '_' + year;
   if (cache) {
     const hit = cache.get(cacheKey);
     if (hit) { const obj = JSON.parse(hit); obj.cached = true; return obj; }
@@ -326,7 +344,7 @@ function aiChat(message, historyJson, periodKey) {
   if (!message || !String(message).trim()) return { ok: false, message: TXT_AI.errEmptyMsg };
 
   const ctx = buildAiContext_(periodKey || 'annual');
-  const systemText = AI_PROMPTS.chatSystem + '\n\n' + AI_PROMPTS.contextBlock(ctx);
+  const systemText = AI_PROMPTS.chatSystem(ctx) + '\n\n' + AI_PROMPTS.contextBlock(ctx);
 
   let history = [];
   try { history = historyJson ? JSON.parse(historyJson) : []; } catch (e) { history = []; }
@@ -662,6 +680,7 @@ function buildAiContext_(periodKey) {
 
   return {
     year: year,
+    currency: aiActiveCurrency_(),
     periodKey: periodKey,
     periodLabel: slice.label,
     currentMonths: cur,
@@ -674,6 +693,18 @@ function buildAiContext_(periodKey) {
     debts: debts,
     health: health,
   };
+}
+
+/**
+ * سحب رمز العملة النشطة من ورقة الإعدادات (B3) — نفس مصدر الإدخال الموحّد.
+ * @return {string} رمز العملة (مثل DZD أو USD)، أو USD افتراضاً.
+ */
+function aiActiveCurrency_() {
+  try {
+    const st = SpreadsheetApp.getActive().getSheetByName(SHEET_NAMES.settings);
+    const c = st ? String(st.getRange('B3').getDisplayValue()).trim() : '';
+    return c || 'USD';
+  } catch (e) { return 'USD'; }
 }
 
 /**
@@ -740,22 +771,65 @@ function periodMonthsRange_(periodKey) {
 }
 
 /**
- * تحليل نصّ JSON القادم من Gemini بتسامح (يزيل أسوار الشيفرة إن وُجدت).
+ * تحليل نصّ JSON القادم من Gemini بتسامح ومرونة عالية. يزيل أسوار الشيفرة،
+ * ويحاول إصلاح JSON المبتور (موازنة الأقواس)، وكملاذ أخير يُرجع نصّاً نظيفاً
+ * (دون أيّ بنية برمجيّة) ليُعرَض كفقرة لا ككود — فلا يتسرّب JSON خام للواجهة أبداً.
  * @param {string} text نصّ الاستجابة.
- * @return {Object} كائن التحليل (أو {summary:text} عند فشل التحليل).
+ * @return {Object} كائن التحليل دائماً بحقول معروفة.
  */
 function parseAnalysisJson_(text) {
   let t = String(text || '').trim();
-  // إزالة أسوار ```json ... ``` إن أحاطت بالنصّ
   t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  try {
-    return JSON.parse(t);
-  } catch (e) {
-    // استخراج أوّل كتلة { ... } كمحاولة أخيرة
-    const m = t.match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
-    return { summary: t };
-  }
+  const tryParse = function (s) { try { const o = JSON.parse(s); return (o && typeof o === 'object') ? o : null; } catch (e) { return null; } };
+
+  // (1) محاولة مباشرة
+  let obj = tryParse(t);
+  if (obj) return obj;
+
+  // (2) اقتصاص من أوّل قوس معقوف
+  const start = t.indexOf('{');
+  if (start > 0) { obj = tryParse(t.slice(start)); if (obj) return obj; }
+
+  // (3) إصلاح JSON المبتور (موازنة الأقواس وإغلاق السلسلة)
+  obj = tryParse(repairTruncatedJson_(t.slice(Math.max(0, start))));
+  if (obj) return obj;
+
+  // (4) ملاذ أخير: نصّ مقروء خالٍ من ضوضاء JSON
+  return { summary: stripJsonNoise_(t), _raw: true };
+}
+
+/**
+ * إصلاح JSON مبتور: يوازن [] و {} المفتوحة ويغلق سلسلة نصّية مفتوحة ويزيل
+ * الفواصل المعلّقة، لاستعادة بنية صالحة من استجابة اقتُطعت بسبب حدّ التوكِنات.
+ * @param {string} s النصّ الخام.
+ * @return {string} نصّ JSON بعد محاولة الإصلاح.
+ */
+function repairTruncatedJson_(s) {
+  let str = String(s || '').trim().replace(/,\s*$/, '');
+  // إغلاق سلسلة نصّية مفتوحة (عدد فردي من علامات الاقتباس غير المهرَّبة)
+  const quoteCount = (str.match(/(?:^|[^\\])"/g) || []).length;
+  if (quoteCount % 2 !== 0) str += '"';
+  // موازنة المعقوفات ثمّ الأقواس
+  const open = function (ch) { return (str.split(ch).length - 1); };
+  str += ']'.repeat(Math.max(0, open('[') - open(']')));
+  str += '}'.repeat(Math.max(0, open('{') - open('}')));
+  // إزالة فاصلة معلّقة قبل الإغلاق
+  return str.replace(/,(\s*[}\]])/g, '$1');
+}
+
+/**
+ * تنظيف نصّ يشبه JSON ليصبح مقروءاً (يزيل الأقواس وأسماء الحقول وعلامات الاقتباس).
+ * @param {string} s النصّ.
+ * @return {string} نصّ مقروء.
+ */
+function stripJsonNoise_(s) {
+  return String(s || '')
+    .replace(/[{}\[\]]/g, ' ')
+    .replace(/"(?:summary|highlights|spendingPatterns|comparisons|forecast|goalsInsight|recommendations)"\s*:/gi, ' ')
+    .replace(/"/g, '')
+    .replace(/\s*,\s*/g, '، ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /**
@@ -766,6 +840,7 @@ function parseAnalysisJson_(text) {
 function lightContextForUi_(ctx) {
   return {
     year: ctx.year,
+    currency: ctx.currency,
     periodLabel: ctx.periodLabel,
     current: ctx.current,
     previous: ctx.previous,
