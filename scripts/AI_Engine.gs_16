@@ -509,9 +509,11 @@ function generateAndMirrorSmartInsightsCard() {
 
   try {
     const card = dash.getRange(AI_INSIGHTS_CARD.range);
-    try { card.breakApart(); } catch (e) {}   // كسر أيّ دمج سابق متداخل (آمن)
-    card.merge()
-      .setBackground(AI_INSIGHTS_CARD.bg)
+    // تنظيف موجّه على نطاق البطاقة فقط (لا breakApart خارج I28:L43، ولا clear()):
+    card.clearContent();
+    card.clearDataValidations();
+    try { card.merge(); } catch (e) {}        // مدمجة مسبقاً؟ نتجاوز دون خطأ
+    card.setBackground(AI_INSIGHTS_CARD.bg)
       .setFontFamily(FONT_FAMILY)
       .setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(true);
     // النصّ المنسّق يُكتب على الخليّة العليا-اليمنى للنطاق المدمج
