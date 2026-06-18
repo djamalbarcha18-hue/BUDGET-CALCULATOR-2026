@@ -243,7 +243,7 @@ function buildDistributionCards_(s, ss, rules) {
   // خلفيّات البطاقات الثلاث المتساوية (دخل A:D · مصاريف E:H · صحّة I:L)
   s.getRange('A28:D43').setBackground(DASH_DARK.card);
   s.getRange('E28:H43').setBackground(DASH_DARK.card);
-  s.getRange('I28:L43').setBackground(DASH_DARK.card);
+  s.getRange('I28:L33').setBackground(DASH_DARK.card); // الصحّة في I28:L33 (نترك I34:L43 لبطاقة الرؤى)
 
   // الصفّ العلوي: تسمية ثانويّة هادئة لكل بطاقة
   mergeAndStyle(s, 'A28:D28', 'إجمالي الدخل',       { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center' });
@@ -279,8 +279,17 @@ function buildDistributionCards_(s, ss, rules) {
     `IF(${E}!O2>=75,"${CHART_COLORS.income}",IF(${E}!O2>=60,"${CHART_COLORS.warning}","${CHART_COLORS.expense}")); "empty","zero"}), "")`);
 
   // (3) تصنيف الصحّة النصّي (ممتاز/جيّد/…)
-  mergeAndStyle(s, 'I33:L34', '', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center', vAlign: 'middle' });
+  mergeAndStyle(s, 'I33:L33', '', { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center', vAlign: 'middle' });
   s.getRange('I33').setFormula(`=IFERROR("الحالة: " & ${E}!O3, "")`);
+
+  // ---- بطاقة "أهم رؤى SmartBudget ✨" (I34:L43) ----
+  // كتلة ضخمة مستقلّة تُعبَّأ ديناميكياً عبر generateAndMirrorSmartInsightsCard()
+  // عند ضغط زرّ "تحديث التنبيهات". نهيّئها هنا كبطاقة فحميّة داكنة مع نصّ إرشادي مبدئي.
+  try { s.getRange('I34:L43').breakApart(); } catch (e) {}
+  s.getRange('I34:L43').merge()
+    .setBackground('#121619').setFontColor('#E0E0E0').setFontFamily(FONT_FAMILY)
+    .setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(true)
+    .setValue('أهم رؤى SmartBudget ✨\n\nاضغط «تحديث التنبيهات» في المساعد الذكي لعرض أهمّ الرؤى المالية على اللوحة.');
 }
 
 /**

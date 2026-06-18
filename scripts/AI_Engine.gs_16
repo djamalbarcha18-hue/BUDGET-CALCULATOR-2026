@@ -375,48 +375,171 @@ function aiChat(message, historyJson, periodKey) {
  *  (3) التنبيهات الاستباقيّة (خفيفة — فحص قواعد محلّي بلا API)
  * ===========================================================================*/
 
+/** بطاقة الرؤى الذكيّة على اللوحة (Mirror) — مكان وألوان الكتلة الضخمة I34:L43. */
+const AI_INSIGHTS_CARD = {
+  range:   'I34:L43',  // كتلة 10 صفوف × 4 أعمدة (مدمجة)
+  bg:      '#121619',  // فحمي داكن عميق
+  fg:      '#F8F9FA',  // أبيض غير لامع (العناوين والقيم المهمّة)
+  fgMuted: '#E0E0E0',  // رمادي فاتح (نصّ التفاصيل)
+  title:   'أهم رؤى SmartBudget ✨',
+};
+
 /**
- * فحص استباقي خفيف للوضع المالي يُجرى مرّة واحدة فقط عند طلب المستخدم (زرّ
- * تحديث). يعتمد قواعد محلّيّة سريعة على القيم الجاهزة في المحرّك (دون أيّ نداء
- * API)، فلا يضيف أيّ مشغّلات ولا يؤثّر على الأداء.
+ * تكثيف أهمّ 3-5 رؤى ماليّة حرجة من السياق بنبرة "مدير بنك" رسميّة، مرتّبة حسب
+ * الحرجيّة. كل رؤية: {level, icon, text, bold} حيث bold = القيمة المفتاحيّة لتعريضها.
+ * @param {Object} ctx سياق مبني عبر buildAiContext_.
+ * @return {Array<{level:string, icon:string, text:string, bold:string}>}
+ */
+function buildSmartInsights_(ctx) {
+  if (!ctx) return [];
+  const out = [];
+  const cur = ctx.current || { income: 0, expense: 0, net: 0, savingsRate: 0 };
+  const cur3 = ' ' + (ctx.currency || '');
+
+  // (1) ⚠️ أشهر تجاوز فيها الإنفاق الدخل — الأشدّ حرجاً
+  const over = (ctx.fullYear || []).filter(function (m) { return m.income > 0 && m.expense > m.income; });
+  if (over.length) {
+    const names = over.map(function (m) { return m.month; }).join('، ');
+    out.push({ level: 'high', icon: '⚠️', bold: names,
+      text: 'تجاوزت المصروفات الدخل خلال: ' + names + '. نوصي بمراجعة عاجلة وضبط الإنفاق في هذه الأشهر.' });
+  }
+
+  // (2) 💳 التزامات مستحقّة عليك
+  if (ctx.debts && ctx.debts.owedByMe > 0) {
+    const amt = aiNum_(ctx.debts.owedByMe) + cur3;
+    out.push({ level: 'high', icon: '💳', bold: amt,
+      text: 'التزامات قائمة عليك بقيمة ' + amt + '؛ يُستحسن اعتماد خطّة سداد مجدولة لخفض المخاطر.' });
+  }
+
+  // (3) 📈/📉 معدّل الادخار
+  if (cur.income > 0) {
+    const rate = aiPct_(cur.savingsRate);
+    const lowBar = (typeof NOTIFY_CONFIG !== 'undefined') ? NOTIFY_CONFIG.lowSavingsRate : 0.10;
+    if (cur.savingsRate < lowBar) {
+      out.push({ level: 'mid', icon: '📉', bold: rate,
+        text: 'معدّل الادخار منخفض عند ' + rate + ' فقط. نوصي برفعه تدريجياً نحو 20% من إجمالي الدخل.' });
+    } else {
+      out.push({ level: 'ok', icon: '📈', bold: rate,
+        text: 'معدّل الادخار جيّد عند ' + rate + '؛ نوصي بالحفاظ على هذا الانضباط المالي.' });
+    }
+  }
+
+  // (4) 📊 أعلى فئة استنزاف
+  const cats = (ctx.expenseCats || []).slice().sort(function (a, b) { return b.total - a.total; });
+  if (cats.length && cats[0].total > 0) {
+    const top = cats[0];
+    const amt = aiNum_(top.total) + cur3;
+    const share = cur.expense > 0 ? (' (' + aiPct_(top.total / cur.expense) + ' من المصروفات)') : '';
+    out.push({ level: 'mid', icon: '📊', bold: top.name,
+      text: 'أعلى فئة إنفاق هي «' + top.name + '» بمبلغ ' + amt + share + '. نوصي بمراجعة إمكانيّة ترشيدها.' });
+  }
+
+  // (5) ⏳ هدف متعثّر
+  const risky = (ctx.goals || []).filter(function (g) { return g.status && g.status.indexOf('قيد') >= 0 && g.pct < 0.5; });
+  if (risky.length) {
+    const g = risky[0];
+    out.push({ level: 'mid', icon: '⏳', bold: g.name,
+      text: 'الهدف «' + g.name + '» متأخّر بنسبة إنجاز ' + aiPct_(g.pct) + '؛ خصِّص مبلغاً شهرياً ثابتاً للّحاق به.' });
+  }
+
+  // (6) 💡 رؤية إيجابيّة عند الاستقرار (فقط إن لم تكن هناك تنبيهات حرجة)
+  if (!out.some(function (i) { return i.level === 'high'; }) && ctx.health && ctx.health.score >= 75) {
+    const sc = ctx.health.score + '/100';
+    out.push({ level: 'ok', icon: '💡', bold: sc,
+      text: 'الوضع المالي العام مستقرّ ودرجة الصحّة ' + sc + '. نوصي بالاستمرار في المتابعة الدوريّة.' });
+  }
+
+  // ترتيب حسب الحرجيّة (high ← mid ← ok) ثمّ أهمّ 5
+  const rank = { high: 0, mid: 1, ok: 2 };
+  out.sort(function (a, b) { return (rank[a.level] || 9) - (rank[b.level] || 9); });
+  return out.slice(0, 5);
+}
+
+/**
+ * بناء قيمة RichText للبطاقة: عنوان عريض + قائمة نقطيّة بالرؤى مع تعريض القيم
+ * المفتاحيّة لسهولة القراءة فوق الخلفيّة الداكنة.
+ * @param {Array} insights ناتج buildSmartInsights_.
+ * @return {RichTextValue}
+ */
+function buildInsightsRichText_(insights) {
+  const title = AI_INSIGHTS_CARD.title;
+  let full = title;
+  const bolds = [];
+  if (!insights || !insights.length) {
+    full += '\n\nاضغط «تحديث التنبيهات» في المساعد الذكي لعرض أهمّ الرؤى المالية.';
+  } else {
+    insights.forEach(function (it) {
+      full += '\n\n';
+      const line = (it.icon || '•') + '  ' + it.text;
+      const start = full.length;
+      full += line;
+      if (it.bold) {
+        const rel = line.indexOf(it.bold);
+        if (rel >= 0) bolds.push({ start: start + rel, end: start + rel + it.bold.length });
+      }
+    });
+  }
+  const builder = SpreadsheetApp.newRichTextValue().setText(full);
+  // الأساس: نصّ تفاصيل فاتح بحجم 10
+  builder.setTextStyle(0, full.length,
+    SpreadsheetApp.newTextStyle().setForegroundColor(AI_INSIGHTS_CARD.fgMuted).setFontSize(10).build());
+  // العنوان: أبيض عريض أكبر
+  builder.setTextStyle(0, title.length,
+    SpreadsheetApp.newTextStyle().setForegroundColor(AI_INSIGHTS_CARD.fg).setBold(true).setFontSize(13).build());
+  // القيم المفتاحيّة: أبيض عريض (بنفس الحجم 10)
+  const boldStyle = SpreadsheetApp.newTextStyle().setForegroundColor(AI_INSIGHTS_CARD.fg).setBold(true).setFontSize(10).build();
+  bolds.forEach(function (b) { if (b.start < b.end && b.end <= full.length) builder.setTextStyle(b.start, b.end, boldStyle); });
+  return builder.build();
+}
+
+/**
+ * توليد بطاقة "أهم رؤى SmartBudget" وعكسها على اللوحة الرئيسيّة في الكتلة الضخمة
+ * I34:L43: جلب سياقي للبيانات، تكثيف أهمّ 3-5 رؤى، ثمّ تنسيق دقيق (دمج + خلفيّة
+ * فحميّة + نصّ منسّق RichText) — دون المساس بأيّ مكوّن آخر في اللوحة.
+ * @return {Object} {ok, insights} أو {ok:false, message, insights:[]}.
+ */
+function generateAndMirrorSmartInsightsCard() {
+  if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled, insights: [] };
+  const ss = SpreadsheetApp.getActive();
+  const dash = ss.getSheetByName(SHEET_NAMES.dashboard);
+  if (!dash) return { ok: false, message: TXT_AI.errNoEngine, insights: [] };
+
+  const ctx = buildAiContext_('annual');     // جلب سياقي للسنة النشطة
+  const insights = buildSmartInsights_(ctx);  // تكثيف أهمّ 3-5 رؤى
+
+  try {
+    const card = dash.getRange(AI_INSIGHTS_CARD.range);
+    try { card.breakApart(); } catch (e) {}   // كسر أيّ دمج سابق متداخل (آمن)
+    card.merge()
+      .setBackground(AI_INSIGHTS_CARD.bg)
+      .setFontFamily(FONT_FAMILY)
+      .setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(true);
+    // النصّ المنسّق يُكتب على الخليّة العليا-اليمنى للنطاق المدمج
+    dash.getRange(AI_INSIGHTS_CARD.range.split(':')[0]).setRichTextValue(buildInsightsRichText_(insights));
+  } catch (err) {
+    return { ok: false, message: 'تعذّر عرض بطاقة الرؤى على اللوحة: ' + err, insights: insights };
+  }
+  return { ok: true, insights: insights };
+}
+
+/**
+ * فحص استباقي خفيف يُجرى عند ضغط زرّ "تحديث التنبيهات": يحسب أهمّ الرؤى محلّياً،
+ * يعكسها على بطاقة اللوحة (I34:L43)، ثمّ يعيدها لقائمة النافذة المنبثقة.
  * @return {Object} {ok, alerts:[{level, icon, text}]}.
  */
 function aiProactiveAlerts() {
   if (!isFeatureEnabled('assistant')) return { ok: false, message: TXT_AI.errDisabled, alerts: [] };
-  const ctx = buildAiContext_('annual');
-  if (!ctx) return { ok: false, message: TXT_AI.errNoEngine, alerts: [] };
 
-  const alerts = [];
-  // (أ) أشهر تجاوز فيها الإنفاق الدخل
-  ctx.fullYear.forEach(function (m) {
-    if (m.income > 0 && m.expense > m.income) {
-      alerts.push({ level: 'high', icon: '🔴', text: TXT_AI.alertOverspend.replace('{month}', m.month) });
-    }
-  });
-  // (ب) معدّل ادخار منخفض للفترة الجارية
-  if (ctx.current.income > 0 && ctx.current.savingsRate < NOTIFY_CONFIG.lowSavingsRate) {
-    alerts.push({ level: 'mid', icon: '🟡',
-      text: TXT_AI.alertLowSaving.replace('{rate}', aiPct_(ctx.current.savingsRate)) });
-  }
-  // (ج) أعلى فئة استنزاف
-  if (ctx.expenseCats.length) {
-    const top = ctx.expenseCats.slice().sort(function (a, b) { return b.total - a.total; })[0];
-    if (top && top.total > 0) {
-      alerts.push({ level: 'mid', icon: '📊',
-        text: TXT_AI.alertTopDrain.replace('{cat}', top.name).replace('{amt}', aiNum_(top.total)) });
-    }
-  }
-  // (د) أهداف قيد الادخار وتقدّمها أقلّ من النصف
-  ctx.goals.forEach(function (g) {
-    if (g.status && g.status.indexOf('قيد') >= 0 && g.pct < 0.5) {
-      alerts.push({ level: 'mid', icon: '⏳', text: TXT_AI.alertGoalRisk.replace('{goal}', g.name) });
-    }
-  });
-  // (هـ) التزامات نشطة عليك
-  if (ctx.debts && ctx.debts.owedByMe > 0) {
-    alerts.push({ level: 'high', icon: '💳', text: TXT_AI.alertDebt.replace('{amt}', aiNum_(ctx.debts.owedByMe)) });
+  // نولّد الرؤى ونعكسها على اللوحة في خطوة واحدة (نفس منطق التكثيف)
+  let insights = [];
+  const mirror = generateAndMirrorSmartInsightsCard();
+  if (mirror && mirror.insights) insights = mirror.insights;
+  // احتياط: إن فشل العكس على اللوحة نحسب الرؤى مباشرةً كي لا تتعطّل النافذة
+  if (!insights.length) {
+    try { insights = buildSmartInsights_(buildAiContext_('annual')); } catch (e) { insights = []; }
   }
 
+  const alerts = insights.map(function (i) { return { level: i.level, icon: i.icon, text: i.text }; });
   if (!alerts.length) alerts.push({ level: 'ok', icon: '✅', text: TXT_AI.alertNone });
   return { ok: true, alerts: alerts };
 }
