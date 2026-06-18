@@ -156,7 +156,8 @@ function buildDashboard(ss, year) {
 
   // ---- (1) الهوية البصريّة: وضع داكن صافٍ + خطّ معتمد + إخفاء الشبكة ----
   s.clearConditionalFormatRules();
-  s.getCharts().forEach(c => s.removeChart(c)); // إزالة مخططات سابقة (إعادة بناء آمنة)
+  // أمان: لا نستخدم removeChart إطلاقاً (مدمِّر للكائنات العائمة). نُدرج المخططات
+  // عند غيابها فقط داخل buildDashboardCharts_، فلا تُحذف ولا تتكرّر.
   s.setHiddenGridlines(true); // مظهر احترافي: إخفاء خطوط الشبكة
   s.getRange(1, 1, 60, 12)
     .setBackground(DASH_DARK.page).setFontColor(DASH_DARK.text).setFontFamily(FONT_FAMILY);
@@ -240,10 +241,16 @@ function buildDashboardGoalsWidget_(s) {
 function buildDistributionCards_(s, ss, rules) {
   const E = q(SHEET_NAMES.engine);
 
-  // خلفيّات البطاقات الثلاث المتساوية (دخل A:D · مصاريف E:H · صحّة I:L)
+  // خلفيّات بطاقتَي الدونات (دخل A:D · مصاريف E:H) — لا تمسّ الرسوم العائمة
   s.getRange('A28:D43').setBackground(DASH_DARK.card);
   s.getRange('E28:H43').setBackground(DASH_DARK.card);
-  s.getRange('I28:L33').setBackground(DASH_DARK.card); // الصحّة في I28:L33 (نترك I34:L43 لبطاقة الرؤى)
+
+  // ---- عمود الصحّة + الرؤى (I28:L43): فصل آمن مرّة واحدة ثمّ إعادة دمج محدّدة ----
+  // بروتوكول غير مدمِّر: لا clear()/clearFormats()/removeChart/deleteRows إطلاقاً.
+  // نفكّ الدمج مرّة واحدة فقط على كامل العمود I28:L43 (لمعالجة أيّ تخطيط قديم
+  // متداخل) ثمّ نعيد الدمج بدقّة، ونعيد حقن صيغ بطاقة الصحّة فوراً فلا تختفي النسبة.
+  try { s.getRange('I28:L43').breakApart(); } catch (e) {}
+  s.getRange('I28:L33').setBackground(DASH_DARK.card); // خلفيّة بطاقة الصحّة فقط
 
   // الصفّ العلوي: تسمية ثانويّة هادئة لكل بطاقة
   mergeAndStyle(s, 'A28:D28', 'إجمالي الدخل',       { bg: DASH_DARK.card, fg: DASH_DARK.textMute, size: 11, align: 'center' });
@@ -256,7 +263,7 @@ function buildDistributionCards_(s, ss, rules) {
   mergeAndStyle(s, 'E29:H30', '', { bg: DASH_DARK.card, fg: DASH_DARK.text, size: 22, bold: true, align: 'center', vAlign: 'middle' });
   enforceLatinNumberFormat(s.getRange('E29').setFormula(`=IFERROR(${E}!H3, 0)`)); // إجمالي المصاريف
 
-  // ---- بطاقة الصحّة المالية: مؤشّر رقمي متقدّم ----
+  // ---- بطاقة الصحّة المالية: مؤشّر رقمي متقدّم (إعادة حقن الصيغ فوراً) ----
   // (1) الرقم كنسبة مئويّة صريحة (تقييم من 100) ملوّن شرطياً: أخضر ≥75% · أصفر 60-74% · أحمر <60%
   mergeAndStyle(s, 'I29:L31', '', { bg: DASH_DARK.card, fg: DASH_DARK.text, size: 40, bold: true, align: 'center', vAlign: 'middle' });
   s.getRange('I29').setFormula(`=IFERROR(${E}!O2 / 100, 0)`).setNumberFormat('0.0%');
@@ -283,9 +290,11 @@ function buildDistributionCards_(s, ss, rules) {
   s.getRange('I33').setFormula(`=IFERROR("الحالة: " & ${E}!O3, "")`);
 
   // ---- بطاقة "أهم رؤى SmartBudget ✨" (I34:L43) ----
-  // كتلة ضخمة مستقلّة تُعبَّأ ديناميكياً عبر generateAndMirrorSmartInsightsCard()
-  // عند ضغط زرّ "تحديث التنبيهات". نهيّئها هنا كبطاقة فحميّة داكنة مع نصّ إرشادي مبدئي.
-  try { s.getRange('I34:L43').breakApart(); } catch (e) {}
+  // I34:L43 أصبح مفكوك الدمج عبر breakApart(I28:L43) أعلاه. ننظّف محتواه فقط
+  // (clearContent + clearDataValidations — لا clear()) ثمّ ندمجه وننسّقه. يُعبَّأ
+  // ديناميكياً عبر generateAndMirrorSmartInsightsCard() عند ضغط "تحديث التنبيهات".
+  s.getRange('I34:L43').clearContent();
+  s.getRange('I34:L43').clearDataValidations();
   s.getRange('I34:L43').merge()
     .setBackground('#121619').setFontColor('#E0E0E0').setFontFamily(FONT_FAMILY)
     .setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(true)
@@ -304,6 +313,9 @@ function buildDistributionCards_(s, ss, rules) {
 function buildDashboardCharts_(s, ss) {
   const engine = ss.getSheetByName(SHEET_NAMES.engine);
   if (!engine) return;
+  // إدراج غير مدمِّر: إن وُجدت مخططات مسبقاً نتركها كما هي (نتفادى التكرار دون
+  // اللجوء إلى removeChart). لتحديث المخططات يدوياً: احذفها ثمّ أعد بناء اللوحة.
+  if (s.getCharts().length > 0) return;
   const lightTxt = { color: DASH_DARK.text };
 
   // مخطّط الأعمدة المقارن (ثلاث سلاسل بألوان صارمة) — مساحة واسعة أسفل المؤشّرات
