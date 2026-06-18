@@ -101,7 +101,7 @@ function buildDashboardEngine(ss, year) {
   s.getRange('O2').setFormula(
     `=ROUND(40 * MAX(0, MIN(1, IFERROR((H2 - H3) / H2, 0))) + ` +
     `30 * MAX(0, MIN(1, IFERROR(1 - (H3 / SUM(${expectedExpenseSum})), 0))) + ` +
-    `30 * IFERROR(${q(SHEET_NAMES.goals)}!F2, 0), 0)`);
+    `30 * MAX(0, MIN(1, IFERROR(${q(SHEET_NAMES.goals)}!D2, 0))), 0)`);
   s.getRange('O3').setFormula(
     `=IFS(O2>=90, "${TXT_DASH.healthLabels.excellent}", O2>=75, "${TXT_DASH.healthLabels.good}", ` +
     `O2>=60, "${TXT_DASH.healthLabels.fair}", TRUE, "${TXT_DASH.healthLabels.poor}")`);
@@ -232,7 +232,7 @@ function buildDashboardGoalsWidget_(s) {
  *   - بطاقتا الدخل/المصاريف: الصفّ العلوي يعرض الإجمالي كمؤشّر فرعي (22pt أبيض)،
  *     والمخطّط الدائري المجوّف يُدرَج تحته مباشرةً (لا خلايا متراكبة للإجمالي).
  *   - بطاقة الصحّة المالية: مؤشّر رقمي متقدّم (بديل آمن لمخطّط Gauge) — رقم ضخم
- *     ملوّن شرطياً (أخضر/أصفر/أحمر) + شريط تقدّم SPARKLINE أفقي ناعم من 100.
+ *     ملوّن شرطياً (أخضر/أصفر/أحمر) + شريط تقدّم SPARKLINE أفقي ناعم (نسبة من 100%).
  * @param {Sheet} s ورقة اللوحة.
  * @param {Spreadsheet} ss المصنّف.
  * @param {Array} rules مصفوفة قواعد التنسيق الشرطي (تُعدَّل في المكان).
@@ -257,25 +257,25 @@ function buildDistributionCards_(s, ss, rules) {
   enforceLatinNumberFormat(s.getRange('E29').setFormula(`=IFERROR(${E}!H3, 0)`)); // إجمالي المصاريف
 
   // ---- بطاقة الصحّة المالية: مؤشّر رقمي متقدّم ----
-  // (1) الرقم الضخم (40pt) ملوّن شرطياً: أخضر ≥75 · أصفر 60-74 · أحمر <60
+  // (1) الرقم كنسبة مئويّة صريحة (تقييم من 100) ملوّن شرطياً: أخضر ≥75% · أصفر 60-74% · أحمر <60%
   mergeAndStyle(s, 'I29:L31', '', { bg: DASH_DARK.card, fg: DASH_DARK.text, size: 40, bold: true, align: 'center', vAlign: 'middle' });
-  s.getRange('I29').setFormula(`=IFERROR(${E}!O2, 0)`).setNumberFormat('0');
+  s.getRange('I29').setFormula(`=IFERROR(${E}!O2 / 100, 0)`).setNumberFormat('0.0%');
   const hRange = s.getRange('I29:L31');
   rules.push(
     SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberGreaterThanOrEqualTo(75).setFontColor(CHART_COLORS.income)
+      .whenNumberGreaterThanOrEqualTo(0.75).setFontColor(CHART_COLORS.income)
       .setBackground(DASH_DARK.card).setRanges([hRange]).build(),
     SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberBetween(60, 74).setFontColor(CHART_COLORS.warning)
+      .whenNumberBetween(0.60, 0.749).setFontColor(CHART_COLORS.warning)
       .setBackground(DASH_DARK.card).setRanges([hRange]).build(),
     SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberLessThan(60).setFontColor(CHART_COLORS.expense)
+      .whenNumberLessThan(0.60).setFontColor(CHART_COLORS.expense)
       .setBackground(DASH_DARK.card).setRanges([hRange]).build());
 
-  // (2) شريط تقدّم أفقي ناعم (SPARKLINE) يعبّر عن القيمة من 100، بلون شرطي مطابق
+  // (2) شريط تقدّم أفقي ناعم (SPARKLINE) يقرأ النسبة الكسريّة (0-1) بحدّ أقصى 1، بلون شرطي مطابق
   mergeAndStyle(s, 'I32:L32', '', { bg: DASH_DARK.card, align: 'center', vAlign: 'middle' });
   s.getRange('I32').setFormula(
-    `=IFERROR(SPARKLINE(${E}!O2, {"charttype","bar"; "max",100; "color1",` +
+    `=IFERROR(SPARKLINE(${E}!O2 / 100, {"charttype","bar"; "max",1; "color1",` +
     `IF(${E}!O2>=75,"${CHART_COLORS.income}",IF(${E}!O2>=60,"${CHART_COLORS.warning}","${CHART_COLORS.expense}")); "empty","zero"}), "")`);
 
   // (3) تصنيف الصحّة النصّي (ممتاز/جيّد/…)
